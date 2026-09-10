@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
 #include "Containers/Ticker.h"
@@ -32,7 +34,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogIMGGameSettingRegistry, Log, Log);
 	}))
 
 /**
- * 
+ *
  */
 UCLASS()
 class UIMGGameSettingRegistry : public UGameSettingRegistry
@@ -43,28 +45,25 @@ public:
 	UIMGGameSettingRegistry();
 
 	static UIMGGameSettingRegistry* Get(UIMGLocalPlayer* InLocalPlayer);
-	
+
 	virtual void SaveChanges() override;
 
 protected:
 	virtual void OnInitialize(ULocalPlayer* InLocalPlayer) override;
-	
-	
 	virtual bool IsFinishedInitializing() const override;
-	
-	// TODO: GameSettingRegistry
-	UGameSettingCollection* InitializeVideoSettings(UIMGLocalPlayer* InLocalPlayer) { return nullptr;}
-	void InitializeVideoSettings_FrameRates(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer) {}
-	void AddPerformanceStatPage(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer) {}
 
-	UGameSettingCollection* InitializeAudioSettings(UIMGLocalPlayer* InLocalPlayer) { return nullptr;}
-	UGameSettingCollection* InitializeGameplaySettings(UIMGLocalPlayer* InLocalPlayer) { return nullptr;}
+	UGameSettingCollection* InitializeVideoSettings(UIMGLocalPlayer* InLocalPlayer);
+	void InitializeVideoSettings_FrameRates(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer);
+	void AddPerformanceStatPage(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer);
 
-	UGameSettingCollection* InitializeMouseAndKeyboardSettings(UIMGLocalPlayer* InLocalPlayer) { return nullptr;}
-	UGameSettingCollection* InitializeGamepadSettings(UIMGLocalPlayer* InLocalPlayer) { return nullptr;}
+	UGameSettingCollection* InitializeAudioSettings(UIMGLocalPlayer* InLocalPlayer);
+	UGameSettingCollection* InitializeGameplaySettings(UIMGLocalPlayer* InLocalPlayer);
 
-	void AddDLCPage(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer) {}
-	
+	UGameSettingCollection* InitializeMouseAndKeyboardSettings(UIMGLocalPlayer* InLocalPlayer);
+	UGameSettingCollection* InitializeGamepadSettings(UIMGLocalPlayer* InLocalPlayer);
+
+	void AddDLCPage(UGameSettingCollection* Screen, UIMGLocalPlayer* InLocalPlayer);
+
 	UPROPERTY()
 	TObjectPtr<UGameSettingCollection> VideoSettings;
 

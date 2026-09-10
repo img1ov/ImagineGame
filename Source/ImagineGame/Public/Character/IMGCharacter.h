@@ -13,7 +13,6 @@
 
 class UIMGCharacterMovementComponent;
 class UIMGCameraComponent;
-class UIMGSpringArmComponent;
 class AIMGPlayerState;
 class AIMGPlayerController;
 class UIMGPawnData;
@@ -95,15 +94,15 @@ class AIMGCharacter : public AModularCharacter, public IAbilitySystemInterface, 
 	GENERATED_BODY()
 
 public:
-	
+
 	UE_API AIMGCharacter(const FObjectInitializer& ObjectInitializer);
 
 	UFUNCTION(BlueprintCallable, Category = "IMG|Character")
 	UE_API AIMGPlayerController* GetIMGPlayerController() const;
-	
+
 	UFUNCTION(BlueprintCallable, Category = "IMG|Character")
 	UE_API AIMGPlayerState* GetIMGPlayerState() const;
-	
+
 	UFUNCTION(BlueprintCallable, Category = "IMG|Character")
 	UE_API UIMGCharacterMovementComponent* GetIMGMovementComponent() const;
 
@@ -114,9 +113,9 @@ public:
 	UE_API virtual bool HasMatchingGameplayTag(FGameplayTag TagToCheck) const override;
 	UE_API virtual bool HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	UE_API virtual bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
-	
+
 	UE_API void ToggleCrouch();
-	
+
 	//~AActor interface
 	UE_API virtual void PreInitializeComponents() override;
 	UE_API virtual void BeginPlay() override;
@@ -129,13 +128,19 @@ public:
 	//~APawn interface
 	UE_API virtual void NotifyControllerChanged() override;
 	//~End of APawn interface
-	
+
 	//~IActTeamAgentInterface interface
 	UE_API virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override;
 	UE_API virtual FGenericTeamId GetGenericTeamId() const override;
 	UE_API virtual FOnIMGTeamIndexChangedDelegate* GetOnTeamIndexChangedDelegate() override;
 	//~End of IActTeamAgentInterface interface
-	
+
+	UFUNCTION(NetMulticast, unreliable)
+	UE_API void FastSharedReplication(const FSharedRepMovement& SharedRepMovement);
+
+	FSharedRepMovement LastSharedReplication;
+	UE_API virtual bool UpdateSharedReplication();
+
 protected:
 
 	UE_API virtual void OnAbilitySystemInitialized();
@@ -150,7 +155,7 @@ protected:
 	UE_API virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	UE_API void InitializeGameplayTags();
-	
+
 	UE_API virtual void FellOutOfWorld(const class UDamageType& dmgType) override;
 
 	// Begins the death sequence for the character (disables collision, disables movement, etc...)
@@ -171,14 +176,14 @@ protected:
 
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 	UE_API void SetMovementModeTag(EMovementMode MovementMode, uint8 CustomMovementMode, bool bTagEnabled);
-	
+
 	UE_API virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	UE_API virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
-	
+
 	UE_API virtual bool CanJumpInternal_Implementation() const override;
 
 private:
-	
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IMG|Character", Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UIMGPawnExtensionComponent> PawnExtComponent;
 
@@ -186,40 +191,37 @@ private:
 	TObjectPtr<UIMGHealthComponent> HealthComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IMG|Character", Meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UIMGSpringArmComponent> CameraSpringArmComponent;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IMG|Character", Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UIMGCameraComponent> CameraComponent;
-	
+
 	UPROPERTY(Transient, ReplicatedUsing = OnRep_ReplicatedAcceleration)
 	FIMGReplicatedAcceleration ReplicatedAcceleration;
-	
+
 	UPROPERTY(ReplicatedUsing = OnRep_MyTeamID)
 	FGenericTeamId MyTeamID;
-	
+
 	UPROPERTY()
 	FOnIMGTeamIndexChangedDelegate OnTeamChangedDelegate;
 
 protected:
-	
+
 	// Called to determine what happens to the team ID when possession ends
 	virtual FGenericTeamId DetermineNewTeamAfterPossessionEnds(FGenericTeamId OldTeamID) const
 	{
 		// This could be changed to return, e.g., OldTeamID if you want to keep it assigned afterwards, or return an ID for some neutral faction, or etc...
 		return FGenericTeamId::NoTeam;
 	}
-	
+
 private:
-	
+
 	UFUNCTION()
 	UE_API void OnControllerChangedTeam(UObject* TeamAgent, int32 OldTeam, int32 NewTeam);
-	
+
 	UFUNCTION()
 	UE_API void OnRep_ReplicatedAcceleration();
-	
+
 	UFUNCTION()
 	UE_API void OnRep_MyTeamID(FGenericTeamId OldTeamID);
-	
+
 };
 
 #undef UE_API

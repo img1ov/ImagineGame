@@ -25,7 +25,7 @@ bool UIMGGameplayAbility_Jump::CanActivateAbility(const FGameplayAbilitySpecHand
 		return false;
 	}
 
-	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags))
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
 	{
 		return false;
 	}
@@ -37,7 +37,7 @@ void UIMGGameplayAbility_Jump::EndAbility(const FGameplayAbilitySpecHandle Handl
 {
 	// Stop jumping in case the ability blueprint doesn't call it.
 	CharacterJumpStop();
-	
+
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
@@ -45,7 +45,7 @@ void UIMGGameplayAbility_Jump::CharacterJumpStart()
 {
 	if (AIMGCharacter* IMGCharacter = GetIMGCharacterFromActorInfo())
 	{
-		if (IMGCharacter->IsLocallyControlled() && !IMGCharacter->bPressedJump)
+		if (IMGCharacter->IsLocallyControlled())
 		{
 			IMGCharacter->UnCrouch();
 			IMGCharacter->Jump();
@@ -57,7 +57,7 @@ void UIMGGameplayAbility_Jump::CharacterJumpStop()
 {
 	if (AIMGCharacter* IMGCharacter = GetIMGCharacterFromActorInfo())
 	{
-		if (IMGCharacter->IsLocallyControlled() && !IMGCharacter->bPressedJump)
+		if (IMGCharacter->IsLocallyControlled() && IMGCharacter->bPressedJump)
 		{
 			IMGCharacter->StopJumping();
 		}

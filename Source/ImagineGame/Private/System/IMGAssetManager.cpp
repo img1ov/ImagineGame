@@ -200,6 +200,7 @@ void UIMGAssetManager::StartInitialLoading()
 	DoAllStartupJobs();
 }
 
+#if WITH_EDITOR
 void UIMGAssetManager::PreBeginPIE(bool bStartSimulate)
 {
 	Super::PreBeginPIE(bStartSimulate);
@@ -219,6 +220,7 @@ void UIMGAssetManager::PreBeginPIE(bool bStartSimulate)
 		// (e.g., by grabbing the default experience from the world settings + the experience override in developer settings)
 	}
 }
+#endif
 
 UPrimaryDataAsset* UIMGAssetManager::LoadGameDataOfClass(TSubclassOf<UPrimaryDataAsset> DataClass,
 	const TSoftObjectPtr<UPrimaryDataAsset>& DataClassPath, FPrimaryAssetType PrimaryAssetType)
@@ -240,7 +242,7 @@ UPrimaryDataAsset* UIMGAssetManager::LoadGameDataOfClass(TSubclassOf<UPrimaryDat
 				*GetNameSafe(DataClass.Get()), *PrimaryAssetType.ToString());
 		}
 	}
-	
+
 	if (!DataClassPath.IsNull())
 	{
 #if WITH_EDITOR
@@ -343,7 +345,7 @@ void UIMGAssetManager::DoAllStartupJobs()
 void UIMGAssetManager::InitializeGameplayCueManager()
 {
 	SCOPED_BOOT_TIMING("UIMGAssetManager::InitializeGameplayCueManager");
-	
+
 	UIMGGameplayCueManager* GCM = UIMGGameplayCueManager::Get();
 	check(GCM);
 	GCM->LoadAlwaysLoadedCues();

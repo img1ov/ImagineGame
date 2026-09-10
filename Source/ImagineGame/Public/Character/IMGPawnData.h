@@ -7,6 +7,7 @@
 #include "IMGPawnData.generated.h"
 
 class APawn;
+class UIMGCameraMode;
 class UIMGInputConfig;
 class UIMGAbilityTagRelationshipMapping;
 class UIMGAbilitySet;
@@ -30,4 +31,8 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Input")
 	TObjectPtr<UIMGInputConfig> InputConfig;
+
+	/** Default camera mode used by player controlled pawns. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Camera")
+	TSubclassOf<UIMGCameraMode> DefaultCameraMode;
 };

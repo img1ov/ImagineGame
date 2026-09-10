@@ -1,17 +1,36 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "EnhancedPlayerInput.h"
+
 #include "IMGPlayerInput.generated.h"
 
 /**
- * 
+ * Custom player input class for IMG. This extends the functionality of Enhanced Input to also include
+ * some input latency tracking on key press.
+ *
+ * Extend this class if you have any special logic which you may want to run relating to when keys are pressed
+ * or when input is flushed.
  */
-UCLASS()
-class IMAGINEGAME_API UIMGPlayerInput : public UEnhancedPlayerInput
+UCLASS(config = Input, transient)
+class UIMGPlayerInput : public UEnhancedPlayerInput
 {
 	GENERATED_BODY()
-	
+
+public:
+	UIMGPlayerInput();
+	virtual ~UIMGPlayerInput() override;
+
+protected:
+	//~ Begin UEnhancedPlayerInput Interface
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+	//~ End of UEnhancedPlayerInput interface
+
+	void ProcessInputEventForLatencyMarker(const FInputKeyEventArgs& Params);
+	void BindToLatencyMarkerSettingChange();
+	void UnbindLatencyMarkerSettingChangeListener();
+	void HandleLatencyMarkerSettingChanged();
+
+	bool bShouldTriggerLatencyFlash = false;
 };

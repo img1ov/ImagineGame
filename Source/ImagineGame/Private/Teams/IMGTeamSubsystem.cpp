@@ -2,6 +2,8 @@
 
 #include "Teams/IMGTeamSubsystem.h"
 
+#include "Teams/IMGTeamCheats.h"
+
 #include "AbilitySystemGlobals.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
@@ -13,6 +15,7 @@
 #include "Teams/IMGTeamInfoBase.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTeamSubsystem)
+
 
 class FSubsystemCollectionBase;
 
@@ -65,18 +68,18 @@ UIMGTeamSubsystem::UIMGTeamSubsystem()
 void UIMGTeamSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	
+
 	auto AddTeamCheats = [](UCheatManager* CheatManager)
 	{
-		//CheatManager->AddCheatManagerExtension(NewObject<UActTeamCheats>(CheatManager));
+		CheatManager->AddCheatManagerExtension(NewObject<UIMGTeamCheats>(CheatManager));
 	};
 
-	//CheatManagerRegistrationHandle = UCheatManager::RegisterForOnCheatManagerCreated(FOnCheatManagerCreated::FDelegate::CreateLambda(AddTeamCheats));
+	CheatManagerRegistrationHandle = UCheatManager::RegisterForOnCheatManagerCreated(FOnCheatManagerCreated::FDelegate::CreateLambda(AddTeamCheats));
 }
 
 void UIMGTeamSubsystem::Deinitialize()
 {
-	//UCheatManager::UnregisterFromOnCheatManagerCreated(CheatManagerRegistrationHandle);
+	UCheatManager::UnregisterFromOnCheatManagerCreated(CheatManagerRegistrationHandle);
 
 	Super::Deinitialize();
 }
@@ -196,7 +199,7 @@ const AIMGPlayerState* UIMGTeamSubsystem::FindPlayerStateFromActor(const AActor*
 		}
 		else if (const AIMGPlayerState* IMGPS = Cast<const AIMGPlayerState>(PossibleTeamActor))
 		{
-			return IMGPS; 
+			return IMGPS;
 		}
 
 		// Try the instigator
@@ -395,4 +398,3 @@ FOnActTeamDisplayAssetChangedDelegate& UIMGTeamSubsystem::GetTeamDisplayAssetCha
 {
 	return TeamMap.FindOrAdd(TeamId).OnTeamDisplayAssetChanged;
 }
-

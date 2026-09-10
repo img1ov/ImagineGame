@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #include "Settings/IMGSettingsLocal.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
@@ -19,8 +21,8 @@
 #include "Development/IMGPlatformEmulationSettings.h"
 #include "SoundControlBus.h"
 #include "AudioModulationStatics.h"
-//#include "Audio/IMGAudioSettings.h"
-//#include "Audio/IMGAudioMixEffectsSubsystem.h"
+#include "Audio/IMGAudioSettings.h"
+#include "Audio/IMGAudioMixEffectsSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGSettingsLocal)
 
@@ -171,7 +173,7 @@ public:
 	T GetLowestValue(T DefaultIfNoPairs)
 	{
 		UpdateCache();
-		
+
 		T Result = DefaultIfNoPairs;
 		bool bFirstValue = true;
 		for (const FLimitPair& Pair : Thresholds)
@@ -186,7 +188,7 @@ public:
 				Result = FMath::Min(Result, Pair.Value);
 			}
 		}
-		
+
 		return Result;
 	}
 
@@ -219,7 +221,7 @@ private:
 				}
 				else
 				{
-				
+
 					UE_LOG(LogConsoleResponse, Error, TEXT("Malformed value for '%s'='%s', expecting a ':'"),
 						*IConsoleManager::Get().FindConsoleObjectName(WatchedVar.AsVariable()),
 						*LastSeenCVarString);
@@ -312,7 +314,7 @@ namespace IMGSettingsHelpers
 
 			const int32 LimitQuality = GetApplicableResolutionQualityLimit(TestRate);
 			const bool bQualityDoesntExceedLimit = (LimitQuality < 0) || (OverallQuality <= LimitQuality);
-			
+
 			const bool bIsSupported = UIMGSettingsLocal::IsSupportedMobileFramePace(TestRate);
 
 			return bAtOrBelowDesiredRate && bQualityDoesntExceedLimit && bIsSupported;
@@ -393,7 +395,7 @@ void UIMGSettingsLocal::LoadSettings(bool bForceReload)
 	DesiredMobileFrameRateLimit = MobileFrameRateLimit;
 	ClampMobileQuality();
 
-	
+
 	PerfStatSettingsChangedEvent.Broadcast();
 }
 
@@ -601,7 +603,7 @@ void UIMGSettingsLocal::SetEnableLatencyFlashIndicators(const bool bNewVal)
 	{
 		bEnableLatencyFlashIndicators = bNewVal;
 		LatencyFlashInidicatorSettingsChangedEvent.Broadcast();
-	}	
+	}
 }
 
 void UIMGSettingsLocal::SetEnableLatencyTrackingStats(const bool bNewVal)
@@ -625,13 +627,13 @@ void UIMGSettingsLocal::ApplyLatencyTrackingStatSetting()
 	{
 		return;
 	}
-	
+
 	// Don't bother doing anything if the platform doesn't even support tracking stats.
 	if (!DoesPlatformSupportLatencyTrackingStats())
 	{
 		return;
 	}
-	
+
 	// Actually enable or disable the latency marker modules based on this setting
 	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
 	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
@@ -771,7 +773,7 @@ void UIMGSettingsLocal::ResetToMobileDeviceDefaults()
 	// Reset frame rate
 	DesiredMobileFrameRateLimit = GetDefaultMobileFrameRate();
 	MobileFrameRateLimit = DesiredMobileFrameRateLimit;
-	
+
 	// Reset scalability
 	Scalability::FQualityLevels DefaultLevels = Scalability::GetQualityLevels();
 	OverrideQualityLevelsToScalabilityMode(DeviceDefaultScalabilitySettings, DefaultLevels);
@@ -864,7 +866,7 @@ void UIMGSettingsLocal::ClampMobileQuality()
 
 		const int32 MaxMobileFrameRate = GetMaxMobileFrameRate();
 		const int32 DefaultMobileFrameRate = GetDefaultMobileFrameRate();
-		
+
 		ensureMsgf(DefaultMobileFrameRate <= MaxMobileFrameRate, TEXT("Default mobile frame rate (%d) is higher than the maximum mobile frame rate (%d)!"), DefaultMobileFrameRate, MaxMobileFrameRate);
 
 		// Choose the closest supported frame rate to the user desired setting without going over the device imposed limit
@@ -969,10 +971,10 @@ void UIMGSettingsLocal::SetHDRAudioModeEnabled(bool bEnabled)
 	{
 		if (const UWorld* World = GEngine->GetCurrentPlayWorld())
 		{
-			/*if (UIMGAudioMixEffectsSubsystem* IMGAudioMixEffectsSubsystem = World->GetSubsystem<UIMGAudioMixEffectsSubsystem>())
+			if (UIMGAudioMixEffectsSubsystem* IMGAudioMixEffectsSubsystem = World->GetSubsystem<UIMGAudioMixEffectsSubsystem>())
 			{
 				IMGAudioMixEffectsSubsystem->ApplyDynamicRangeEffectsChains(bEnabled);
-			}*/
+			}
 		}
 	}
 }
@@ -1002,7 +1004,7 @@ bool UIMGSettingsLocal::ShouldRunAutoBenchmarkAtStartup() const
 void UIMGSettingsLocal::RunAutoBenchmark(bool bSaveImmediately)
 {
 	RunHardwareBenchmark();
-	
+
 	// Always apply, optionally save
 	ApplyScalabilitySettings();
 	ApplyLatencyTrackingStatSetting();
@@ -1279,7 +1281,7 @@ void UIMGSettingsLocal::ApplyNonResolutionSettings()
 	{
 		SetHeadphoneModeEnabled(bDesiredHeadphoneMode);
 	}
-	
+
 	if (DesiredUserChosenDeviceProfileSuffix != UserChosenDeviceProfileSuffix)
 	{
 		UserChosenDeviceProfileSuffix = DesiredUserChosenDeviceProfileSuffix;
@@ -1358,7 +1360,7 @@ void UIMGSettingsLocal::LoadUserControlBusMix()
 	if (GEngine)
 	{
 		if (const UWorld* World = GEngine->GetCurrentPlayWorld())
-		{/*
+		{
 			if (const UIMGAudioSettings* IMGAudioSettings = GetDefault<UIMGAudioSettings>())
 			{
 				USoundControlBus* OverallControlBus = nullptr;
@@ -1463,7 +1465,7 @@ void UIMGSettingsLocal::LoadUserControlBusMix()
 					}
 				}
 			}
-		*/}
+		}
 	}
 }
 
@@ -1567,7 +1569,7 @@ void UIMGSettingsLocal::UpdateGameModeDeviceProfileAndFps()
 		}
 	}
 
-	UE_LOG(LogConsoleResponse, Log, TEXT("UpdateGameModeDeviceProfileAndFps MaxRefreshRate=%d, ExperienceSuffix='%s', UserPicked='%s'->'%s', PlatformBase='%s', AppliedActual='%s'"), 
+	UE_LOG(LogConsoleResponse, Log, TEXT("UpdateGameModeDeviceProfileAndFps MaxRefreshRate=%d, ExperienceSuffix='%s', UserPicked='%s'->'%s', PlatformBase='%s', AppliedActual='%s'"),
 		PlatformMaxRefreshRate, *ExperienceSuffix, *UserChosenDeviceProfileSuffix, *EffectiveUserSuffix, *BasePlatformName, *ActualProfileToApply);
 
 	// Apply the device profile if it's different to what we currently have
@@ -1703,4 +1705,3 @@ void UIMGSettingsLocal::UpdateDynamicResFrameTime(float TargetFPS)
 		}
 	}
 }
-

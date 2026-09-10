@@ -3,6 +3,12 @@
 
 #include "GameModes/IMGGameMode.h"
 
+#include "System/IMGGameSession.h"
+#include "UI/IMGHUD.h"
+#include "CommonUserSubsystem.h"
+#include "CommonSessionSubsystem.h"
+#include "GameModes/IMGUserFacingExperienceDefinition.h"
+
 #include "IMGLogChannels.h"
 #include "GameMapsSettings.h"
 #include "Character/IMGCharacter.h"
@@ -23,12 +29,12 @@ AIMGGameMode::AIMGGameMode(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	GameStateClass = AIMGGameState::StaticClass();
-	// GameSessionClass
-	PlayerControllerClass = AIMGPlayerController::StaticClass();	
-	//ReplaySpectatorPlayerControllerClass
+	GameSessionClass = AIMGGameSession::StaticClass();
+	PlayerControllerClass = AIMGPlayerController::StaticClass();
+	ReplaySpectatorPlayerControllerClass = AIMGReplayPlayerController::StaticClass();
 	PlayerStateClass = AIMGPlayerState::StaticClass();
 	DefaultPawnClass = AIMGCharacter::StaticClass();
-	// HUDClass
+	HUDClass = AIMGHUD::StaticClass();
 }
 
 const UIMGPawnData* AIMGGameMode::GetPawnDataForController(const AController* InController) const
@@ -158,8 +164,6 @@ bool AIMGGameMode::TryDedicatedServerLogin()
 	if (GameInstance && World && World->GetNetMode() == NM_DedicatedServer && World->URL.Map == DefaultMap)
 	{
 		// Only register if this is the default map on a dedicated server
-		// TODO : CommonUI
-		/*
 		UCommonUserSubsystem* UserSubsystem = GameInstance->GetSubsystem<UCommonUserSubsystem>();
 
 		// Dedicated servers may need to do an online login
@@ -170,7 +174,6 @@ bool AIMGGameMode::TryDedicatedServerLogin()
 		{
 			OnUserInitializedForDedicatedServer(nullptr, false, FText(), ECommonUserPrivilege::CanPlayOnline, ECommonUserOnlineContext::Default);
 		}
-		*/
 
 		return true;
 	}
@@ -247,14 +250,14 @@ AActor* AIMGGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	{
 		return PlayerSpawningComponent->ChoosePlayerStart(Player);
 	}
-	
+
 	return Super::ChoosePlayerStart_Implementation(Player);
 }
 
 void AIMGGameMode::GenericPlayerInitialization(AController* NewPlayer)
 {
 	Super::GenericPlayerInitialization(NewPlayer);
-	
+
 	OnGameModePlayerInitialized.Broadcast(this, NewPlayer);
 }
 
@@ -262,7 +265,7 @@ void AIMGGameMode::InitGameState()
 {
 	Super::InitGameState();
 
-	// Listen for the experience load to complete	
+	// Listen for the experience load to complete
 	UIMGExperienceManagerComponent* ExperienceComponent = GameState->FindComponentByClass<UIMGExperienceManagerComponent>();
 	check(ExperienceComponent);
 	ExperienceComponent->CallOrRegister_OnExperienceLoaded(FOnIMGExperienceLoaded::FDelegate::CreateUObject(this, &ThisClass::OnExperienceLoaded));
@@ -271,7 +274,7 @@ void AIMGGameMode::InitGameState()
 bool AIMGGameMode::ControllerCanRestart(AController* Controller)
 {
 	if (APlayerController* PC = Cast<APlayerController>(Controller))
-	{	
+	{
 		if (!Super::PlayerCanRestart_Implementation(PC))
 		{
 			return false;
@@ -335,4 +338,101 @@ void AIMGGameMode::OnMatchAssignmentGiven(const FPrimaryAssetId& ExperienceId, c
 	{
 		UE_LOG(LogIMGExperience, Error, TEXT("Failed to identify experience, loading screen will stay up forever"));
 	}
+}
+
+
+void AIMGGameMode::OnUserInitializedForDedicatedServer(const UCommonUserInfo* UserInfo, bool bSuccess, FText Error, ECommonUserPrivilege RequestedPrivilege, ECommonUserOnlineContext OnlineContext)
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	if (GameInstance)
+	{
+		// Unbind
+		UCommonUserSubsystem* UserSubsystem = GameInstance->GetSubsystem<UCommonUserSubsystem>();
+		UserSubsystem->OnUserInitializeComplete.RemoveDynamic(this, &AIMGGameMode::OnUserInitializedForDedicatedServer);
+
+		// Dedicated servers do not require user login, but some online subsystems may expect it
+		if (bSuccess && ensure(UserInfo))
+		{
+			UE_LOG(LogIMGExperience, Log, TEXT("Dedicated server user login succeeded for id %s, starting online server"), *UserInfo->GetNetId().ToString());
+		}
+		else
+		{
+			UE_LOG(LogIMGExperience, Log, TEXT("Dedicated server user login unsuccessful, starting online server as login is not required"));
+		}
+
+		HostDedicatedServerMatch(ECommonSessionOnlineMode::Online);
+	}
+}
+
+void AIMGGameMode::HostDedicatedServerMatch(ECommonSessionOnlineMode OnlineMode)
+{
+	FPrimaryAssetType UserExperienceType = UIMGUserFacingExperienceDefinition::StaticClass()->GetFName();
+
+	// Figure out what UserFacingExperience to load
+	FPrimaryAssetId UserExperienceId;
+	FString UserExperienceFromCommandLine;
+	if (FParse::Value(FCommandLine::Get(), TEXT("UserExperience="), UserExperienceFromCommandLine) ||
+		FParse::Value(FCommandLine::Get(), TEXT("Playlist="), UserExperienceFromCommandLine))
+	{
+		UserExperienceId = FPrimaryAssetId::ParseTypeAndName(UserExperienceFromCommandLine);
+		if (!UserExperienceId.PrimaryAssetType.IsValid())
+		{
+			UserExperienceId = FPrimaryAssetId(FPrimaryAssetType(UserExperienceType), FName(*UserExperienceFromCommandLine));
+		}
+	}
+
+	// Search for the matching experience, it's fine to force load them because we're in dedicated server startup
+	UIMGAssetManager& AssetManager = UIMGAssetManager::Get();
+	TSharedPtr<FStreamableHandle> Handle = AssetManager.LoadPrimaryAssetsWithType(UserExperienceType);
+	if (ensure(Handle.IsValid()))
+	{
+		Handle->WaitUntilComplete();
+	}
+
+	TArray<UObject*> UserExperiences;
+	AssetManager.GetPrimaryAssetObjectList(UserExperienceType, UserExperiences);
+	UIMGUserFacingExperienceDefinition* FoundExperience = nullptr;
+	UIMGUserFacingExperienceDefinition* DefaultExperience = nullptr;
+
+	for (UObject* Object : UserExperiences)
+	{
+		UIMGUserFacingExperienceDefinition* UserExperience = Cast<UIMGUserFacingExperienceDefinition>(Object);
+		if (ensure(UserExperience))
+		{
+			if (UserExperience->GetPrimaryAssetId() == UserExperienceId)
+			{
+				FoundExperience = UserExperience;
+				break;
+			}
+
+			if (UserExperience->bIsDefaultExperience && DefaultExperience == nullptr)
+			{
+				DefaultExperience = UserExperience;
+			}
+		}
+	}
+
+	if (FoundExperience == nullptr)
+	{
+		FoundExperience = DefaultExperience;
+	}
+
+	UGameInstance* GameInstance = GetGameInstance();
+	if (ensure(FoundExperience && GameInstance))
+	{
+		// Actually host the game
+		UCommonSession_HostSessionRequest* HostRequest = FoundExperience->CreateHostingRequest(this);
+		if (ensure(HostRequest))
+		{
+			HostRequest->OnlineMode = OnlineMode;
+
+			// TODO override other parameters?
+
+			UCommonSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UCommonSessionSubsystem>();
+			SessionSubsystem->HostSession(nullptr, HostRequest);
+
+			// This will handle the map travel
+		}
+	}
+
 }

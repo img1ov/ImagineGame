@@ -1,7 +1,13 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
+
+#include "Engine/World.h"
+#include "GameFramework/Pawn.h"
+#include "AbilitySystem/IMGGlobalAbilitySystem.h"
+#include "System/IMGAssetManager.h"
+#include "System/IMGGameData.h"
 
 #include "IMGLogChannels.h"
 #include "AbilitySystem/IMGAbilityTagRelationshipMapping.h"
@@ -10,11 +16,14 @@
 #include "Abilities/GameplayAbilityRepAnimMontage.h"
 #include "Animation/IMGAnimInstance.h"
 
+#include UE_INLINE_GENERATED_CPP_BY_NAME(IMGAbilitySystemComponent)
+
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_AbilityInputBlocked, "Gameplay.AbilityInputBlocked");
 
 UIMGAbilitySystemComponent::UIMGAbilitySystemComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	FMemory::Memset(ActivationGroupCounts, 0, sizeof(ActivationGroupCounts));
 	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::CurrentSectionId);
 }
 
@@ -25,14 +34,45 @@ void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
 	check(ActorInfo);
 	check(InOwnerActor);
-	
-	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
 
+	const bool bHasNewPawnAvatar = Cast<APawn>(InAvatarActor) && (InAvatarActor != ActorInfo->AvatarActor);
+
+	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
 	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::CurrentSectionId);
 
-	if (UIMGAnimInstance* ActAnimInst = Cast<UIMGAnimInstance>(ActorInfo->GetAnimInstance()))
+	if (bHasNewPawnAvatar)
 	{
-		ActAnimInst->InitializeWithAbilitySystem(this);
+		// Notify all abilities that a new pawn avatar has been set
+		for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities.Items)
+		{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			ensureMsgf(AbilitySpec.Ability && AbilitySpec.Ability->GetInstancingPolicy() != EGameplayAbilityInstancingPolicy::NonInstanced, TEXT("InitAbilityActorInfo: All Abilities should be Instanced (NonInstanced is being deprecated due to usability issues)."));
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+			TArray<UGameplayAbility*> Instances = AbilitySpec.GetAbilityInstances();
+			for (UGameplayAbility* AbilityInstance : Instances)
+			{
+				UIMGGameplayAbility* IMGAbilityInstance = Cast<UIMGGameplayAbility>(AbilityInstance);
+				if (IMGAbilityInstance)
+				{
+					// Ability instances may be missing for replays
+					IMGAbilityInstance->OnPawnAvatarSet();
+				}
+			}
+		}
+
+		// Register with the global system once we actually have a pawn avatar. We wait until this time since some globally-applied effects may require an avatar.
+		if (UIMGGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UIMGGlobalAbilitySystem>(GetWorld()))
+		{
+			GlobalAbilitySystem->RegisterASC(this);
+		}
+
+		if (UIMGAnimInstance* IMGAnimInst = Cast<UIMGAnimInstance>(ActorInfo->GetAnimInstance()))
+		{
+			IMGAnimInst->InitializeWithAbilitySystem(this);
+		}
+
+		TryActivateAbilitiesOnSpawn();
 	}
 }
 
@@ -70,7 +110,7 @@ void UIMGAbilitySystemComponent::CancelAbilitiesByFunc(const TShouldCancelAbilit
 			{
 				if (IMGAbilityInstance->CanBeCanceled())
 				{
-					CancelAbilityHandle(AbilitySpec.Handle);
+					IMGAbilityInstance->CancelAbility(AbilitySpec.Handle, AbilityActorInfo.Get(), IMGAbilityInstance->GetCurrentActivationInfo(), bReplicateCancelAbility);
 				}
 				else
 				{
@@ -167,7 +207,7 @@ bool UIMGAbilitySystemComponent::TryActivateGrantedAbilityByClass(
 		{
 			CancelAbilityHandle(AbilitySpec.Handle);
 		}
-		
+
 		const bool bRequested = TryActivateAbility(AbilitySpec.Handle, bAllowRemoteActivation);
 		if (!bRequested)
 		{
@@ -336,106 +376,6 @@ void UIMGAbilitySystemComponent::CancelAbilityByHandle(const FGameplayAbilitySpe
 	{
 		CancelAbilityHandle(AbilityHandle);
 	}
-}
-
-void UIMGAbilitySystemComponent::RebuildAbilityIdCache()
-{
-	AbilityIdToSpecHandle.Reset();
-
-	ABILITYLIST_SCOPE_LOCK();
-
-	for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities.Items)
-	{
-		const UIMGGameplayAbility* IMGAbilityCDO = Cast<UIMGGameplayAbility>(AbilitySpec.Ability);
-		if (!IMGAbilityCDO)
-		{
-			continue;
-		}
-
-		const FName AbilityId = IMGAbilityCDO->GetAbilityId();
-		if (AbilityId.IsNone())
-		{
-			continue;
-		}
-
-		if (AbilityIdToSpecHandle.Contains(AbilityId))
-		{
-			UE_LOG(LogIMGAbilitySystem, Warning, TEXT("Duplicate AbilityId [%s] detected on ASC [%s]."), *AbilityId.ToString(), *GetNameSafe(this));
-			continue;
-		}
-
-		AbilityIdToSpecHandle.Add(AbilityId, AbilitySpec.Handle);
-	}
-}
-
-FGameplayAbilitySpecHandle UIMGAbilitySystemComponent::GetAbilitySpecHandleById(const FName AbilityId) const
-{
-	if (AbilityId.IsNone())
-	{
-		return FGameplayAbilitySpecHandle();
-	}
-
-	if (const FGameplayAbilitySpecHandle* Handle = AbilityIdToSpecHandle.Find(AbilityId))
-	{
-		return *Handle;
-	}
-
-	return FGameplayAbilitySpecHandle();
-}
-
-bool UIMGAbilitySystemComponent::TryActivateAbilityById(
-	const FName AbilityId,
-	const bool bAllowRemoteActivation,
-	const bool bCancelIfAlreadyActive,
-	FGameplayAbilitySpecHandle* OutActivatedSpecHandle)
-{
-	if (AbilityId.IsNone())
-	{
-		return false;
-	}
-
-	const FGameplayAbilitySpecHandle Handle = GetAbilitySpecHandleById(AbilityId);
-	if (!Handle.IsValid())
-	{
-		return false;
-	}
-
-	if (!FindAbilitySpecFromHandle(Handle))
-	{
-		AbilityIdToSpecHandle.Remove(AbilityId);
-		return false;
-	}
-
-	if (bCancelIfAlreadyActive)
-	{
-		if (const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(Handle))
-		{
-			if (AbilitySpec->IsActive())
-			{
-				CancelAbilityHandle(Handle);
-			}
-		}
-	}
-	
-	const bool bRequested = TryActivateAbility(Handle, bAllowRemoteActivation);
-	if (!bRequested)
-	{
-		return false;
-	}
-
-	if (const FGameplayAbilitySpec* ActivatedSpec = FindAbilitySpecFromHandle(Handle))
-	{
-		if (ActivatedSpec->IsActive())
-		{
-			if (OutActivatedSpecHandle)
-			{
-				*OutActivatedSpecHandle = Handle;
-			}
-			return true;
-		}
-	}
-
-	return false;
 }
 
 void UIMGAbilitySystemComponent::TryActivateAbilitiesOnSpawn()
@@ -623,70 +563,20 @@ void UIMGAbilitySystemComponent::ResetGameplayTagCounts(FGameplayTagContainer Ta
 
 void UIMGAbilitySystemComponent::ClientTryActivateAbility_Implementation(FGameplayAbilitySpecHandle AbilityToActivate)
 {
-	
+
 	Super::ClientTryActivateAbility_Implementation(AbilityToActivate);
 }
 
 void UIMGAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(FGameplayAbilitySpecHandle AbilityToActivate, int16 PredictionKey)
 {
 	const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(AbilityToActivate);
-	
+
 	Super::ClientActivateAbilityFailed_Implementation(AbilityToActivate, PredictionKey);
 }
 
 
 
 
-
-void UIMGAbilitySystemComponent::OnGiveAbility(FGameplayAbilitySpec& AbilitySpec)
-{
-	Super::OnGiveAbility(AbilitySpec);
-
-	const UIMGGameplayAbility* IMGAbilityCDO = Cast<UIMGGameplayAbility>(AbilitySpec.Ability);
-	if (!IMGAbilityCDO)
-	{
-		return;
-	}
-
-	const FName AbilityId = IMGAbilityCDO->GetAbilityId();
-	if (AbilityId.IsNone())
-	{
-		return;
-	}
-
-	if (AbilityIdToSpecHandle.Contains(AbilityId))
-	{
-		UE_LOG(LogIMGAbilitySystem, Warning, TEXT("Duplicate AbilityId [%s] detected on ASC [%s]."), *AbilityId.ToString(), *GetNameSafe(this));
-		return;
-	}
-
-	AbilityIdToSpecHandle.Add(AbilityId, AbilitySpec.Handle);
-}
-
-void UIMGAbilitySystemComponent::OnRemoveAbility(FGameplayAbilitySpec& AbilitySpec)
-{
-	if (const UIMGGameplayAbility* IMGAbilityCDO = Cast<UIMGGameplayAbility>(AbilitySpec.Ability))
-	{
-		const FName AbilityId = IMGAbilityCDO->GetAbilityId();
-		if (!AbilityId.IsNone())
-		{
-			const FGameplayAbilitySpecHandle* Handle = AbilityIdToSpecHandle.Find(AbilityId);
-			if (Handle && *Handle == AbilitySpec.Handle)
-			{
-				AbilityIdToSpecHandle.Remove(AbilityId);
-			}
-		}
-	}
-
-	Super::OnRemoveAbility(AbilitySpec);
-}
-
-void UIMGAbilitySystemComponent::OnRep_ActivateAbilities()
-{
-	Super::OnRep_ActivateAbilities();
-
-	RebuildAbilityIdCache();
-}
 
 void UIMGAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
 {
@@ -696,11 +586,27 @@ void UIMGAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
 void UIMGAbilitySystemComponent::NotifyAbilityActivated(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability)
 {
 	Super::NotifyAbilityActivated(Handle, Ability);
+
+	if (UIMGGameplayAbility* IMGAbility = Cast<UIMGGameplayAbility>(Ability))
+	{
+		AddAbilityToActivationGroup(IMGAbility->GetActivationGroup(), IMGAbility);
+	}
 }
 
 void UIMGAbilitySystemComponent::NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason)
 {
 	Super::NotifyAbilityFailed(Handle, Ability, FailureReason);
+
+	if (APawn* Avatar = Cast<APawn>(GetAvatarActor()))
+	{
+		if (!Avatar->IsLocallyControlled() && Ability->IsSupportedForNetworking())
+		{
+			ClientNotifyAbilityFailed(Ability, FailureReason);
+			return;
+		}
+	}
+
+	HandleAbilityFailed(Ability, FailureReason);
 }
 
 
@@ -756,3 +662,143 @@ void UIMGAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& 
 
 
 
+
+
+void UIMGAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UIMGGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UIMGGlobalAbilitySystem>(GetWorld()))
+	{
+		GlobalAbilitySystem->UnregisterASC(this);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void UIMGAbilitySystemComponent::NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled)
+{
+	Super::NotifyAbilityEnded(Handle, Ability, bWasCancelled);
+
+	if (UIMGGameplayAbility* IMGAbility = Cast<UIMGGameplayAbility>(Ability))
+	{
+		RemoveAbilityFromActivationGroup(IMGAbility->GetActivationGroup(), IMGAbility);
+	}
+}
+
+void UIMGAbilitySystemComponent::HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bCanBeCanceled)
+{
+	Super::HandleChangeAbilityCanBeCanceled(AbilityTags, RequestingAbility, bCanBeCanceled);
+
+	//@TODO: Apply any special logic like blocking input or movement
+}
+
+void UIMGAbilitySystemComponent::ClientNotifyAbilityFailed_Implementation(const UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason)
+{
+	HandleAbilityFailed(Ability, FailureReason);
+}
+
+void UIMGAbilitySystemComponent::HandleAbilityFailed(const UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason)
+{
+	//UE_LOG(LogIMGAbilitySystem, Warning, TEXT("Ability %s failed to activate (tags: %s)"), *GetPathNameSafe(Ability), *FailureReason.ToString());
+
+	if (const UIMGGameplayAbility* IMGAbility = Cast<const UIMGGameplayAbility>(Ability))
+	{
+		IMGAbility->OnAbilityFailedToActivate(FailureReason);
+	}
+}
+
+void UIMGAbilitySystemComponent::AddAbilityToActivationGroup(EIMGAbilityActivationGroup Group, UIMGGameplayAbility* IMGAbility)
+{
+	check(IMGAbility);
+	check(ActivationGroupCounts[(uint8)Group] < INT32_MAX);
+
+	ActivationGroupCounts[(uint8)Group]++;
+
+	const bool bReplicateCancelAbility = false;
+
+	switch (Group)
+	{
+	case EIMGAbilityActivationGroup::Independent:
+		// Independent abilities do not cancel any other abilities.
+		break;
+
+	case EIMGAbilityActivationGroup::Exclusive_Replaceable:
+	case EIMGAbilityActivationGroup::Exclusive_Blocking:
+		CancelActivationGroupAbilities(EIMGAbilityActivationGroup::Exclusive_Replaceable, IMGAbility, bReplicateCancelAbility);
+		break;
+
+	default:
+		checkf(false, TEXT("AddAbilityToActivationGroup: Invalid ActivationGroup [%d]\n"), (uint8)Group);
+		break;
+	}
+
+	const int32 ExclusiveCount = ActivationGroupCounts[(uint8)EIMGAbilityActivationGroup::Exclusive_Replaceable] + ActivationGroupCounts[(uint8)EIMGAbilityActivationGroup::Exclusive_Blocking];
+	if (!ensure(ExclusiveCount <= 1))
+	{
+		UE_LOG(LogIMGAbilitySystem, Error, TEXT("AddAbilityToActivationGroup: Multiple exclusive abilities are running."));
+	}
+}
+
+void UIMGAbilitySystemComponent::RemoveAbilityFromActivationGroup(EIMGAbilityActivationGroup Group, UIMGGameplayAbility* IMGAbility)
+{
+	check(IMGAbility);
+	check(ActivationGroupCounts[(uint8)Group] > 0);
+
+	ActivationGroupCounts[(uint8)Group]--;
+}
+
+void UIMGAbilitySystemComponent::CancelActivationGroupAbilities(EIMGAbilityActivationGroup Group, UIMGGameplayAbility* IgnoreIMGAbility, bool bReplicateCancelAbility)
+{
+	auto ShouldCancelFunc = [this, Group, IgnoreIMGAbility](const UIMGGameplayAbility* IMGAbility, FGameplayAbilitySpecHandle Handle)
+	{
+		return ((IMGAbility->GetActivationGroup() == Group) && (IMGAbility != IgnoreIMGAbility));
+	};
+
+	CancelAbilitiesByFunc(ShouldCancelFunc, bReplicateCancelAbility);
+}
+
+void UIMGAbilitySystemComponent::AddDynamicTagGameplayEffect(const FGameplayTag& Tag)
+{
+	const TSubclassOf<UGameplayEffect> DynamicTagGE = UIMGAssetManager::GetSubclass(UIMGGameData::Get().DynamicTagGameplayEffect);
+	if (!DynamicTagGE)
+	{
+		UE_LOG(LogIMGAbilitySystem, Warning, TEXT("AddDynamicTagGameplayEffect: Unable to find DynamicTagGameplayEffect [%s]."), *UIMGGameData::Get().DynamicTagGameplayEffect.GetAssetName());
+		return;
+	}
+
+	const FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(DynamicTagGE, 1.0f, MakeEffectContext());
+	FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
+
+	if (!Spec)
+	{
+		UE_LOG(LogIMGAbilitySystem, Warning, TEXT("AddDynamicTagGameplayEffect: Unable to make outgoing spec for [%s]."), *GetNameSafe(DynamicTagGE));
+		return;
+	}
+
+	Spec->DynamicGrantedTags.AddTag(Tag);
+
+	ApplyGameplayEffectSpecToSelf(*Spec);
+}
+
+void UIMGAbilitySystemComponent::RemoveDynamicTagGameplayEffect(const FGameplayTag& Tag)
+{
+	const TSubclassOf<UGameplayEffect> DynamicTagGE = UIMGAssetManager::GetSubclass(UIMGGameData::Get().DynamicTagGameplayEffect);
+	if (!DynamicTagGE)
+	{
+		UE_LOG(LogIMGAbilitySystem, Warning, TEXT("RemoveDynamicTagGameplayEffect: Unable to find gameplay effect [%s]."), *UIMGGameData::Get().DynamicTagGameplayEffect.GetAssetName());
+		return;
+	}
+
+	FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag));
+	Query.EffectDefinition = DynamicTagGE;
+
+	RemoveActiveEffects(Query);
+}
+
+void UIMGAbilitySystemComponent::GetAbilityTargetData(const FGameplayAbilitySpecHandle AbilityHandle, FGameplayAbilityActivationInfo ActivationInfo, FGameplayAbilityTargetDataHandle& OutTargetDataHandle)
+{
+	TSharedPtr<FAbilityReplicatedDataCache> ReplicatedData = AbilityTargetDataMap.Find(FGameplayAbilitySpecHandleAndPredictionKey(AbilityHandle, ActivationInfo.GetActivationPredictionKey()));
+	if (ReplicatedData.IsValid())
+	{
+		OutTargetDataHandle = ReplicatedData->TargetData;
+	}
+}

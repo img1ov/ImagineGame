@@ -219,6 +219,14 @@
 			"Enabled": true
 		},
 		{
+			"Name": "StateTree",
+			"Enabled": true
+		},
+		{
+			"Name": "PlatformDLC",
+			"Enabled": true
+		},
+		{
 			"Name": "AnimationLocomotionLibrary",
 			"Enabled": true
 		},

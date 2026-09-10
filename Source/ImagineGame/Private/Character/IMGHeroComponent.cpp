@@ -1,6 +1,8 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Character/IMGHeroComponent.h"
+#include "Camera/IMGCameraComponent.h"
+#include "Camera/IMGCameraMode.h"
 
 #include "Components/GameFrameworkComponentDelegates.h"
 #include "Logging/MessageLog.h"
@@ -51,7 +53,7 @@ void UIMGHeroComponent::AddAdditionalInputConfig(const UIMGInputConfig* InputCon
 	{
 		return;
 	}
-	
+
 	const APlayerController* PC = GetController<APlayerController>();
 	check(PC);
 
@@ -159,6 +161,12 @@ void UIMGHeroComponent::HandleChangeInitState(UGameFrameworkComponentManager* Ma
 				InitializePlayerInput(Pawn->InputComponent);
 			}
 		}
+
+		// Bind for all pawns so their camera modes also work when spectating.
+		if (UIMGCameraComponent* CameraComponent = UIMGCameraComponent::FindCameraComponent(Pawn))
+		{
+			CameraComponent->DetermineCameraModeDelegate.BindUObject(this, &ThisClass::DetermineCameraMode);
+		}
 	}
 }
 
@@ -231,7 +239,7 @@ void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputComponent)
 {
 	check(PlayerInputComponent);
-	
+
 	const APawn* Pawn = GetPawn<APawn>();
 	if (Pawn == nullptr)
 	{
@@ -265,15 +273,15 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 							{
 								Settings->RegisterInputMappingContext(IMC);
 							}
-							
+
 							FModifyContextOptions Options = {};
 							Options.bIgnoreAllPressedKeysUntilRelease = false;
-							// Actually add the config to the local player							
+							// Actually add the config to the local player
 							InputSubsystem->AddMappingContext(IMC, Mapping.Priority, Options);
 						}
 					}
 				}
-				
+
 				// The IMG Input Component has some additional functions to map Gameplay Tags to an Input Action.
 				// If you want this functionality but still want to change your input component class, make it a subclass
 				// of the UIMGInputComponent or modify this component accordingly.
@@ -282,16 +290,17 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 				{
 					// Add the key mappings that may have been set by the player
 					IMGIC->AddInputMappings(InputConfig, InputSubsystem);
-					
+
 					// This is where we actually bind and input action to a gameplay tag, which means that Gameplay Ability Blueprints will
-					// be triggered directly by these input actions Triggered events. 
+					// be triggered directly by these input actions Triggered events.
 					TArray<uint32> BindHandles;
 					IMGIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, BindHandles);
-					
+
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Stick, ETriggerEvent::Triggered, this, &ThisClass::Input_LookStick, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crouch, ETriggerEvent::Triggered, this, &ThisClass::Input_Crouch, /*bLogIfNotFound=*/ false);
+					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_AutoRun, ETriggerEvent::Triggered, this, &ThisClass::Input_AutoRun, /*bLogIfNotFound=*/ false);
 				}
 			}
 		}
@@ -342,13 +351,13 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	// If the player has attempted to move again then cancel auto running
 	if (AIMGPlayerController* IMGController = Cast<AIMGPlayerController>(Controller))
 	{
-		//IMGController->SetIsAutoRunning(false);
+		IMGController->SetIsAutoRunning(false);
 	}
-	
+
 	if (Controller)
 	{
 		const FVector2D Value = InputActionValue.Get<FVector2D>().GetSafeNormal();
-		
+
 		const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
 
 		if (Value.X != 0.0f)
@@ -393,12 +402,12 @@ void UIMGHeroComponent::Input_LookStick(const FInputActionValue& InputActionValu
 	{
 		return;
 	}
-	
+
 	const FVector2D Value = InputActionValue.Get<FVector2D>();
 
 	const UWorld* World = GetWorld();
 	check(World);
-	
+
 	if (Value.X != 0.0f)
 	{
 		Pawn->AddControllerYawInput(Value.X * IMGHero::LookYawRate * World->GetDeltaSeconds());
@@ -415,5 +424,60 @@ void UIMGHeroComponent::Input_Crouch(const FInputActionValue& InputActionValue)
 	if (AIMGCharacter* Character = GetPawn<AIMGCharacter>())
 	{
 		Character->ToggleCrouch();
+	}
+}
+
+TSubclassOf<UIMGCameraMode> UIMGHeroComponent::DetermineCameraMode() const
+{
+	if (AbilityCameraMode)
+	{
+		return AbilityCameraMode;
+	}
+
+	const APawn* Pawn = GetPawn<APawn>();
+	if (!Pawn)
+	{
+		return nullptr;
+	}
+
+	if (UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
+	{
+		if (const UIMGPawnData* PawnData = PawnExtComp->GetPawnData<UIMGPawnData>())
+		{
+			return PawnData->DefaultCameraMode;
+		}
+	}
+
+	return nullptr;
+}
+
+void UIMGHeroComponent::SetAbilityCameraMode(TSubclassOf<UIMGCameraMode> CameraMode, const FGameplayAbilitySpecHandle& OwningSpecHandle)
+{
+	if (CameraMode)
+	{
+		AbilityCameraMode = CameraMode;
+		AbilityCameraModeOwningSpecHandle = OwningSpecHandle;
+	}
+}
+
+void UIMGHeroComponent::ClearAbilityCameraMode(const FGameplayAbilitySpecHandle& OwningSpecHandle)
+{
+	if (AbilityCameraModeOwningSpecHandle == OwningSpecHandle)
+	{
+		AbilityCameraMode = nullptr;
+		AbilityCameraModeOwningSpecHandle = FGameplayAbilitySpecHandle();
+	}
+}
+
+
+void UIMGHeroComponent::Input_AutoRun(const FInputActionValue& InputActionValue)
+{
+	if (APawn* Pawn = GetPawn<APawn>())
+	{
+		if (AIMGPlayerController* Controller = Cast<AIMGPlayerController>(Pawn->GetController()))
+		{
+			// Toggle auto running
+			Controller->SetIsAutoRunning(!Controller->GetIsAutoRunning());
+		}
 	}
 }

@@ -7,7 +7,6 @@
 #include "IMGLogChannels.h"
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "Camera/IMGCameraComponent.h"
-#include "Camera/IMGSpringArmComponent.h"
 #include "Character/IMGCharacterMovementComponent.h"
 #include "Character/IMGHealthComponent.h"
 #include "Character/IMGPawnExtensionComponent.h"
@@ -129,23 +128,19 @@ AIMGCharacter::AIMGCharacter(const FObjectInitializer& ObjectInitializer)
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	MeshComp->SetCollisionProfileName(NAME_CharacterCollisionProfile_Mesh);
-	
+
 	PawnExtComponent = CreateDefaultSubobject<UIMGPawnExtensionComponent>(TEXT("PawnExtensionComponent"));
 	PawnExtComponent->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::OnAbilitySystemInitialized));
 	PawnExtComponent->OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::OnAbilitySystemUninitialized));
-	
+
 	HealthComponent = CreateDefaultSubobject<UIMGHealthComponent>(TEXT("HealthComponent"));
 	HealthComponent->OnDeathStarted.AddDynamic(this, &ThisClass::OnDeathStarted);
 	HealthComponent->OnDeathFinished.AddDynamic(this, &ThisClass::OnDeathFinished);
 
-	CameraSpringArmComponent = CreateDefaultSubobject<UIMGSpringArmComponent>(TEXT("CameraSpringArmComponent"));
-	CameraSpringArmComponent->SetupAttachment(GetRootComponent());
-	CameraSpringArmComponent->SetRelativeLocation(FVector(0, 0, 80.f));
-	CameraSpringArmComponent->bUsePawnControlRotation = true;
-	
 	CameraComponent = CreateDefaultSubobject<UIMGCameraComponent>(TEXT("CameraComponent"));
-	CameraComponent->SetupAttachment(CameraSpringArmComponent);
-	
+	CameraComponent->SetupAttachment(GetRootComponent());
+	CameraComponent->SetRelativeLocation(FVector(-300.0f, 0.0f, 75.0f));
+
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
@@ -244,7 +239,7 @@ void AIMGCharacter::PreInitializeComponents()
 void AIMGCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 }
 
 void AIMGCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -264,7 +259,7 @@ void AIMGCharacter::Reset()
 void AIMGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	
+
 	DOREPLIFETIME_CONDITION(ThisClass, ReplicatedAcceleration, COND_SimulatedOnly);
 	DOREPLIFETIME(ThisClass, MyTeamID);
 }
@@ -272,7 +267,7 @@ void AIMGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 void AIMGCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)
 {
 	Super::PreReplication(ChangedPropertyTracker);
-	
+
 	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
 	{
 		// Compress Acceleration: XY components as direction + magnitude, Z component as direct value
@@ -290,9 +285,9 @@ void AIMGCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTr
 void AIMGCharacter::NotifyControllerChanged()
 {
 	const FGenericTeamId OldTeamId = GetGenericTeamId();
-	
+
 	Super::NotifyControllerChanged();
-	
+
 	// Update our team ID based on the controller
 	if (HasAuthority() && (GetController() != nullptr))
 	{
@@ -393,11 +388,11 @@ void AIMGCharacter::PossessedBy(AController* NewController)
 			MeshComp->bOnlyAllowAutonomousTickPose = false;
 		}
 	}
-	
+
 	const FGenericTeamId OldTeamID = MyTeamID;
 
 	PawnExtComponent->HandleControllerChanged();
-	
+
 	// Grab the current team ID and listen for future changes
 	if (IIMGTeamAgentInterface* ControllerAsTeamProvider = Cast<IIMGTeamAgentInterface>(NewController))
 	{
@@ -417,11 +412,11 @@ void AIMGCharacter::UnPossessed()
 	{
 		ControllerAsTeamProvider->GetTeamChangedDelegateChecked().RemoveAll(this);
 	}
-	
+
 	Super::UnPossessed();
 
 	PawnExtComponent->HandleControllerChanged();
-	
+
 	// Determine what the new team ID should be afterwards
 	MyTeamID = DetermineNewTeamAfterPossessionEnds(OldTeamID);
 	ConditionalBroadcastTeamChanged(this, OldTeamID, MyTeamID);
@@ -437,7 +432,7 @@ void AIMGCharacter::OnRep_Controller()
 void AIMGCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
-	
+
 	PawnExtComponent->HandlePlayerStateReplicated();
 }
 
@@ -589,4 +584,71 @@ bool AIMGCharacter::CanJumpInternal_Implementation() const
 {
 	// same as ACharacter's implementation but without the crouch check
 	return JumpIsAllowedInternal();
+}
+
+
+bool AIMGCharacter::UpdateSharedReplication()
+{
+	if (GetLocalRole() == ROLE_Authority)
+	{
+		FSharedRepMovement SharedMovement;
+		if (SharedMovement.FillForCharacter(this))
+		{
+			// Only call FastSharedReplication if data has changed since the last frame.
+			// Skipping this call will cause replication to reuse the same bunch that we previously
+			// produced, but not send it to clients that already received. (But a new client who has not received
+			// it, will get it this frame)
+			if (!SharedMovement.Equals(LastSharedReplication, this))
+			{
+				LastSharedReplication = SharedMovement;
+				SetReplicatedMovementMode(SharedMovement.RepMovementMode);
+
+				FastSharedReplication(SharedMovement);
+			}
+			return true;
+		}
+	}
+
+	// We cannot fastrep right now. Don't send anything.
+	return false;
+}
+
+void AIMGCharacter::FastSharedReplication_Implementation(const FSharedRepMovement& SharedRepMovement)
+{
+	if (GetWorld()->IsPlayingReplay())
+	{
+		return;
+	}
+
+	// Timestamp is checked to reject old moves.
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		// Timestamp
+		SetReplicatedServerLastTransformUpdateTimeStamp(SharedRepMovement.RepTimeStamp);
+
+		// Movement mode
+		if (GetReplicatedMovementMode() != SharedRepMovement.RepMovementMode)
+		{
+			SetReplicatedMovementMode(SharedRepMovement.RepMovementMode);
+			GetCharacterMovement()->bNetworkMovementModeChanged = true;
+			GetCharacterMovement()->bNetworkUpdateReceived = true;
+		}
+
+		// Location, Rotation, Velocity, etc.
+		FRepMovement& MutableRepMovement = GetReplicatedMovement_Mutable();
+		MutableRepMovement = SharedRepMovement.RepMovement;
+
+		// This also sets LastRepMovement
+		OnRep_ReplicatedMovement();
+
+		// Jump force
+		SetProxyIsJumpForceApplied(SharedRepMovement.bProxyIsJumpForceApplied);
+
+		// Crouch
+		if (IsCrouched() != SharedRepMovement.bIsCrouched)
+		{
+			SetIsCrouched(SharedRepMovement.bIsCrouched);
+			OnRep_IsCrouched();
+		}
+	}
 }

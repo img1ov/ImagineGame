@@ -7,7 +7,7 @@ public class ImagineGame : ModuleRules
 	public ImagineGame(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		
+
 		PublicIncludePaths.AddRange(
 			new string[] {
 				"ImagineGame"
@@ -18,12 +18,17 @@ public class ImagineGame : ModuleRules
 			new string[] {
 			}
 		);
-	
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
 			"CoreOnline",
+			"NetworkReplayStreaming",
+			"GameplayMessageRuntime",
+			"CommonUser",
+			"CommonGame",
 			"CoreUObject",
+			"DeveloperSettings",
 			"ApplicationCore",
 			"Engine",
 			"PhysicsCore",
@@ -43,6 +48,8 @@ public class ImagineGame : ModuleRules
 			"ControlFlows",
 			"AsyncMixin",
 			"PropertyPath",
+			"UIExtension",
+			"EnhancedInput",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 		});
@@ -53,8 +60,6 @@ public class ImagineGame : ModuleRules
 			"Slate",
 			"SlateCore",
 			"RenderCore",
-			"DeveloperSettings",
-			"EnhancedInput",
 			"NetCore",
 			"IrisCore",
 			"RHI",
@@ -64,18 +69,14 @@ public class ImagineGame : ModuleRules
 			"CommonUI",
 			"CommonInput",
 			"GameSettings",
-			"CommonGame",
-			"CommonUser",
 			"GameSubtitles",
-			"GameplayMessageRuntime",
 			"AudioMixer",
-			"NetworkReplayStreaming",
 			"ClientPilot",
 			"AudioModulation",
 			"EngineSettings",
 			"DTLSHandlerComponent",
 			"Json",
-			
+
 			"PlatformDLC",
 		});
 

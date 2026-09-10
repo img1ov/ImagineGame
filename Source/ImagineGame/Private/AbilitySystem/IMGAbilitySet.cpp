@@ -149,7 +149,4 @@ void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* ActASC, FIM
 			OutGrantedHandles->AddGameplayEffectHandle(GameplayEffectHandle);
 		}
 	}
-
-	// Refresh the AbilityId cache after granting abilities from this set.
-	ActASC->RebuildAbilityIdCache();
 }
