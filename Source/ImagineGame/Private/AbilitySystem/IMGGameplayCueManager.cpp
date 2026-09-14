@@ -28,7 +28,7 @@ enum class EIMGEditorLoadMode
 namespace IMGGameplayCueManagerCvars
 {
 	static FAutoConsoleCommand CVarDumpGameplayCues(
-		TEXT("Act.DumpGameplayCues"),
+		TEXT("IMG.DumpGameplayCues"),
 		TEXT("Shows all assets that were loaded via IMGGameplayCueManager and are currently in memory."),
 		FConsoleCommandWithArgsDelegate::CreateStatic(UIMGGameplayCueManager::DumpGameplayCues));
 

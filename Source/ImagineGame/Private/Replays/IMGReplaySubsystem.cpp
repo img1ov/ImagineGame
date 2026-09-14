@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Replays/IMGReplaySubsystem.h"
 #include "Engine/GameInstance.h"

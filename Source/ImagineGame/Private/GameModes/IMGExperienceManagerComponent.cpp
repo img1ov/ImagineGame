@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "GameModes/IMGExperienceManagerComponent.h"
@@ -23,20 +22,20 @@
 // (for a client moving from experience to experience we actually want to diff the requirements and only unload some, not unload everything for them to just be immediately reloaded)
 //@TODO: Handle both built-in and URL-based plugins (search for colon?)
 
-namespace ActConsoleVariables
+namespace IMGConsoleVariables
 {
 	static float ExperienceLoadRandomDelayMin = 0.0f;
 	static FAutoConsoleVariableRef CVarExperienceLoadRandomDelayMin(
 		TEXT("IMG.chaos.ExperienceDelayLoad.MinSecs"),
 		ExperienceLoadRandomDelayMin,
-		TEXT("This value (in seconds) will be added as a delay of load completion of the experience (along with the random value act.chaos.ExperienceDelayLoad.RandomSecs)"),
+		TEXT("This value (in seconds) will be added as a delay of load completion of the experience (along with the random value IMG.chaos.ExperienceDelayLoad.RandomSecs)"),
 		ECVF_Default);
 
 	static float ExperienceLoadRandomDelayRange = 0.0f;
 	static FAutoConsoleVariableRef CVarExperienceLoadRandomDelayRange(
 		TEXT("IMG.chaos.ExperienceDelayLoad.RandomSecs"),
 		ExperienceLoadRandomDelayRange,
-		TEXT("A random amount of time between 0 and this value (in seconds) will be added as a delay of load completion of the experience (along with the fixed value act.chaos.ExperienceDelayLoad.MinSecs)"),
+		TEXT("A random amount of time between 0 and this value (in seconds) will be added as a delay of load completion of the experience (along with the fixed value IMG.chaos.ExperienceDelayLoad.MinSecs)"),
 		ECVF_Default);
 
 	float GetExperienceLoadDelayDuration()
@@ -66,9 +65,9 @@ void UIMGExperienceManagerComponent::EndPlay(const EEndPlayReason::Type EndPlayR
 	}
 
 	//@TODO: Ensure proper handling of a partially-loaded state too
-	if (LoadState == EExperienceLoadState::Loaded)
+	if (LoadState == EIMGExperienceLoadState::Loaded)
 	{
-		LoadState = EExperienceLoadState::Deactivating;
+		LoadState = EIMGExperienceLoadState::Deactivating;
 
 		// Make sure we won't complete the transition prematurely if someone registers as a pauser but fires immediately
 		NumExpectedPausers = INDEX_NONE;
@@ -177,14 +176,14 @@ void UIMGExperienceManagerComponent::CallOrRegister_OnExperienceLoaded_LowPriori
 
 const UIMGExperienceDefinition* UIMGExperienceManagerComponent::GetCurrentExperienceChecked() const
 {
-	check(LoadState == EExperienceLoadState::Loaded);
+	check(LoadState == EIMGExperienceLoadState::Loaded);
 	check(CurrentExperience != nullptr);
 	return CurrentExperience;
 }
 
 bool UIMGExperienceManagerComponent::IsExperienceLoaded() const
 {
-	return (LoadState == EExperienceLoadState::Loaded) && (CurrentExperience != nullptr);
+	return (LoadState == EIMGExperienceLoadState::Loaded) && (CurrentExperience != nullptr);
 }
 
 void UIMGExperienceManagerComponent::OnRep_CurrentExperience()
@@ -195,13 +194,13 @@ void UIMGExperienceManagerComponent::OnRep_CurrentExperience()
 void UIMGExperienceManagerComponent::StartExperienceLoad()
 {
 	check(CurrentExperience != nullptr);
-	check(LoadState == EExperienceLoadState::Unloaded);
+	check(LoadState == EIMGExperienceLoadState::Unloaded);
 
 	UE_LOG(LogIMGExperience, Log, TEXT("EXPERIENCE: StartExperienceLoad(CurrentExperience = %s, %s)"),
 		*CurrentExperience->GetPrimaryAssetId().ToString(),
 		*GetClientServerContextString(this));
 
-	LoadState = EExperienceLoadState::Loading;
+	LoadState = EIMGExperienceLoadState::Loading;
 
 	UIMGAssetManager& AssetManager = UIMGAssetManager::Get();
 
@@ -222,7 +221,7 @@ void UIMGExperienceManagerComponent::StartExperienceLoad()
 	TArray<FName> BundlesToLoad;
 	BundlesToLoad.Add(FIMGBundles::Equipped);
 
-	//@TODO: Centralize this client/server stuff into the ActAssetManager
+	//@TODO: Centralize this client/server handling in IMGAssetManager.
 	const ENetMode OwnerNetMode = GetOwner()->GetNetMode();
 	const bool bLoadClient = GIsEditor || (OwnerNetMode != NM_DedicatedServer);
 	const bool bLoadServer = GIsEditor || (OwnerNetMode == NM_Client);
@@ -285,7 +284,7 @@ void UIMGExperienceManagerComponent::StartExperienceLoad()
 
 void UIMGExperienceManagerComponent::OnExperienceLoadComplete()
 {
-	check(LoadState == EExperienceLoadState::Loading);
+	check(LoadState == EIMGExperienceLoadState::Loading);
 	check(CurrentExperience != nullptr);
 
 	UE_LOG(LogIMGExperience, Log, TEXT("EXPERIENCE: OnExperienceLoadComplete(CurrentExperience = %s, %s)"),
@@ -334,7 +333,7 @@ void UIMGExperienceManagerComponent::OnExperienceLoadComplete()
 	NumGameFeaturePluginsLoading = GameFeaturePluginURLs.Num();
 	if (NumGameFeaturePluginsLoading > 0)
 	{
-		LoadState = EExperienceLoadState::LoadingGameFeatures;
+		LoadState = EIMGExperienceLoadState::LoadingGameFeatures;
 		for (const FString& PluginURL : GameFeaturePluginURLs)
 		{
 			UIMGExperienceManager::NotifyOfPluginActivation(PluginURL);
@@ -360,24 +359,24 @@ void UIMGExperienceManagerComponent::OnGameFeaturePluginLoadComplete(const UE::G
 
 void UIMGExperienceManagerComponent::OnExperienceFullLoadCompleted()
 {
-	check(LoadState != EExperienceLoadState::Loaded);
+	check(LoadState != EIMGExperienceLoadState::Loaded);
 
 	// Insert a random delay for testing (if configured)
-	if (LoadState != EExperienceLoadState::LoadingChaosTestingDelay)
+	if (LoadState != EIMGExperienceLoadState::LoadingChaosTestingDelay)
 	{
-		const float DelaySecs = ActConsoleVariables::GetExperienceLoadDelayDuration();
+		const float DelaySecs = IMGConsoleVariables::GetExperienceLoadDelayDuration();
 		if (DelaySecs > 0.0f)
 		{
 			FTimerHandle DummyHandle;
 
-			LoadState = EExperienceLoadState::LoadingChaosTestingDelay;
+			LoadState = EIMGExperienceLoadState::LoadingChaosTestingDelay;
 			GetWorld()->GetTimerManager().SetTimer(DummyHandle, this, &ThisClass::OnExperienceFullLoadCompleted, DelaySecs, /*bLooping=*/ false);
 
 			return;
 		}
 	}
 
-	LoadState = EExperienceLoadState::ExecutingActions;
+	LoadState = EIMGExperienceLoadState::ExecutingActions;
 
 	// Execute the actions
 	FGameFeatureActivatingContext Context;
@@ -414,7 +413,7 @@ void UIMGExperienceManagerComponent::OnExperienceFullLoadCompleted()
 		}
 	}
 
-	LoadState = EExperienceLoadState::Loaded;
+	LoadState = EIMGExperienceLoadState::Loaded;
 
 	OnExperienceLoaded_HighPriority.Broadcast(CurrentExperience);
 	OnExperienceLoaded_HighPriority.Clear();
@@ -441,10 +440,21 @@ void UIMGExperienceManagerComponent::OnActionDeactivationCompleted()
 	}
 }
 
+bool UIMGExperienceManagerComponent::ShouldShowLoadingScreen(FString& OutReason) const
+{
+	if (LoadState != EIMGExperienceLoadState::Loaded)
+	{
+		OutReason = TEXT("Experience still loading");
+		return true;
+	}
+
+	return false;
+}
+
 void UIMGExperienceManagerComponent::OnAllActionsDeactivated()
 {
 	//@TODO: We actually only deactivated and didn't fully unload...
-	LoadState = EExperienceLoadState::Unloaded;
+	LoadState = EIMGExperienceLoadState::Unloaded;
 	CurrentExperience = nullptr;
 	//@TODO:	GEngine->ForceGarbageCollection(true);
 }

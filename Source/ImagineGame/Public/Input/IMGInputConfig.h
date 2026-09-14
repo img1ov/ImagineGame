@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -13,12 +12,12 @@ class UObject;
 struct FFrame;
 
 /**
- * FActInputTagAction
+ * FIMGInputAction
  *
  *	Struct used to map a input action to a gameplay input tag.
  */
 USTRUCT(BlueprintType)
-struct FActInputAction
+struct FIMGInputAction
 {
 	GENERATED_BODY()
 	
@@ -64,9 +63,9 @@ public:
 	
 	// List of input actions used by the owner.  These input actions are mapped to a gameplay tag and must be manually bound.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Meta = (TitleProperty = "InputTagAction"))
-	TArray<FActInputAction> NativeInputTagActions;
+	TArray<FIMGInputAction> NativeInputTagActions;
 
 	// List of input actions used by the owner.  These input actions are mapped to a gameplay tag and are automatically bound to abilities with matching input tags.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Meta = (TitleProperty = "InputAction"))
-	TArray<FActInputAction> AbilityInputActions;
+	TArray<FIMGInputAction> AbilityInputActions;
 };

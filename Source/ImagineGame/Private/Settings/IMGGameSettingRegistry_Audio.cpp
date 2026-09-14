@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Settings/CustomSettings/IMGSettingValueDiscreteDynamic_AudioOutputDevice.h"
 #include "DataSource/GameSettingDataSource.h"

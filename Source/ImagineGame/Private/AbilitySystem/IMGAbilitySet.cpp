@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "AbilitySystem/IMGAbilitySet.h"
 
@@ -30,11 +29,11 @@ void FIMGAbilitySet_GrantedHandles::AddAttributeSet(UAttributeSet* Set)
 	}
 }
 
-void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemComponent* ActASC)
+void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemComponent* IMGASC)
 {
-	check(ActASC);
+	check(IMGASC);
 
-	if (!ActASC->IsOwnerActorAuthoritative())
+	if (!IMGASC->IsOwnerActorAuthoritative())
 	{
 		// Must be authoritative to give or take ability sets.
 		return;
@@ -44,7 +43,7 @@ void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemCompo
 	{
 		if (Handle.IsValid())
 		{
-			ActASC->ClearAbility(Handle);
+			IMGASC->ClearAbility(Handle);
 		}
 	}
 
@@ -52,7 +51,7 @@ void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemCompo
 	{
 		if (Handle.IsValid())
 		{
-			ActASC->RemoveActiveGameplayEffect(Handle);
+			IMGASC->RemoveActiveGameplayEffect(Handle);
 		}
 	}
 
@@ -60,7 +59,7 @@ void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemCompo
 	{
 		if (Set)
 		{
-			ActASC->RemoveSpawnedAttribute(Set);
+			IMGASC->RemoveSpawnedAttribute(Set);
 		}
 	}
 
@@ -74,11 +73,11 @@ UIMGAbilitySet::UIMGAbilitySet(const FObjectInitializer& ObjectInitializer)
 {
 }
 
-void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* ActASC, FIMGAbilitySet_GrantedHandles* OutGrantedHandles, UObject* SourceObject) const
+void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* IMGASC, FIMGAbilitySet_GrantedHandles* OutGrantedHandles, UObject* SourceObject) const
 {
-	check(ActASC);
+	check(IMGASC);
 
-	if (!ActASC->IsOwnerActorAuthoritative())
+	if (!IMGASC->IsOwnerActorAuthoritative())
 	{
 		// Must be authoritative to give or take ability sets.
 		return;;
@@ -95,8 +94,8 @@ void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* ActASC, FIM
 			continue;
 		}
 
-		UAttributeSet* NewSet = NewObject<UAttributeSet>(ActASC->GetOwner(), SetToGrant.AttributeSet);
-		ActASC->AddAttributeSetSubobject(NewSet);
+		UAttributeSet* NewSet = NewObject<UAttributeSet>(IMGASC->GetOwner(), SetToGrant.AttributeSet);
+		IMGASC->AddAttributeSetSubobject(NewSet);
 
 		if (OutGrantedHandles)
 		{
@@ -122,7 +121,7 @@ void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* ActASC, FIM
 		AbilitySpec.SourceObject = SourceObject;
 		AbilitySpec.GetDynamicSpecSourceTags().AddTag(AbilityToGrant.InputTag);
 
-		const FGameplayAbilitySpecHandle AbilitySpecHandle = ActASC->GiveAbility(AbilitySpec);
+		const FGameplayAbilitySpecHandle AbilitySpecHandle = IMGASC->GiveAbility(AbilitySpec);
 
 		if (OutGrantedHandles)
 		{
@@ -142,7 +141,7 @@ void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* ActASC, FIM
 		}
 
 		const UGameplayEffect* GameplayEffect = EffectToGrant.GameplayEffect->GetDefaultObject<UGameplayEffect>();
-		const FActiveGameplayEffectHandle GameplayEffectHandle = ActASC->ApplyGameplayEffectToSelf(GameplayEffect, EffectToGrant.EffectLevel, ActASC->MakeEffectContext());
+		const FActiveGameplayEffectHandle GameplayEffectHandle = IMGASC->ApplyGameplayEffectToSelf(GameplayEffect, EffectToGrant.EffectLevel, IMGASC->MakeEffectContext());
 
 		if (OutGrantedHandles)
 		{

@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -20,6 +19,14 @@ class IMAGINEGAME_API UIMGExperienceDefinition : public UPrimaryDataAsset
 public:
 	UIMGExperienceDefinition();
 
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
+#endif
+
+#if WITH_EDITORONLY_DATA
+	virtual void UpdateAssetBundleData() override;
+#endif
+
 public:
 	// List of Game Feature Plugins this experience wants to have active
 	UPROPERTY(EditDefaultsOnly, Category = Gameplay)
@@ -28,7 +35,7 @@ public:
 	/** The default pawn class to spawn for players */
 	//@TODO: Make soft?
 	UPROPERTY(EditDefaultsOnly, Category = Gameplay)
-	TObjectPtr<UIMGPawnData> DefaultPawnData;
+	TObjectPtr<const UIMGPawnData> DefaultPawnData;
 
 	// List of actions to perform as this experience is loaded/activated/deactivated/unloaded
 	UPROPERTY(EditDefaultsOnly, Instanced, Category="Actions")

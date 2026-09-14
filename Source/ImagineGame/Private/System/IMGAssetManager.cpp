@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "System/IMGAssetManager.h"
@@ -22,7 +21,7 @@ static FAutoConsoleCommand CVarDumpLoadedAssets(
 
 //////////////////////////////////////////////////////////////////////
 
-#define STARTUP_JOB_WEIMGHTED(JobFunc, JobWeight) StartupJobs.Add(FAssetManagerStartupJob(#JobFunc, [this](const FAssetManagerStartupJob& StartupJob, TSharedPtr<FStreamableHandle>& LoadHandle){JobFunc;}, JobWeight))
+#define STARTUP_JOB_WEIMGHTED(JobFunc, JobWeight) StartupJobs.Add(FIMGAssetManagerStartupJob(#JobFunc, [this](const FIMGAssetManagerStartupJob& StartupJob, TSharedPtr<FStreamableHandle>& LoadHandle){JobFunc;}, JobWeight))
 #define STARTUP_JOB(JobFunc) STARTUP_JOB_WEIMGHTED(JobFunc, 1.f)
 
 //////////////////////////////////////////////////////////////////////
@@ -295,7 +294,7 @@ void UIMGAssetManager::DoAllStartupJobs()
 	if (IsRunningDedicatedServer())
 	{
 		// No need for periodic progress updates, just run the jobs
-		for (const FAssetManagerStartupJob& StartupJob : StartupJobs)
+		for (const FIMGAssetManagerStartupJob& StartupJob : StartupJobs)
 		{
 			StartupJob.DoJob();
 		}
@@ -305,13 +304,13 @@ void UIMGAssetManager::DoAllStartupJobs()
 		if (StartupJobs.Num() > 0)
 		{
 			float TotalJobValue = 0.0f;
-			for (const FAssetManagerStartupJob& StartupJob : StartupJobs)
+			for (const FIMGAssetManagerStartupJob& StartupJob : StartupJobs)
 			{
 				TotalJobValue += StartupJob.JobWeight;
 			}
 
 			float AccumulatedJobValue = 0.0f;
-			for (FAssetManagerStartupJob& StartupJob : StartupJobs)
+			for (FIMGAssetManagerStartupJob& StartupJob : StartupJobs)
 			{
 				const float JobValue = StartupJob.JobWeight;
 				StartupJob.SubstepProgressDelegate.BindLambda([This = this, AccumulatedJobValue, JobValue, TotalJobValue](float NewProgress)

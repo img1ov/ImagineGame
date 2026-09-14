@@ -30,10 +30,10 @@ void UAbilityTask_WaitGameplayEvents::Activate()
 		return;
 	}
 
-	UIMGAbilitySystemComponent* ActAbilitySystemComponent = GetTargetASC();
-	if (ActAbilitySystemComponent)
+	UIMGAbilitySystemComponent* IMGAbilitySystemComponent = GetTargetASC();
+	if (IMGAbilitySystemComponent)
 	{
-		EventHandle = ActAbilitySystemComponent->AddGameplayEventTagContainerDelegate(
+		EventHandle = IMGAbilitySystemComponent->AddGameplayEventTagContainerDelegate(
 			EventTags,
 			FGameplayEventTagMulticastDelegate::FDelegate::CreateUObject(this, &UAbilityTask_WaitGameplayEvents::OnGameplayEvent));
 	}
@@ -52,10 +52,10 @@ void UAbilityTask_WaitGameplayEvents::ExternalCancel()
 
 void UAbilityTask_WaitGameplayEvents::OnDestroy(bool AbilityEnded)
 {
-	UIMGAbilitySystemComponent* ActAbilitySystemComponent = GetTargetASC();
-	if (ActAbilitySystemComponent)
+	UIMGAbilitySystemComponent* IMGAbilitySystemComponent = GetTargetASC();
+	if (IMGAbilitySystemComponent)
 	{
-		ActAbilitySystemComponent->RemoveGameplayEventTagContainerDelegate(EventTags, EventHandle);
+		IMGAbilitySystemComponent->RemoveGameplayEventTagContainerDelegate(EventTags, EventHandle);
 	}
 
 	Super::OnDestroy(AbilityEnded);

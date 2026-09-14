@@ -13,7 +13,7 @@ AIMGPlayerStart::AIMGPlayerStart(const FObjectInitializer& ObjectInitializer)
 {
 }
 
-EIPlayerStartLocationOccupancy AIMGPlayerStart::GetLocationOccupancy(AController* const ControllerPawnToFit) const
+EIMGPlayerStartLocationOccupancy AIMGPlayerStart::GetLocationOccupancy(AController* const ControllerPawnToFit) const
 {
 	UWorld* const World = GetWorld();
 	if (HasAuthority() && World)
@@ -28,16 +28,16 @@ EIPlayerStartLocationOccupancy AIMGPlayerStart::GetLocationOccupancy(AController
 
 			if (!World->EncroachingBlockingGeometry(PawnToFit, ActorLocation, ActorRotation, nullptr))
 			{
-				return EIPlayerStartLocationOccupancy::Empty;
+				return EIMGPlayerStartLocationOccupancy::Empty;
 			}
 			else if (World->FindTeleportSpot(PawnToFit, ActorLocation, ActorRotation))
 			{
-				return EIPlayerStartLocationOccupancy::Partial;
+				return EIMGPlayerStartLocationOccupancy::Partial;
 			}
 		}
 	}
 
-	return EIPlayerStartLocationOccupancy::Full;
+	return EIMGPlayerStartLocationOccupancy::Full;
 }
 
 bool AIMGPlayerStart::IsClaimed() const
@@ -61,7 +61,7 @@ bool AIMGPlayerStart::TryClaim(AController* OccupyingController)
 
 void AIMGPlayerStart::CheckUnclaimed()
 {
-	if (ClaimingController != nullptr && ClaimingController->GetPawn() != nullptr && GetLocationOccupancy(ClaimingController) == EIPlayerStartLocationOccupancy::Empty)
+	if (ClaimingController != nullptr && ClaimingController->GetPawn() != nullptr && GetLocationOccupancy(ClaimingController) == EIMGPlayerStartLocationOccupancy::Empty)
 	{
 		ClaimingController = nullptr;
 		if (UWorld* World = GetWorld())

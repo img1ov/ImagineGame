@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Character/IMGHealthComponent.h"
@@ -68,7 +67,7 @@ void UIMGHealthComponent::InitializeWithAbilitySystem(UIMGAbilitySystemComponent
 	HealthSet = AbilitySystemComponent->GetSet<UIMGHealthSet>();
 	if (!HealthSet)
 	{
-		UE_LOG(LogIMG, Error, TEXT("ActHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
+		UE_LOG(LogIMG, Error, TEXT("IMGHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
 		return;
 	}
 	
@@ -303,7 +302,7 @@ void UIMGHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 		
 		if (!Spec)
 		{
-			UE_LOG(LogIMG, Error, TEXT("ActHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to make outgoing spec for [%s]."), *GetNameSafe(GetOwner()), *GetNameSafe(DamageGE));
+			UE_LOG(LogIMG, Error, TEXT("IMGHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to make outgoing spec for [%s]."), *GetNameSafe(GetOwner()), *GetNameSafe(DamageGE));
 			return;
 		}
 		

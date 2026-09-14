@@ -19,7 +19,7 @@
 
 class FSubsystemCollectionBase;
 
-void FTeamTrackingInfo::SetTeamInfo(AIMGTeamInfoBase* Info)
+void FIMGTeamTrackingInfo::SetTeamInfo(AIMGTeamInfoBase* Info)
 {
 	if (AIMGTeamPublicInfo* NewPublicInfo = Cast<AIMGTeamPublicInfo>(Info))
 	{
@@ -45,7 +45,7 @@ void FTeamTrackingInfo::SetTeamInfo(AIMGTeamInfoBase* Info)
 	}
 }
 
-void FTeamTrackingInfo::RemoveTeamInfo(AIMGTeamInfoBase* Info)
+void FIMGTeamTrackingInfo::RemoveTeamInfo(AIMGTeamInfoBase* Info)
 {
 	if (PublicInfo == Info)
 	{
@@ -94,7 +94,7 @@ bool UIMGTeamSubsystem::RegisterTeamInfo(AIMGTeamInfoBase* TeamInfo)
 	const int32 TeamId = TeamInfo->GetTeamId();
 	if (ensure(TeamId != INDEX_NONE))
 	{
-		FTeamTrackingInfo& Entry = TeamMap.FindOrAdd(TeamId);
+		FIMGTeamTrackingInfo& Entry = TeamMap.FindOrAdd(TeamId);
 		Entry.SetTeamInfo(TeamInfo);
 
 		return true;
@@ -113,7 +113,7 @@ bool UIMGTeamSubsystem::UnregisterTeamInfo(AIMGTeamInfoBase* TeamInfo)
 	const int32 TeamId = TeamInfo->GetTeamId();
 	if (ensure(TeamId != INDEX_NONE))
 	{
-		FTeamTrackingInfo* Entry = TeamMap.Find(TeamId);
+		FIMGTeamTrackingInfo* Entry = TeamMap.Find(TeamId);
 
 		// If it couldn't find the entry, this is probably a leftover actor from a previous world, ignore it
 		if (Entry)
@@ -215,22 +215,22 @@ const AIMGPlayerState* UIMGTeamSubsystem::FindPlayerStateFromActor(const AActor*
 	return nullptr;
 }
 
-ETeamComparison UIMGTeamSubsystem::CompareTeams(const UObject* A, const UObject* B, int32& TeamIdA, int32& TeamIdB) const
+EIMGTeamComparison UIMGTeamSubsystem::CompareTeams(const UObject* A, const UObject* B, int32& TeamIdA, int32& TeamIdB) const
 {
 	TeamIdA = FindTeamFromObject(Cast<const AActor>(A));
 	TeamIdB = FindTeamFromObject(Cast<const AActor>(B));
 
 	if ((TeamIdA == INDEX_NONE) || (TeamIdB == INDEX_NONE))
 	{
-		return ETeamComparison::InvalidArgument;
+		return EIMGTeamComparison::InvalidArgument;
 	}
 	else
 	{
-		return (TeamIdA == TeamIdB) ? ETeamComparison::OnSameTeam : ETeamComparison::DifferentTeams;
+		return (TeamIdA == TeamIdB) ? EIMGTeamComparison::OnSameTeam : EIMGTeamComparison::DifferentTeams;
 	}
 }
 
-ETeamComparison UIMGTeamSubsystem::CompareTeams(const UObject* A, const UObject* B) const
+EIMGTeamComparison UIMGTeamSubsystem::CompareTeams(const UObject* A, const UObject* B) const
 {
 	int32 TeamIdA;
 	int32 TeamIdB;
@@ -250,7 +250,7 @@ void UIMGTeamSubsystem::AddTeamTagStack(int32 TeamId, FGameplayTag Tag, int32 St
 		UE_LOG(LogIMGTeams, Error, TEXT("AddTeamTagStack(TeamId: %d, Tag: %s, StackCount: %d) %s"), TeamId, *Tag.ToString(), StackCount, *ErrorMessage);
 	};
 
-	if (FTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	if (FIMGTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
 	{
 		if (Entry->PublicInfo)
 		{
@@ -281,7 +281,7 @@ void UIMGTeamSubsystem::RemoveTeamTagStack(int32 TeamId, FGameplayTag Tag, int32
 		UE_LOG(LogIMGTeams, Error, TEXT("RemoveTeamTagStack(TeamId: %d, Tag: %s, StackCount: %d) %s"), TeamId, *Tag.ToString(), StackCount, *ErrorMessage);
 	};
 
-	if (FTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	if (FIMGTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
 	{
 		if (Entry->PublicInfo)
 		{
@@ -307,7 +307,7 @@ void UIMGTeamSubsystem::RemoveTeamTagStack(int32 TeamId, FGameplayTag Tag, int32
 
 int32 UIMGTeamSubsystem::GetTeamTagStackCount(int32 TeamId, FGameplayTag Tag) const
 {
-	if (const FTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	if (const FIMGTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
 	{
 		const int32 PublicStackCount = (Entry->PublicInfo != nullptr) ? Entry->PublicInfo->TeamTags.GetStackCount(Tag) : 0;
 		const int32 PrivateStackCount = (Entry->PrivateInfo != nullptr) ? Entry->PrivateInfo->TeamTags.GetStackCount(Tag) : 0;
@@ -350,12 +350,12 @@ bool UIMGTeamSubsystem::CanCauseDamage(const UObject* Instigator, const UObject*
 
 	int32 InstigatorTeamId;
 	int32 TargetTeamId;
-	const ETeamComparison Relationship = CompareTeams(Instigator, Target, /*out*/ InstigatorTeamId, /*out*/ TargetTeamId);
-	if (Relationship == ETeamComparison::DifferentTeams)
+	const EIMGTeamComparison Relationship = CompareTeams(Instigator, Target, /*out*/ InstigatorTeamId, /*out*/ TargetTeamId);
+	if (Relationship == EIMGTeamComparison::DifferentTeams)
 	{
 		return true;
 	}
-	else if ((Relationship == ETeamComparison::InvalidArgument) && (InstigatorTeamId != INDEX_NONE))
+	else if ((Relationship == EIMGTeamComparison::InvalidArgument) && (InstigatorTeamId != INDEX_NONE))
 	{
 		// Allow damaging non-team actors for now, as long as they have an ability system component
 		//@TODO: This is temporary until the target practice dummy has a team assignment
@@ -369,7 +369,7 @@ UIMGTeamDisplayAsset* UIMGTeamSubsystem::GetTeamDisplayAsset(int32 TeamId, int32
 {
 	// Currently ignoring ViewerTeamId
 
-	if (FTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	if (FIMGTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
 	{
 		return Entry->DisplayAsset;
 	}
@@ -388,13 +388,13 @@ void UIMGTeamSubsystem::NotifyTeamDisplayAssetModified(UIMGTeamDisplayAsset* /*M
 	for (const auto& KVP : TeamMap)
 	{
 		const int32 TeamId = KVP.Key;
-		const FTeamTrackingInfo& TrackingInfo = KVP.Value;
+		const FIMGTeamTrackingInfo& TrackingInfo = KVP.Value;
 
 		TrackingInfo.OnTeamDisplayAssetChanged.Broadcast(TrackingInfo.DisplayAsset);
 	}
 }
 
-FOnActTeamDisplayAssetChangedDelegate& UIMGTeamSubsystem::GetTeamDisplayAssetChangedDelegate(int32 TeamId)
+FOnIMGTeamDisplayAssetChangedDelegate& UIMGTeamSubsystem::GetTeamDisplayAssetChangedDelegate(int32 TeamId)
 {
 	return TeamMap.FindOrAdd(TeamId).OnTeamDisplayAssetChanged;
 }

@@ -166,17 +166,17 @@ void UIMGBotCreationComponent::RemoveOneBot()
 
 void UIMGBotCreationComponent::ServerCreateBots_Implementation()
 {
-	ensureMsgf(0, TEXT("Bot functions do not exist in ActClient!"));
+	ensureMsgf(0, TEXT("Bot functions do not exist in IMGClient!"));
 }
 
 void UIMGBotCreationComponent::SpawnOneBot()
 {
-	ensureMsgf(0, TEXT("Bot functions do not exist in ActClient!"));
+	ensureMsgf(0, TEXT("Bot functions do not exist in IMGClient!"));
 }
 
 void UIMGBotCreationComponent::RemoveOneBot()
 {
-	ensureMsgf(0, TEXT("Bot functions do not exist in ActClient!"));
+	ensureMsgf(0, TEXT("Bot functions do not exist in IMGClient!"));
 }
 
 #endif

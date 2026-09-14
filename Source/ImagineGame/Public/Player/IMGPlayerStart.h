@@ -12,7 +12,7 @@
 class AController;
 class UObject;
 
-enum class EIPlayerStartLocationOccupancy
+enum class EIMGPlayerStartLocationOccupancy
 {
 	Empty,
 	Partial,
@@ -34,7 +34,7 @@ public:
 
 	const FGameplayTagContainer& GetGameplayTags() { return StartPointTags; }
 
-	UE_API EIPlayerStartLocationOccupancy GetLocationOccupancy(AController* const ControllerPawnToFit) const;
+	UE_API EIMGPlayerStartLocationOccupancy GetLocationOccupancy(AController* const ControllerPawnToFit) const;
 
 	/** Did this player start get claimed by a controller already? */
 	UE_API bool IsClaimed() const;

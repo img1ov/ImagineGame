@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GameModes/IMGUserFacingExperienceDefinition.h"
 #include "CommonSessionSubsystem.h"

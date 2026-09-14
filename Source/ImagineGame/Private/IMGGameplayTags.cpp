@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "IMGGameplayTags.h"
@@ -51,7 +50,7 @@ namespace IMGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Swimming, "Movement.Mode.Swimming", "Default Character movement tag");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Flying, "Movement.Mode.Flying", "Default Character movement tag");
 
-	// When extending Act, you can create your own movement modes but you need to update GetCustomMovementModeTagMap()
+	// When extending IMG, update GetCustomMovementModeTagMap() for any custom movement modes.
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Custom, "Movement.Mode.Custom", "This is invalid and should be replaced with custom tags.  See IMGGameplayTags::CustomMovementModeTagMap.");
 
 	// Unreal Movement Modes

@@ -1,11 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "System/IMGAssetManagerStartupJob.h"
 
 #include "IMGLogChannels.h"
 
-TSharedPtr<FStreamableHandle> FAssetManagerStartupJob::DoJob() const
+TSharedPtr<FStreamableHandle> FIMGAssetManagerStartupJob::DoJob() const
 {
 	const double JobStartTime = FPlatformTime::Seconds();
 
@@ -15,7 +14,7 @@ TSharedPtr<FStreamableHandle> FAssetManagerStartupJob::DoJob() const
 
 	if (Handle.IsValid())
 	{
-		Handle->BindUpdateDelegate(FStreamableUpdateDelegate::CreateRaw(this, &FAssetManagerStartupJob::UpdateSubstepProgressFromStreamable));
+		Handle->BindUpdateDelegate(FStreamableUpdateDelegate::CreateRaw(this, &FIMGAssetManagerStartupJob::UpdateSubstepProgressFromStreamable));
 		Handle->WaitUntilComplete(0.0f, false);
 		Handle->BindUpdateDelegate(FStreamableUpdateDelegate());
 	}

@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "GameModes/IMGGameMode.h"
@@ -19,6 +18,7 @@
 #include "GameModes/IMGWorldSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "Player/IMGPlayerController.h"
+#include "Player/IMGPlayerBotController.h"
 #include "Player/IMGPlayerSpawningManagerComponent.h"
 #include "Player/IMGPlayerState.h"
 #include "System/IMGAssetManager.h"
@@ -101,7 +101,7 @@ void AIMGGameMode::HandleMatchAssignmentIfNotExpectingOne()
 
 	/*if (!ExperienceId.IsValid() && World->IsPlayInEditor())
 	{
-		ExperienceId = GetDefault<UActDeveloperSettings>()->ExperienceOverride;
+		ExperienceId = GetDefault<UIMGDeveloperSettings>()->ExperienceOverride;
 		ExperienceIdSource = TEXT("DeveloperSettings");
 	}*/
 
@@ -234,6 +234,11 @@ APawn* AIMGGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* New
 	return nullptr;
 }
 
+bool AIMGGameMode::ShouldSpawnAtStartSpot(AController* Player)
+{
+	return false;
+}
+
 void AIMGGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
 	// Delay starting new players until the experience has been loaded
@@ -252,6 +257,21 @@ AActor* AIMGGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+void AIMGGameMode::FinishRestartPlayer(AController* NewPlayer, const FRotator& StartRotation)
+{
+	if (UIMGPlayerSpawningManagerComponent* PlayerSpawningComponent = GameState->FindComponentByClass<UIMGPlayerSpawningManagerComponent>())
+	{
+		PlayerSpawningComponent->FinishRestartPlayer(NewPlayer, StartRotation);
+	}
+
+	Super::FinishRestartPlayer(NewPlayer, StartRotation);
+}
+
+bool AIMGGameMode::PlayerCanRestart_Implementation(APlayerController* Player)
+{
+	return ControllerCanRestart(Player);
 }
 
 void AIMGGameMode::GenericPlayerInitialization(AController* NewPlayer)
@@ -295,6 +315,56 @@ bool AIMGGameMode::ControllerCanRestart(AController* Controller)
 	}
 
 	return true;
+}
+
+void AIMGGameMode::RequestPlayerRestartNextFrame(AController* Controller, bool bForceReset)
+{
+	if (bForceReset && Controller != nullptr)
+	{
+		Controller->Reset();
+	}
+
+	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+	{
+		GetWorldTimerManager().SetTimerForNextTick(PlayerController, &APlayerController::ServerRestartPlayer_Implementation);
+	}
+	else if (AIMGPlayerBotController* BotController = Cast<AIMGPlayerBotController>(Controller))
+	{
+		GetWorldTimerManager().SetTimerForNextTick(BotController, &AIMGPlayerBotController::ServerRestartController);
+	}
+}
+
+bool AIMGGameMode::UpdatePlayerStartSpot(AController* Player, const FString& Portal, FString& OutErrorMessage)
+{
+	return true;
+}
+
+void AIMGGameMode::FailedToRestartPlayer(AController* NewPlayer)
+{
+	Super::FailedToRestartPlayer(NewPlayer);
+
+	if (GetDefaultPawnClassForController(NewPlayer))
+	{
+		if (APlayerController* NewPlayerController = Cast<APlayerController>(NewPlayer))
+		{
+			if (PlayerCanRestart(NewPlayerController))
+			{
+				RequestPlayerRestartNextFrame(NewPlayer, false);
+			}
+			else
+			{
+				UE_LOG(LogIMG, Verbose, TEXT("FailedToRestartPlayer(%s): PlayerCanRestart returned false."), *GetPathNameSafe(NewPlayer));
+			}
+		}
+		else
+		{
+			RequestPlayerRestartNextFrame(NewPlayer, false);
+		}
+	}
+	else
+	{
+		UE_LOG(LogIMG, Verbose, TEXT("FailedToRestartPlayer(%s): no pawn class is available."), *GetPathNameSafe(NewPlayer));
+	}
 }
 
 void AIMGGameMode::OnExperienceLoaded(const UIMGExperienceDefinition* CurrentExperience)

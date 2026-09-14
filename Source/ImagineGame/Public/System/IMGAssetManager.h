@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -106,7 +105,7 @@ private:
 	UE_API void UpdateInitialGameContentLoadPercent(float GameContentPercent);
 
 	// The list of tasks to execute on startup. Used to track startup progress.
-	TArray<FAssetManagerStartupJob> StartupJobs;
+	TArray<FIMGAssetManagerStartupJob> StartupJobs;
 	
 private:
 	

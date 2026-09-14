@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
@@ -330,9 +329,9 @@ bool UIMGAbilitySystemComponent::FindActiveAbilityInstanceByClass(
 		const TArray<UGameplayAbility*> Instances = AbilitySpec.GetAbilityInstances();
 		for (UGameplayAbility* AbilityInstance : Instances)
 		{
-			if (UIMGGameplayAbility* ActAbility = Cast<UIMGGameplayAbility>(AbilityInstance))
+			if (UIMGGameplayAbility* IMGAbility = Cast<UIMGGameplayAbility>(AbilityInstance))
 			{
-				OutAbilityInstance = ActAbility;
+				OutAbilityInstance = IMGAbility;
 				return true;
 			}
 		}
@@ -440,9 +439,9 @@ void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 				}
 				else
 				{
-					const UIMGGameplayAbility* ActAbilityCDO = Cast<UIMGGameplayAbility>(AbilitySpec->Ability);
-					if (ActAbilityCDO &&
-						ActAbilityCDO->GetActivationPolicy() == EIMGAbilityActivationPolicy::OnInputTriggered)
+					const UIMGGameplayAbility* IMGAbilityCDO = Cast<UIMGGameplayAbility>(AbilitySpec->Ability);
+					if (IMGAbilityCDO &&
+						IMGAbilityCDO->GetActivationPolicy() == EIMGAbilityActivationPolicy::OnInputTriggered)
 					{
 						AbilitiesToActive.AddUnique(AbilitySpec->Handle);
 					}

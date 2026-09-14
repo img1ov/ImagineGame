@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AbilitySystem/Phases/IMGGamePhaseAbility.h"
 #include "AbilitySystemComponent.h"

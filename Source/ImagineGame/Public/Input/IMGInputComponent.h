@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,7 +10,7 @@ class UEnhancedInputLocalPlayerSubsystem;
 class UInputAction;
 
 /**
- * ActInputComponent
+ * IMGInputComponent
  *
  * Component used to manage input mappings and bindings using an input config data asset.
  */
@@ -51,7 +50,7 @@ void UIMGInputComponent::BindAbilityActions(const UIMGInputConfig* InputConfig, 
 {
 	check(InputConfig);
 
-	for (const FActInputAction& Action : InputConfig->AbilityInputActions)
+	for (const FIMGInputAction& Action : InputConfig->AbilityInputActions)
 	{
 		if (Action.InputAction)
 		{

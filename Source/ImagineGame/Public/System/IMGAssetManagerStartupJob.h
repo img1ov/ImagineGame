@@ -4,19 +4,19 @@
 
 #include "Engine/StreamableManager.h"
 
-DECLARE_DELEGATE_OneParam(FActAssetManagerStartupJobSubstepProgress, float /*NewProgress*/);
+DECLARE_DELEGATE_OneParam(FIMGAssetManagerStartupJobSubstepProgress, float /*NewProgress*/);
 
 /** Handles reporting progress from streamable handles */
-struct FAssetManagerStartupJob
+struct FIMGAssetManagerStartupJob
 {
-	FActAssetManagerStartupJobSubstepProgress SubstepProgressDelegate;
-	TFunction<void(const FAssetManagerStartupJob&, TSharedPtr<FStreamableHandle>&)> JobFunc;
+	FIMGAssetManagerStartupJobSubstepProgress SubstepProgressDelegate;
+	TFunction<void(const FIMGAssetManagerStartupJob&, TSharedPtr<FStreamableHandle>&)> JobFunc;
 	FString JobName;
 	float JobWeight;
 	mutable double LastUpdate = 0;
 
 	/** Simple job that is all synchronous */
-	FAssetManagerStartupJob(const FString& InJobName, const TFunction<void(const FAssetManagerStartupJob&, TSharedPtr<FStreamableHandle>&)>& InJobFunc, float InJobWeight)
+	FIMGAssetManagerStartupJob(const FString& InJobName, const TFunction<void(const FIMGAssetManagerStartupJob&, TSharedPtr<FStreamableHandle>&)>& InJobFunc, float InJobWeight)
 		: JobFunc(InJobFunc)
 		, JobName(InJobName)
 		, JobWeight(InJobWeight)

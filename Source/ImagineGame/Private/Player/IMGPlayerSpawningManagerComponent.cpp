@@ -181,14 +181,14 @@ APlayerStart* UIMGPlayerSpawningManagerComponent::GetFirstRandomUnoccupiedPlayer
 
 		for (AIMGPlayerStart* StartPoint : StartPoints)
 		{
-			EIPlayerStartLocationOccupancy State = StartPoint->GetLocationOccupancy(Controller);
+			EIMGPlayerStartLocationOccupancy State = StartPoint->GetLocationOccupancy(Controller);
 
 			switch (State)
 			{
-				case EIPlayerStartLocationOccupancy::Empty:
+				case EIMGPlayerStartLocationOccupancy::Empty:
 					UnOccupiedStartPoints.Add(StartPoint);
 					break;
-				case EIPlayerStartLocationOccupancy::Partial:
+				case EIMGPlayerStartLocationOccupancy::Partial:
 					OccupiedStartPoints.Add(StartPoint);
 					break;
 

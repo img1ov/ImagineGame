@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "System/IMGReplicationGraphSettings.h"
 #include "Misc/App.h"

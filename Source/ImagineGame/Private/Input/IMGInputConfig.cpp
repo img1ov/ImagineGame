@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Input/IMGInputConfig.h"
 
@@ -11,7 +10,7 @@ UIMGInputConfig::UIMGInputConfig(const FObjectInitializer& ObjectInitializer)
 const UInputAction* UIMGInputConfig::FindNativeInputActionForTag(const FGameplayTag& InputTag, bool bLogNotFound) const
 {
 	// Native actions are manually bound by gameplay code (e.g. move/look).
-	for (const FActInputAction& TagAction : NativeInputTagActions)
+	for (const FIMGInputAction& TagAction : NativeInputTagActions)
 	{
 		if (TagAction.InputAction && (TagAction.InputTag == InputTag))
 		{
@@ -30,7 +29,7 @@ const UInputAction* UIMGInputConfig::FindNativeInputActionForTag(const FGameplay
 const UInputAction* UIMGInputConfig::FindAbilityInputActionForTag(const FGameplayTag& InputTag, bool bLogNotFound) const
 {
 	// Ability actions are auto-bound to gameplay ability input tags.
-	for (const FActInputAction& Action : AbilityInputActions)
+	for (const FIMGInputAction& Action : AbilityInputActions)
 	{
 		if (Action.InputAction && (Action.InputTag == InputTag))
 		{

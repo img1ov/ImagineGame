@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Character/IMGCharacter.h"
@@ -17,8 +16,8 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCharacter)
 
-static FName NAME_CharacterCollisionProfile_Capsule(TEXT("IMGPawnCapsule"));
-static FName NAME_CharacterCollisionProfile_Mesh(TEXT("IMGPawnMesh"));
+static FName NAME_IMGCharacterCollisionProfile_Capsule(TEXT("IMGPawnCapsule"));
+static FName NAME_IMGCharacterCollisionProfile_Mesh(TEXT("IMGPawnMesh"));
 
 FSharedRepMovement::FSharedRepMovement()
 {
@@ -124,10 +123,10 @@ AIMGCharacter::AIMGCharacter(const FObjectInitializer& ObjectInitializer)
 
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
 	check(CapsuleComp);
-	CapsuleComp->SetCollisionProfileName(NAME_CharacterCollisionProfile_Capsule);
+	CapsuleComp->SetCollisionProfileName(NAME_IMGCharacterCollisionProfile_Capsule);
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
-	MeshComp->SetCollisionProfileName(NAME_CharacterCollisionProfile_Mesh);
+	MeshComp->SetCollisionProfileName(NAME_IMGCharacterCollisionProfile_Mesh);
 
 	PawnExtComponent = CreateDefaultSubobject<UIMGPawnExtensionComponent>(TEXT("PawnExtensionComponent"));
 	PawnExtComponent->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::OnAbilitySystemInitialized));
@@ -181,9 +180,9 @@ UAbilitySystemComponent* AIMGCharacter::GetAbilitySystemComponent() const
 
 void AIMGCharacter::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
 {
-	if (const UIMGAbilitySystemComponent* ActASC = GetIMGAbilitySystemComponent())
+	if (const UIMGAbilitySystemComponent* IMGASC = GetIMGAbilitySystemComponent())
 	{
-		ActASC->GetOwnedGameplayTags(TagContainer);
+		IMGASC->GetOwnedGameplayTags(TagContainer);
 	}
 }
 
@@ -518,9 +517,9 @@ void AIMGCharacter::UninitAndDestroy()
 	}
 
 	// Uninitialize the ASC if we're still the avatar actor (otherwise another pawn already did it when they became the avatar actor)
-	if (UIMGAbilitySystemComponent* ActASC = GetIMGAbilitySystemComponent())
+	if (UIMGAbilitySystemComponent* IMGASC = GetIMGAbilitySystemComponent())
 	{
-		if (ActASC->GetAvatarActor() == this)
+		if (IMGASC->GetAvatarActor() == this)
 		{
 			PawnExtComponent->UninitializeAbilitySystem();
 		}

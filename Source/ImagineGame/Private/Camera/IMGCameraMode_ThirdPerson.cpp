@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Camera/IMGCameraMode_ThirdPerson.h"
 #include "Camera/IMGCameraMode.h"

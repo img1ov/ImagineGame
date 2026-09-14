@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "AbilitySystem/Attributes/IMGHealthSet.h"
@@ -203,10 +202,10 @@ void UIMGHealthSet::PostAttributeChange(const FGameplayAttribute& Attribute, flo
 		// Make sure current health is not greater than the new max health.
 		if (GetHealth() > NewValue)
 		{
-			UIMGAbilitySystemComponent* ActASC = GetIMGAbilitySystemComponent();
-			check(ActASC);
+			UIMGAbilitySystemComponent* IMGASC = GetIMGAbilitySystemComponent();
+			check(IMGASC);
 			
-			ActASC->ApplyModToAttribute(GetHealthAttribute(), EGameplayModOp::Override, NewValue);
+			IMGASC->ApplyModToAttribute(GetHealthAttribute(), EGameplayModOp::Override, NewValue);
 		}
 	}
 	

@@ -14,27 +14,27 @@ UPickupableStatics::UPickupableStatics()
 {
 }
 
-TScriptInterface<IIPickupable> UPickupableStatics::GetFirstPickupableFromActor(AActor* Actor)
+TScriptInterface<IPickupable> UPickupableStatics::GetFirstPickupableFromActor(AActor* Actor)
 {
 	// If the actor is directly pickupable, return that.
-	TScriptInterface<IIPickupable> PickupableActor(Actor);
+	TScriptInterface<IPickupable> PickupableActor(Actor);
 	if (PickupableActor)
 	{
 		return PickupableActor;
 	}
 
 	// If the actor isn't pickupable, it might have a component that has a pickupable interface.
-	TArray<UActorComponent*> PickupableComponents = Actor ? Actor->GetComponentsByInterface(UIPickupable::StaticClass()) : TArray<UActorComponent*>();
+	TArray<UActorComponent*> PickupableComponents = Actor ? Actor->GetComponentsByInterface(UPickupable::StaticClass()) : TArray<UActorComponent*>();
 	if (PickupableComponents.Num() > 0)
 	{
 		// Get first pickupable, if the user needs more sophisticated pickup distinction, will need to be solved elsewhere.
-		return TScriptInterface<IIPickupable>(PickupableComponents[0]);
+		return TScriptInterface<IPickupable>(PickupableComponents[0]);
 	}
 
-	return TScriptInterface<IIPickupable>();
+	return TScriptInterface<IPickupable>();
 }
 
-void UPickupableStatics::AddPickupToInventory(UIMGInventoryManagerComponent* InventoryComponent, TScriptInterface<IIPickupable> Pickup)
+void UPickupableStatics::AddPickupToInventory(UIMGInventoryManagerComponent* InventoryComponent, TScriptInterface<IPickupable> Pickup)
 {
 	if (InventoryComponent && Pickup)
 	{

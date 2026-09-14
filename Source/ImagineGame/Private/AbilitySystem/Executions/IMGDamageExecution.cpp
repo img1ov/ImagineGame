@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "AbilitySystem/Executions/IMGDamageExecution.h"
 #include "AbilitySystem/Attributes/IMGHealthSet.h"

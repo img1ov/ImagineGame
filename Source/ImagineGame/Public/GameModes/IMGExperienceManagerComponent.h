@@ -1,17 +1,17 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "Components/GameStateComponent.h"
-#include "GameFeaturesEditor/Private/GameFeatureDataDetailsCustomization.h"
+#include "LoadingProcessInterface.h"
 
 #include "IMGExperienceManagerComponent.generated.h"
 
 class UIMGExperienceDefinition;
+namespace UE::GameFeatures { struct FResult; }
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnIMGExperienceLoaded, const UIMGExperienceDefinition* /*Experience*/);
 
-enum class EExperienceLoadState
+enum class EIMGExperienceLoadState
 {
 	Unloaded,
 	Loading,
@@ -23,7 +23,7 @@ enum class EExperienceLoadState
 };
 
 UCLASS()
-class IMAGINEGAME_API UIMGExperienceManagerComponent : public UGameStateComponent
+class IMAGINEGAME_API UIMGExperienceManagerComponent final : public UGameStateComponent, public ILoadingProcessInterface
 {
 	GENERATED_BODY()
 	
@@ -34,6 +34,10 @@ public:
 	//~UActorComponent interface
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	//~End of UActorComponent interface
+
+	//~ILoadingProcessInterface interface
+	virtual bool ShouldShowLoadingScreen(FString& OutReason) const override;
+	//~End of ILoadingProcessInterface
 	
 	// Tries to set the current experience, either a UI or gameplay one
 	void SetCurrentExperience(const FPrimaryAssetId& ExperienceId);
@@ -76,7 +80,7 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentExperience)
 	TObjectPtr<const UIMGExperienceDefinition> CurrentExperience;
 
-	EExperienceLoadState LoadState = EExperienceLoadState::Unloaded;
+	EIMGExperienceLoadState LoadState = EIMGExperienceLoadState::Unloaded;
 
 	int32 NumGameFeaturePluginsLoading = 0;
 	TArray<FString> GameFeaturePluginURLs;

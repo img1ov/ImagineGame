@@ -1,4 +1,3 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -37,7 +36,7 @@ public:
 
 	UE_API virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
 
-	typedef TFunctionRef<bool(const UIMGGameplayAbility* ActAbility, FGameplayAbilitySpecHandle Handle)> TShouldCancelAbilityFunc;
+	typedef TFunctionRef<bool(const UIMGGameplayAbility* IMGAbility, FGameplayAbilitySpecHandle Handle)> TShouldCancelAbilityFunc;
 	UE_API void CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, bool bReplicateCancelAbility);
 
 	UE_API void CancelInputActivatedAbilities(bool bReplicateCancelAbility);

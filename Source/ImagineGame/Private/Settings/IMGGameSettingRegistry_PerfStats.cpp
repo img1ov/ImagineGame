@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Settings/CustomSettings/IMGSettingValueDiscrete_PerfStat.h"
 #include "EditCondition/WhenPlayingAsPrimaryPlayer.h"

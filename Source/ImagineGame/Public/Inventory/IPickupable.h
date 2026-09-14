@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -56,13 +55,13 @@ public:
 
 /**  */
 UINTERFACE(MinimalAPI, BlueprintType, meta = (CannotImplementInterfaceInBlueprint))
-class UIPickupable : public UInterface
+class UPickupable : public UInterface
 {
 	GENERATED_BODY()
 };
 
 /**  */
-class IMAGINEGAME_API IIPickupable
+class IMAGINEGAME_API IPickupable
 {
 	GENERATED_BODY()
 
@@ -83,8 +82,8 @@ public:
 
 public:
 	UFUNCTION(BlueprintPure)
-	static TScriptInterface<IIPickupable> GetFirstPickupableFromActor(AActor* Actor);
+	static TScriptInterface<IPickupable> GetFirstPickupableFromActor(AActor* Actor);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, meta = (WorldContext = "Ability"))
-	static void AddPickupToInventory(UIMGInventoryManagerComponent* InventoryComponent, TScriptInterface<IIPickupable> Pickup);
+	static void AddPickupToInventory(UIMGInventoryManagerComponent* InventoryComponent, TScriptInterface<IPickupable> Pickup);
 };

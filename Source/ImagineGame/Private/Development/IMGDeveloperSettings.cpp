@@ -13,20 +13,20 @@
 
 #define LOCTEXT_NAMESPACE "IMGCheats"
 
-namespace Act::CVars
+namespace IMG::CVars
 {
 	static constexpr const TCHAR* ShouldAlwaysPlayForceFeedback = TEXT("IMGPC.ShouldAlwaysPlayForceFeedback");
 }
 
-static void EnsureActDeveloperSettingsCVarsExist()
+static void EnsureIMGDeveloperSettingsCVarsExist()
 {
 	IConsoleManager& ConsoleManager = IConsoleManager::Get();
-	if (ConsoleManager.FindConsoleVariable(Act::CVars::ShouldAlwaysPlayForceFeedback) == nullptr)
+	if (ConsoleManager.FindConsoleVariable(IMG::CVars::ShouldAlwaysPlayForceFeedback) == nullptr)
 	{
 		// UDeveloperSettingsBackedByCVars will fatal if a ConsoleVariable-backed property references a missing CVar.
 		// Register it here to avoid relying on static init order across translation units.
 		ConsoleManager.RegisterConsoleVariable(
-			Act::CVars::ShouldAlwaysPlayForceFeedback,
+			IMG::CVars::ShouldAlwaysPlayForceFeedback,
 			0,
 			TEXT("Should force feedback effects be played, even if the last input device was not a gamepad?"),
 			ECVF_Default);
@@ -44,7 +44,7 @@ FName UIMGDeveloperSettings::GetCategoryName() const
 
 void UIMGDeveloperSettings::PostInitProperties()
 {
-	EnsureActDeveloperSettingsCVarsExist();
+	EnsureIMGDeveloperSettingsCVarsExist();
 	Super::PostInitProperties();
 
 #if WITH_EDITOR
@@ -87,4 +87,3 @@ void UIMGDeveloperSettings::OnPlayInEditorStarted() const
 #endif
 
 #undef LOCTEXT_NAMESPACE
-

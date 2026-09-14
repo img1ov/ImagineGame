@@ -18,10 +18,10 @@ class UIMGTeamDisplayAsset;
 struct FFrame;
 struct FGameplayTag;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnActTeamDisplayAssetChangedDelegate, const UIMGTeamDisplayAsset*, DisplayAsset);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIMGTeamDisplayAssetChangedDelegate, const UIMGTeamDisplayAsset*, DisplayAsset);
 
 USTRUCT()
-struct FTeamTrackingInfo
+struct FIMGTeamTrackingInfo
 {
 	GENERATED_BODY()
 
@@ -36,7 +36,7 @@ public:
 	TObjectPtr<UIMGTeamDisplayAsset> DisplayAsset = nullptr;
 
 	UPROPERTY()
-	FOnActTeamDisplayAssetChangedDelegate OnTeamDisplayAssetChanged;
+	FOnIMGTeamDisplayAssetChangedDelegate OnTeamDisplayAssetChanged;
 
 public:
 	void SetTeamInfo(AIMGTeamInfoBase* Info);
@@ -45,7 +45,7 @@ public:
 
 // Result of comparing the team affiliation for two actors
 UENUM(BlueprintType)
-enum class ETeamComparison : uint8
+enum class EIMGTeamComparison : uint8
 {
 	// Both actors are members of the same team
 	OnSameTeam,
@@ -93,10 +93,10 @@ public:
 
 	// Compare the teams of two actors and returns a value indicating if they are on same teams, different teams, or one/both are invalid
 	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category=Teams, meta=(ExpandEnumAsExecs=ReturnValue))
-	UE_API ETeamComparison CompareTeams(const UObject* A, const UObject* B, int32& TeamIdA, int32& TeamIdB) const;
+	UE_API EIMGTeamComparison CompareTeams(const UObject* A, const UObject* B, int32& TeamIdA, int32& TeamIdB) const;
 
 	// Compare the teams of two actors and returns a value indicating if they are on same teams, different teams, or one/both are invalid
-	UE_API ETeamComparison CompareTeams(const UObject* A, const UObject* B) const;
+	UE_API EIMGTeamComparison CompareTeams(const UObject* A, const UObject* B) const;
 
 	// Returns true if the instigator can damage the target, taking into account the friendly fire settings
 	UE_API bool CanCauseDamage(const UObject* Instigator, const UObject* Target, bool bAllowDamageToSelf = true) const;
@@ -139,11 +139,11 @@ public:
 	UE_API void NotifyTeamDisplayAssetModified(UIMGTeamDisplayAsset* ModifiedAsset);
 
 	// Register for a team display asset notification for the specified team ID
-	UE_API FOnActTeamDisplayAssetChangedDelegate& GetTeamDisplayAssetChangedDelegate(int32 TeamId);
+	UE_API FOnIMGTeamDisplayAssetChangedDelegate& GetTeamDisplayAssetChangedDelegate(int32 TeamId);
 
 private:
 	UPROPERTY()
-	TMap<int32, FTeamTrackingInfo> TeamMap;
+	TMap<int32, FIMGTeamTrackingInfo> TeamMap;
 
 	FDelegateHandle CheatManagerRegistrationHandle;
 };

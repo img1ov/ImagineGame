@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Hotfix/IMGHotfixManager.h"
 #include "UObject/UObjectIterator.h"

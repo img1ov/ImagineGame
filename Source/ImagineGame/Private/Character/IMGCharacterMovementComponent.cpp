@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Character/IMGCharacterMovementComponent.h"
 
@@ -45,7 +44,7 @@ void UIMGCharacterMovementComponent::SimulateMovement(float DeltaTime)
 	}
 }
 
-const FCharacterGroundInfo& UIMGCharacterMovementComponent::GetGroundInfo()
+const FIMGCharacterGroundInfo& UIMGCharacterMovementComponent::GetGroundInfo()
 {
 	ACharacter* Character = CharacterOwner.Get();
 	if (!Character || (GFrameCounter == CachedGroundInfo.LastUpdateFrame))

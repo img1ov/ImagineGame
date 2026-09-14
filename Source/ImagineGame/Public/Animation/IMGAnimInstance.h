@@ -1,29 +1,34 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
-#include "GameplayEffectTypes.h"
 #include "Animation/AnimInstance.h"
+#include "GameplayEffectTypes.h"
+
 #include "IMGAnimInstance.generated.h"
 
-class UIMGCharacterMovementComponent;
 class UAbilitySystemComponent;
 
-/**
- * 
- */
-UCLASS()
+/** Base animation instance that mirrors gameplay tags and exposes character ground distance. */
+UCLASS(Config = Game)
 class IMAGINEGAME_API UIMGAnimInstance : public UAnimInstance
 {
 	GENERATED_BODY()
 
 public:
+	UIMGAnimInstance(const FObjectInitializer& ObjectInitializer);
+
 	virtual void InitializeWithAbilitySystem(UAbilitySystemComponent* ASC);
 
 protected:
-	virtual void NativeInitializeAnimation() override;
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
+#endif
 
-protected:
+	virtual void NativeInitializeAnimation() override;
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+
 	UPROPERTY(EditDefaultsOnly, Category = "GameplayTags")
 	FGameplayTagBlueprintPropertyMap GameplayTagPropertyMap;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Character State Data")
+	float GroundDistance = -1.0f;
 };

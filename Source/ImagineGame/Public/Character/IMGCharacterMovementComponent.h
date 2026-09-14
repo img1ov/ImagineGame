@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -15,16 +14,16 @@ struct FFrame;
 IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_MovementStopped);
 
 /**
- * FCharacterGroundInfo
+ * FIMGCharacterGroundInfo
  *
  *	Information about the ground under the character.  It only gets updated as needed.
  */
 USTRUCT(BlueprintType)
-struct FCharacterGroundInfo
+struct FIMGCharacterGroundInfo
 {
 	GENERATED_BODY()
 
-	FCharacterGroundInfo()
+	FIMGCharacterGroundInfo()
 		: LastUpdateFrame(0)
 		, GroundDistance(0.0f)
 	{
@@ -58,7 +57,7 @@ public:
 	UE_API virtual bool CanAttemptJump() const override;
 	
 	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement")
-	UE_API const FCharacterGroundInfo& GetGroundInfo();
+	UE_API const FIMGCharacterGroundInfo& GetGroundInfo();
 	
 	UE_API void SetReplicatedAcceleration(const FVector& InAcceleration);
 	
@@ -81,7 +80,7 @@ public:
 protected:
 	
 	// Cached ground info for the character.  Do not access this directly!  It's only updated when accessed via GetGroundInfo().
-	FCharacterGroundInfo CachedGroundInfo;
+	FIMGCharacterGroundInfo CachedGroundInfo;
 	
 	UPROPERTY(Transient)
 	bool bHasReplicatedAcceleration = false;

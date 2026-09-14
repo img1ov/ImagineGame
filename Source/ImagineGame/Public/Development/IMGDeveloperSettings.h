@@ -68,7 +68,7 @@ public:
 
 	/**
 	* Should force feedback effects be played, even if the last input device was not a gamepad?
-	* The default behavior in Act is to only play force feedback if the most recent input device was a gamepad.
+	* The default behavior in IMG is to only play force feedback if the most recent input device was a gamepad.
 	*/
 	UPROPERTY(config, EditAnywhere, Category = IMG, meta = (ConsoleVariable = "IMGPC.ShouldAlwaysPlayForceFeedback"))
 	bool bShouldAlwaysPlayForceFeedback = false;

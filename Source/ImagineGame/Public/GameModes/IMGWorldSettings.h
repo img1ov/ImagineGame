@@ -1,4 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -17,10 +16,20 @@ class IMAGINEGAME_API AIMGWorldSettings : public AWorldSettings
 public:
 	AIMGWorldSettings(const FObjectInitializer& ObjectInitializer);
 
+#if WITH_EDITOR
+	virtual void CheckForErrors() override;
+#endif
+
 public:
 	FPrimaryAssetId GetDefaultGameplayExperience() const;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = GameMode)
 	TSoftClassPtr<UIMGExperienceDefinition> DefaultGameplayExperience;
+
+public:
+#if WITH_EDITORONLY_DATA
+	UPROPERTY(EditDefaultsOnly, Category = PIE)
+	bool ForceStandaloneNetMode = false;
+#endif
 };

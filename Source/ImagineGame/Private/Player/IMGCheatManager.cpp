@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Player/IMGCheatManager.h"
 #include "GameFramework/Pawn.h"

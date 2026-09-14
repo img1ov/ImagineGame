@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Input/IMGPlayerInput.h"
 #include "Performance/LatencyMarkerModule.h"
