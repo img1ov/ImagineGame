@@ -5,6 +5,7 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayTagAssetInterface.h"
 #include "Teams/IMGTeamAgentInterface.h"
+#include "Character/IMGCharacterMovementComponent.h"
 
 #include "IMGCharacter.generated.h"
 
@@ -91,6 +92,10 @@ UCLASS(MinimalAPI, Config = Game, Meta = (ShortTooltip = "The base character paw
 class AIMGCharacter : public AModularCharacter, public IAbilitySystemInterface, public IGameplayTagAssetInterface, public IIMGTeamAgentInterface
 {
 	GENERATED_BODY()
+	friend class UIMGCharacterMovementComponent;
+	friend struct FIMGStanceStateMachine;
+	friend struct FIMGCrouchStance;
+	friend struct FIMGCrawlStance;
 
 public:
 
@@ -113,13 +118,34 @@ public:
 	UE_API virtual bool HasAllMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 	UE_API virtual bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const override;
 
+	UFUNCTION(BlueprintCallable, Category = "IMG|Stance")
 	UE_API void ToggleCrouch();
+	UFUNCTION(BlueprintCallable, Category = "IMG|Stance")
+	UE_API void ToggleCrawl();
+	UFUNCTION(BlueprintCallable, Category = "IMG|Stance")
+	UE_API bool ChangeStance(EIMGStance NewStance);
+	UFUNCTION(BlueprintCallable, Category = "IMG|Stance")
+	UE_API bool ToggleStance(EIMGStance RequestedStance);
+	UFUNCTION(BlueprintPure, Category = "IMG|Stance")
+	UE_API EIMGStance GetStance() const;
+	UFUNCTION(BlueprintPure, Category = "IMG|Stance")
+	bool IsCrawling() const { return GetStance() == EIMGStance::Crawl; }
+	UFUNCTION(BlueprintPure, Category = "IMG|Stance")
+	bool IsStanding() const { return GetStance() == EIMGStance::Stand; }
+	float GetCrawledEyeHeight() const { return CrawledEyeHeight; }
+	float GetStandingEyeHeight() const { return GetClass()->GetDefaultObject<AIMGCharacter>()->BaseEyeHeight; }
+	UE_API virtual void Crouch(bool bClientSimulation = false) override;
+	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
+	UE_API virtual void Jump() override;
+	UE_API void Crawl();
+	UE_API void UnCrawl();
 
 	//~AActor interface
 	UE_API virtual void PreInitializeComponents() override;
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	UE_API virtual void Reset() override;
+	UE_API virtual void Restart() override;
 	UE_API virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UE_API virtual void PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker) override;
 	//~End of AActor interface
@@ -150,6 +176,7 @@ protected:
 
 	UE_API virtual void OnRep_Controller() override;
 	UE_API virtual void OnRep_PlayerState() override;
+	UE_API virtual void OnRep_IsCrouched() override;
 
 	UE_API virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -178,10 +205,13 @@ protected:
 
 	UE_API virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	UE_API virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	UE_API virtual void OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust);
+	UE_API virtual void OnEndCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust);
 
 	UE_API virtual bool CanJumpInternal_Implementation() const override;
 
 private:
+	UE_API void SetReplicatedStance(EIMGStance NewStance);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "IMG|Character", Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UIMGPawnExtensionComponent> PawnExtComponent;
@@ -197,6 +227,13 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_MyTeamID)
 	FGenericTeamId MyTeamID;
+
+	/** Replicated snapshot; live gameplay queries are served by the movement component's state machine. */
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedStance)
+	EIMGStance ReplicatedStance = EIMGStance::Stand;
+
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Stance", meta = (ClampMin = "0"))
+	float CrawledEyeHeight = 30.0f;
 
 	UPROPERTY()
 	FOnIMGTeamIndexChangedDelegate OnTeamChangedDelegate;
@@ -220,6 +257,12 @@ private:
 
 	UFUNCTION()
 	UE_API void OnRep_MyTeamID(FGenericTeamId OldTeamID);
+
+	UFUNCTION()
+	UE_API void OnRep_ReplicatedStance();
+
+	UFUNCTION(Client, Reliable)
+	UE_API void ClientCorrectStance(EIMGStance AuthoritativeStance);
 
 };
 

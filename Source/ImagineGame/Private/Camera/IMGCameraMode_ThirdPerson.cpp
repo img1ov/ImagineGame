@@ -9,6 +9,7 @@
 #include "Camera/IMGCameraAssistInterface.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Character.h"
+#include "Character/IMGCharacter.h"
 #include "Math/RotationMatrix.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCameraMode_ThirdPerson)
@@ -34,9 +35,9 @@ UIMGCameraMode_ThirdPerson::UIMGCameraMode_ThirdPerson()
 void UIMGCameraMode_ThirdPerson::UpdateView(float DeltaTime)
 {
 	UpdateForTarget(DeltaTime);
-	UpdateCrouchOffset(DeltaTime);
+	UpdateStanceOffset(DeltaTime);
 
-	FVector PivotLocation = GetPivotLocation() + CurrentCrouchOffset;
+	const FVector PivotLocation = UpdateCameraLag(DeltaTime) + CurrentStanceOffset;
 	FRotator PivotRotation = GetPivotRotation();
 
 	PivotRotation.Pitch = FMath::ClampAngle(PivotRotation.Pitch, ViewPitchMin, ViewPitchMax);
@@ -70,23 +71,73 @@ void UIMGCameraMode_ThirdPerson::UpdateView(float DeltaTime)
 	UpdatePreventPenetration(DeltaTime);
 }
 
+FVector UIMGCameraMode_ThirdPerson::UpdateCameraLag(float DeltaTime)
+{
+	const FVector DesiredPivotLocation = GetPivotLocation();
+	if (!bHasLaggedPivotLocation || bResetInterpolation || !bEnableCameraLag || CameraLocationLagSpeed <= 0.0f)
+	{
+		LaggedPivotLocation = DesiredPivotLocation;
+		bHasLaggedPivotLocation = true;
+		return LaggedPivotLocation;
+	}
+
+	if (bUseCameraLagSubstepping && DeltaTime > CameraLagMaxTimeStep)
+	{
+		const FVector PivotMovementStep = (DesiredPivotLocation - LaggedPivotLocation) / DeltaTime;
+		FVector LerpTarget = LaggedPivotLocation;
+		float RemainingTime = DeltaTime;
+		const float MaxTimeStep = FMath::Max(CameraLagMaxTimeStep, 1.0f / 200.0f);
+
+		while (RemainingTime > UE_KINDA_SMALL_NUMBER)
+		{
+			const float Step = FMath::Min(MaxTimeStep, RemainingTime);
+			LerpTarget += PivotMovementStep * Step;
+			RemainingTime -= Step;
+			LaggedPivotLocation = FMath::VInterpTo(LaggedPivotLocation, LerpTarget, Step, CameraLocationLagSpeed);
+		}
+	}
+	else
+	{
+		LaggedPivotLocation = FMath::VInterpTo(LaggedPivotLocation, DesiredPivotLocation, DeltaTime, CameraLocationLagSpeed);
+	}
+
+	if (CameraLagMaxDistance > 0.0f)
+	{
+		LaggedPivotLocation = DesiredPivotLocation
+			+ (LaggedPivotLocation - DesiredPivotLocation).GetClampedToMaxSize(CameraLagMaxDistance);
+	}
+
+	return LaggedPivotLocation;
+}
+
+void UIMGCameraMode_ThirdPerson::OnActivation()
+{
+	Super::OnActivation();
+	bHasLaggedPivotLocation = false;
+}
+
 void UIMGCameraMode_ThirdPerson::UpdateForTarget(float DeltaTime)
 {
 
 	if (const ACharacter* TargetCharacter = Cast<ACharacter>(GetTargetActor()))
 	{
+		if (const AIMGCharacter* IMGCharacter = Cast<AIMGCharacter>(TargetCharacter); IMGCharacter && IMGCharacter->IsCrawling())
+		{
+			SetTargetStanceOffset(FVector(0.0f, 0.0f, IMGCharacter->GetCrawledEyeHeight() - IMGCharacter->GetStandingEyeHeight()));
+			return;
+		}
 		if (TargetCharacter->IsCrouched())
 		{
 			const ACharacter* TargetCharacterCDO = TargetCharacter->GetClass()->GetDefaultObject<ACharacter>();
 			const float CrouchedHeightAdjustment = TargetCharacterCDO->CrouchedEyeHeight - TargetCharacterCDO->BaseEyeHeight;
 
-			SetTargetCrouchOffset(FVector(0.f, 0.f, CrouchedHeightAdjustment));
+			SetTargetStanceOffset(FVector(0.0f, 0.0f, CrouchedHeightAdjustment));
 
 			return;
 		}
 	}
 
-	SetTargetCrouchOffset(FVector::ZeroVector);
+	SetTargetStanceOffset(FVector::ZeroVector);
 }
 
 void UIMGCameraMode_ThirdPerson::DrawDebug(UCanvas* Canvas) const
@@ -109,7 +160,7 @@ void UIMGCameraMode_ThirdPerson::DrawDebug(UCanvas* Canvas) const
 
 void UIMGCameraMode_ThirdPerson::UpdatePreventPenetration(float DeltaTime)
 {
-	if (!bPreventPenetration)
+	if (!bPreventPenetration || PenetrationAvoidanceFeelers.IsEmpty())
 	{
 		return;
 	}
@@ -188,6 +239,8 @@ void UIMGCameraMode_ThirdPerson::PreventCameraPenetration(class AActor const& Vi
 
 	int32 const NumRaysToShoot = bSingleRayOnly ? FMath::Min(1, PenetrationAvoidanceFeelers.Num()) : PenetrationAvoidanceFeelers.Num();
 	FCollisionQueryParams SphereParams(SCENE_QUERY_STAT(CameraPen), false, nullptr/*PlayerCamera*/);
+	FCollisionResponseParams ResponseParams;
+	ResponseParams.CollisionResponse.SetResponse(ECC_Pawn, ECR_Ignore);
 
 	SphereParams.AddIgnoredActor(&ViewTarget);
 
@@ -213,17 +266,16 @@ void UIMGCameraMode_ThirdPerson::PreventCameraPenetration(class AActor const& Vi
 				RayTarget = SafeLoc + RotatedRay;
 			}
 
-			// cast for world and pawn hits separately.  this is so we can safely ignore the 
-			// camera's target pawn
+			// Pawn objects do not push the camera.
 			SphereShape.Sphere.Radius = Feeler.Extent;
-			ECollisionChannel TraceChannel = ECC_Camera;		//(Feeler.PawnWeight > 0.f) ? ECC_Pawn : ECC_Camera;
+			ECollisionChannel TraceChannel = ECC_Camera;
 
 			// do multi-line check to make sure the hits we throw out aren't
 			// masking real hits behind (these are important rays).
 
 			// MT-> passing camera as actor so that camerablockingvolumes know when it's the camera doing traces
 			FHitResult Hit;
-			const bool bHit = World->SweepSingleByChannel(Hit, SafeLoc, RayTarget, FQuat::Identity, TraceChannel, SphereShape, SphereParams);
+			const bool bHit = World->SweepSingleByChannel(Hit, SafeLoc, RayTarget, FQuat::Identity, TraceChannel, SphereShape, SphereParams, ResponseParams);
 #if ENABLE_DRAW_DEBUG
 			if (World->TimeSince(LastDrawDebugTime) < 1.f)
 			{
@@ -271,12 +323,14 @@ void UIMGCameraMode_ThirdPerson::PreventCameraPenetration(class AActor const& Vi
 				
 				if (!bIgnoreHit)
 				{
-					float const Weight = Cast<APawn>(Hit.GetActor()) ? Feeler.PawnWeight : Feeler.WorldWeight;
-					float NewBlockPct = Hit.Time;
-					NewBlockPct += (1.f - NewBlockPct) * (1.f - Weight);
-
 					// Recompute blocked pct taking into account pushout distance.
-					NewBlockPct = ((Hit.Location - SafeLoc).Size() - CollisionPushOutDistance) / (RayTarget - SafeLoc).Size();
+					const float RayLength = (RayTarget - SafeLoc).Size();
+					const float PushedBlockPct = FMath::Clamp(
+						((Hit.Location - SafeLoc).Size() - CollisionPushOutDistance) / FMath::Max(RayLength, UE_KINDA_SMALL_NUMBER),
+						0.0f,
+						1.0f);
+					const float WorldWeight = FMath::Clamp(Feeler.WorldWeight, 0.0f, 1.0f);
+					const float NewBlockPct = PushedBlockPct + (1.0f - PushedBlockPct) * (1.0f - WorldWeight);
 					DistBlockedPctThisFrame = FMath::Min(NewBlockPct, DistBlockedPctThisFrame);
 
 					// This feeler got a hit, so do another trace next frame
@@ -348,24 +402,28 @@ void UIMGCameraMode_ThirdPerson::PreventCameraPenetration(class AActor const& Vi
 	}
 }
 
-void UIMGCameraMode_ThirdPerson::SetTargetCrouchOffset(FVector NewTargetOffset)
+void UIMGCameraMode_ThirdPerson::SetTargetStanceOffset(FVector NewTargetOffset)
 {
-	CrouchOffsetBlendPct = 0.0f;
-	InitialCrouchOffset = CurrentCrouchOffset;
-	TargetCrouchOffset = NewTargetOffset;
+	if (TargetStanceOffset.Equals(NewTargetOffset))
+	{
+		return;
+	}
+
+	StanceOffsetBlendPct = 0.0f;
+	InitialStanceOffset = CurrentStanceOffset;
+	TargetStanceOffset = NewTargetOffset;
 }
 
-
-void UIMGCameraMode_ThirdPerson::UpdateCrouchOffset(float DeltaTime)
+void UIMGCameraMode_ThirdPerson::UpdateStanceOffset(float DeltaTime)
 {
-	if (CrouchOffsetBlendPct < 1.0f)
+	if (StanceOffsetBlendPct < 1.0f)
 	{
-		CrouchOffsetBlendPct = FMath::Min(CrouchOffsetBlendPct + DeltaTime * CrouchOffsetBlendMultiplier, 1.0f);
-		CurrentCrouchOffset = FMath::InterpEaseInOut(InitialCrouchOffset, TargetCrouchOffset, CrouchOffsetBlendPct, 1.0f);
+		StanceOffsetBlendPct = FMath::Min(StanceOffsetBlendPct + DeltaTime * CrouchOffsetBlendMultiplier, 1.0f);
+		CurrentStanceOffset = FMath::InterpEaseInOut(InitialStanceOffset, TargetStanceOffset, StanceOffsetBlendPct, 1.0f);
 	}
 	else
 	{
-		CurrentCrouchOffset = TargetCrouchOffset;
-		CrouchOffsetBlendPct = 1.0f;
+		CurrentStanceOffset = TargetStanceOffset;
+		StanceOffsetBlendPct = 1.0f;
 	}
 }

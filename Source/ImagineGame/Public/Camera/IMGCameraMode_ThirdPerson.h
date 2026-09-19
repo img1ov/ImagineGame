@@ -26,6 +26,7 @@ public:
 protected:
 
 	virtual void UpdateView(float DeltaTime) override;
+	virtual void OnActivation() override;
 
 	void UpdateForTarget(float DeltaTime);
 	void UpdatePreventPenetration(float DeltaTime);
@@ -53,9 +54,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
 	FRuntimeFloatCurve TargetOffsetZ;
 
-	// Alters the speed that a crouch offset is blended in or out
+	// Controls how quickly crouch and crawl eye-height offsets blend in or out.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person")
 	float CrouchOffsetBlendMultiplier = 5.0f;
+
+	/** Lag the camera pivot like a spring arm. Rotation and collision remain immediate. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag")
+	bool bEnableCameraLag = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0"))
+	float CameraLocationLagSpeed = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag")
+	bool bUseCameraLagSubstepping = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.005"))
+	float CameraLagMaxTimeStep = 1.f / 60.f;
+
+	/** Maximum distance behind the pivot; zero means no limit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0"))
+	float CameraLagMaxDistance = 0.f;
 
 	// Penetration prevention
 public:
@@ -101,13 +119,16 @@ public:
 #endif
 
 protected:
-	
-	void SetTargetCrouchOffset(FVector NewTargetOffset);
-	void UpdateCrouchOffset(float DeltaTime);
+	FVector UpdateCameraLag(float DeltaTime);
+	void SetTargetStanceOffset(FVector NewTargetOffset);
+	void UpdateStanceOffset(float DeltaTime);
 
-	FVector InitialCrouchOffset = FVector::ZeroVector;
-	FVector TargetCrouchOffset = FVector::ZeroVector;
-	float CrouchOffsetBlendPct = 1.0f;
-	FVector CurrentCrouchOffset = FVector::ZeroVector;
+	FVector LaggedPivotLocation = FVector::ZeroVector;
+	bool bHasLaggedPivotLocation = false;
+
+	FVector InitialStanceOffset = FVector::ZeroVector;
+	FVector TargetStanceOffset = FVector::ZeroVector;
+	float StanceOffsetBlendPct = 1.0f;
+	FVector CurrentStanceOffset = FVector::ZeroVector;
 	
 };

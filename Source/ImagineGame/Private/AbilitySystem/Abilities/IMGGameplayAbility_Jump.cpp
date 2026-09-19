@@ -44,9 +44,8 @@ void UIMGGameplayAbility_Jump::CharacterJumpStart()
 {
 	if (AIMGCharacter* IMGCharacter = GetIMGCharacterFromActorInfo())
 	{
-		if (IMGCharacter->IsLocallyControlled())
+		if (IMGCharacter->IsLocallyControlled() && !IMGCharacter->bPressedJump)
 		{
-			IMGCharacter->UnCrouch();
 			IMGCharacter->Jump();
 		}
 	}

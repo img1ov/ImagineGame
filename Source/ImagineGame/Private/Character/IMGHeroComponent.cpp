@@ -299,6 +299,7 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Stick, ETriggerEvent::Triggered, this, &ThisClass::Input_LookStick, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crouch, ETriggerEvent::Triggered, this, &ThisClass::Input_Crouch, /*bLogIfNotFound=*/ false);
+					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crawl, ETriggerEvent::Triggered, this, &ThisClass::Input_Crawl, /*bLogIfNotFound=*/ false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_AutoRun, ETriggerEvent::Triggered, this, &ThisClass::Input_AutoRun, /*bLogIfNotFound=*/ false);
 				}
 			}
@@ -423,6 +424,14 @@ void UIMGHeroComponent::Input_Crouch(const FInputActionValue& InputActionValue)
 	if (AIMGCharacter* Character = GetPawn<AIMGCharacter>())
 	{
 		Character->ToggleCrouch();
+	}
+}
+
+void UIMGHeroComponent::Input_Crawl(const FInputActionValue& InputActionValue)
+{
+	if (AIMGCharacter* Character = GetPawn<AIMGCharacter>())
+	{
+		Character->ToggleCrawl();
 	}
 }
 

@@ -163,6 +163,15 @@ UIMGCharacterMovementComponent* AIMGCharacter::GetIMGMovementComponent() const
 	return CastChecked<UIMGCharacterMovementComponent>(GetCharacterMovement(), ECastCheckedType::NullAllowed);
 }
 
+EIMGStance AIMGCharacter::GetStance() const
+{
+	if (const UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
+	{
+		return Movement->GetStance();
+	}
+	return ReplicatedStance;
+}
+
 UIMGAbilitySystemComponent* AIMGCharacter::GetIMGAbilitySystemComponent() const
 {
 	return Cast<UIMGAbilitySystemComponent>(GetAbilitySystemComponent());
@@ -218,16 +227,88 @@ bool AIMGCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagC
 
 void AIMGCharacter::ToggleCrouch()
 {
-	const UIMGCharacterMovementComponent* IMGMoveComp = CastChecked<UIMGCharacterMovementComponent>(GetCharacterMovement());
+	ToggleStance(EIMGStance::Crouch);
+}
 
-	if (IsCrouched() || IMGMoveComp->bWantsToCrouch)
+void AIMGCharacter::ToggleCrawl()
+{
+	ToggleStance(EIMGStance::Crawl);
+}
+
+bool AIMGCharacter::ToggleStance(EIMGStance RequestedStance)
+{
+	const UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent();
+	const EIMGStance EffectiveStance = Movement ? Movement->GetDesiredStance() : ReplicatedStance;
+	return ChangeStance(EffectiveStance == RequestedStance ? EIMGStance::Stand : RequestedStance);
+}
+
+bool AIMGCharacter::ChangeStance(EIMGStance NewStance)
+{
+	UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent();
+	return Movement && Movement->RequestStance(NewStance);
+}
+
+void AIMGCharacter::Crouch(bool bClientSimulation)
+{
+	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
 	{
-		UnCrouch();
+		Movement->Crouch(bClientSimulation);
 	}
-	else if (IMGMoveComp->IsMovingOnGround())
+}
+
+void AIMGCharacter::UnCrouch(bool bClientSimulation)
+{
+	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
 	{
-		Crouch();
+		Movement->UnCrouch(bClientSimulation);
 	}
+}
+
+void AIMGCharacter::Jump()
+{
+	if (ChangeStance(EIMGStance::Stand))
+	{
+		Super::Jump();
+	}
+}
+
+void AIMGCharacter::Crawl()
+{
+	ChangeStance(EIMGStance::Crawl);
+}
+
+void AIMGCharacter::UnCrawl()
+{
+	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent();
+		Movement && (Movement->GetStance() == EIMGStance::Crawl || Movement->GetDesiredStance() == EIMGStance::Crawl))
+	{
+		Movement->RequestStance(EIMGStance::Stand);
+	}
+}
+
+void AIMGCharacter::SetReplicatedStance(EIMGStance NewStance)
+{
+	ReplicatedStance = NewStance;
+}
+
+void AIMGCharacter::OnRep_ReplicatedStance()
+{
+	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
+	{
+		Movement->ApplyReplicatedStance(ReplicatedStance);
+		Movement->bNetworkUpdateReceived = true;
+	}
+}
+
+void AIMGCharacter::ClientCorrectStance_Implementation(EIMGStance AuthoritativeStance)
+{
+	ReplicatedStance = AuthoritativeStance;
+	OnRep_ReplicatedStance();
+}
+
+void AIMGCharacter::OnRep_IsCrouched()
+{
+	// Stance replication owns the capsule and its callbacks, including the crouched state.
 }
 
 void AIMGCharacter::PreInitializeComponents()
@@ -255,12 +336,19 @@ void AIMGCharacter::Reset()
 	UninitAndDestroy();
 }
 
+void AIMGCharacter::Restart()
+{
+	Super::Restart();
+	ChangeStance(EIMGStance::Stand);
+}
+
 void AIMGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(ThisClass, ReplicatedAcceleration, COND_SimulatedOnly);
 	DOREPLIFETIME(ThisClass, MyTeamID);
+	DOREPLIFETIME(ThisClass, ReplicatedStance);
 }
 
 void AIMGCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)
@@ -465,6 +553,9 @@ void AIMGCharacter::InitializeGameplayTags()
 
 		UIMGCharacterMovementComponent* IMGMoveComp = CastChecked<UIMGCharacterMovementComponent>(GetCharacterMovement());
 		SetMovementModeTag(IMGMoveComp->MovementMode, IMGMoveComp->CustomMovementMode, true);
+		const EIMGStance CurrentStance = GetStance();
+		IMGASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crouching, CurrentStance == EIMGStance::Crouch ? 1 : 0);
+		IMGASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crawling, CurrentStance == EIMGStance::Crawl ? 1 : 0);
 	}
 }
 
@@ -577,6 +668,32 @@ void AIMGCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAd
 	}
 
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+}
+
+void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	BaseEyeHeight = CrawledEyeHeight;
+	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
+	const float MeshZ = DefaultCharacter->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
+	GetMesh()->SetRelativeLocation(FVector(GetMesh()->GetRelativeLocation().X, GetMesh()->GetRelativeLocation().Y, MeshZ));
+	BaseTranslationOffset.Z = MeshZ;
+	if (UIMGAbilitySystemComponent* ASC = GetIMGAbilitySystemComponent())
+	{
+		ASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crawling, 1);
+	}
+}
+
+void AIMGCharacter::OnEndCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
+	BaseEyeHeight = DefaultCharacter->BaseEyeHeight;
+	const float MeshZ = DefaultCharacter->GetMesh()->GetRelativeLocation().Z;
+	GetMesh()->SetRelativeLocation(FVector(GetMesh()->GetRelativeLocation().X, GetMesh()->GetRelativeLocation().Y, MeshZ));
+	BaseTranslationOffset.Z = MeshZ;
+	if (UIMGAbilitySystemComponent* ASC = GetIMGAbilitySystemComponent())
+	{
+		ASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crawling, 0);
+	}
 }
 
 bool AIMGCharacter::CanJumpInternal_Implementation() const

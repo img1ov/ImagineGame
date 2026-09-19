@@ -87,6 +87,7 @@ protected:
 	UE_API void Input_LookMouse(const FInputActionValue& InputActionValue);
 	UE_API void Input_LookStick(const FInputActionValue& InputActionValue);
 	UE_API void Input_Crouch(const FInputActionValue& InputActionValue);
+	UE_API void Input_Crawl(const FInputActionValue& InputActionValue);
 
 	UE_API TSubclassOf<UIMGCameraMode> DetermineCameraMode() const;
 
