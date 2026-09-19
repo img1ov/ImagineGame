@@ -23,5 +23,16 @@
 		}
 	],
 	"ExplicitlyLoaded": true,
-	"BuiltInInitialFeatureState": "Active"
+	"BuiltInInitialFeatureState": "Active",
+	"Plugins": [
+		{ "Name": "GameplayAbilities", "Enabled": true },
+		{ "Name": "ModularGameplay", "Enabled": true },
+		{ "Name": "GameplayMessageRouter", "Enabled": true },
+		{ "Name": "CommonUI", "Enabled": true },
+		{ "Name": "CommonGame", "Enabled": true },
+		{ "Name": "DataRegistry", "Enabled": true },
+		{ "Name": "AsyncMixin", "Enabled": true },
+		{ "Name": "GameSubtitles", "Enabled": true },
+		{ "Name": "EnhancedInput", "Enabled": true }
+	]
 }

@@ -14,6 +14,7 @@ UIMGExperienceActionSet::UIMGExperienceActionSet()
 {
 }
 
+#if WITH_EDITOR
 EDataValidationResult UIMGExperienceActionSet::IsDataValid(class FDataValidationContext& Context) const
 {
 	EDataValidationResult Result = CombineDataValidationResults(Super::IsDataValid(Context), EDataValidationResult::Valid);
@@ -37,6 +38,7 @@ EDataValidationResult UIMGExperienceActionSet::IsDataValid(class FDataValidation
 
 	return Result;
 }
+#endif
 
 #if WITH_EDITORONLY_DATA
 void UIMGExperienceActionSet::UpdateAssetBundleData()

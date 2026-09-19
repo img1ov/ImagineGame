@@ -40,7 +40,7 @@ struct IMAGINEGAME_API FIMGStanceStateMachine
 	bool ReconcileDesiredStance(UIMGCharacterMovementComponent& Movement);
 	bool ApplyReplicatedStance(UIMGCharacterMovementComponent& Movement, EIMGStance ReplicatedStance);
 	void UpdateCurrentState(UIMGCharacterMovementComponent& Movement, float DeltaSeconds);
-	float GetMaxSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const;
+	float GetMaxWalkSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const;
 
 private:
 	friend class UIMGCharacterMovementComponent;

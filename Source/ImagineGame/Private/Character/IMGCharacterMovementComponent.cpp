@@ -291,7 +291,7 @@ void FIMGStanceStateMachine::UpdateCurrentState(UIMGCharacterMovementComponent& 
 	ResolveState(CurrentStance).OnUpdate(Movement, DeltaSeconds);
 }
 
-float FIMGStanceStateMachine::GetMaxSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const
+float FIMGStanceStateMachine::GetMaxWalkSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const
 {
 	return ResolveState(CurrentStance).GetMaxSpeed(Movement, DefaultSpeed);
 }
@@ -589,7 +589,7 @@ float UIMGCharacterMovementComponent::GetMaxSpeed() const
 		}
 	}
 
-	return StanceMachine.GetMaxSpeed(*this, Super::GetMaxSpeed());
+	return StanceMachine.GetMaxWalkSpeed(*this, Super::GetMaxSpeed());
 }
 
 void UIMGCharacterMovementComponent::SetStrafeEnabled(const bool bEnable)
