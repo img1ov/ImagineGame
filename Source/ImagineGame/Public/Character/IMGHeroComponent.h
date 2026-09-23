@@ -25,6 +25,20 @@ struct FFrame;
 struct FGameplayTag;
 struct FInputActionValue;
 
+/** Tuning for the world-space movement intent produced from player input. */
+USTRUCT(BlueprintType)
+struct IMAGINEGAME_API FIMGMovementIntentSettings
+{
+	GENERATED_BODY()
+
+	/**
+	 * Controls how quickly movement intent turns toward the desired direction.
+	 * Higher values respond faster; a negative value bypasses smoothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="-1", UIMin="-1", UIMax="100"))
+	float TurningStrength = -1.0f;
+};
+
 /**
  * Component that sets up input and camera handling for player controlled pawns (or bots that simulate players).
  * This depends on a PawnExtensionComponent to coordinate initialization.
@@ -103,7 +117,7 @@ protected:
 	 */
 	struct FMovementIntentProcessor
 	{
-		FVector Update(const FVector& DesiredMovementIntent, float DeltaSeconds, float TurningStrength);
+		FVector Update(const FVector& DesiredMovementIntent, float DeltaSeconds, const FIMGMovementIntentSettings& Settings);
 		void Reset();
 
 	private:
@@ -114,14 +128,9 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TArray<FInputMappingContextAndPriority> DefaultInputMappings;
 
-	/**
-	 * Controls how quickly movement intent turns toward the desired world-space direction.
-	 * This follows Mover's smoothing-strength convention rather than representing degrees per second:
-	 * larger values respond faster, smaller non-negative values feel heavier, and a negative value
-	 * bypasses smoothing to preserve the legacy instant response.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement Intent", meta=(ClampMin="-1", UIMin="-1", UIMax="100"))
-	float TurningStrength = -1.0f;
+	/** Settings applied while converting player input into world-space movement intent. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ShowOnlyInnerProperties))
+	FIMGMovementIntentSettings MovementIntentSettings;
 
 	/** Camera mode set by an ability. */
 	UPROPERTY()

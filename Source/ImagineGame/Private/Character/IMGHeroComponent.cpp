@@ -39,7 +39,7 @@ namespace IMGHero
 const FName UIMGHeroComponent::NAME_BindInputsNow("BindInputsNow");
 const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
 
-FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& DesiredMovementIntent, float DeltaSeconds, float TurningStrength)
+FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& DesiredMovementIntent, float DeltaSeconds, const FIMGMovementIntentSettings& Settings)
 {
 	const FVector ClampedDesiredIntent = DesiredMovementIntent.GetClampedToMaxSize(1.0f);
 	const float DesiredMagnitude = ClampedDesiredIntent.Size2D();
@@ -54,12 +54,12 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& Desir
 
 	// Negative strength is an explicit bypass. Initialize on the first active
 	// input so a character never inherits a stale direction after being idle.
-	if (!bHasMovementIntent || TurningStrength < 0.0f || DeltaSeconds <= 0.0f)
+	if (!bHasMovementIntent || Settings.TurningStrength < 0.0f || DeltaSeconds <= 0.0f)
 	{
 		MovementIntentAngleRadians = DesiredAngleRadians;
 		bHasMovementIntent = true;
 	}
-	else if (TurningStrength > 0.0f)
+	else if (Settings.TurningStrength > 0.0f)
 	{
 		// Use the same strength-to-smoothing-time convention as Mover. The angle
 		// specialization follows the shortest wrapped arc and remains frame-rate
@@ -68,7 +68,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& Desir
 			MovementIntentAngleRadians,
 			DesiredAngleRadians,
 			DeltaSeconds,
-			SpringMath::StrengthToSmoothingTime(TurningStrength));
+			SpringMath::StrengthToSmoothingTime(Settings.TurningStrength));
 	}
 
 	return FVector(
@@ -426,7 +426,7 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	const FVector MovementIntent = MovementIntentProcessor.Update(
 		DesiredMovementIntent,
 		World ? World->GetDeltaSeconds() : 0.0f,
-		TurningStrength);
+		MovementIntentSettings);
 
 	if (!MovementIntent.IsNearlyZero())
 	{
