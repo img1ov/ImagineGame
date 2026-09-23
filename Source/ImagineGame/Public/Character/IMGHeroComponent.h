@@ -121,7 +121,7 @@ protected:
 	 * bypasses smoothing to preserve the legacy instant response.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement Intent", meta=(ClampMin="-1", UIMin="-1", UIMax="100"))
-	float TurningStrength = 60.0f;
+	float TurningStrength = -1.0f;
 
 	/** Camera mode set by an ability. */
 	UPROPERTY()
