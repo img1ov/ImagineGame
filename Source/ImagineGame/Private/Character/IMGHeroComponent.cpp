@@ -5,6 +5,7 @@
 
 #include "Components/GameFrameworkComponentDelegates.h"
 #include "Logging/MessageLog.h"
+#include "Math/SpringMath.h"
 #include "IMGLogChannels.h"
 #include "EnhancedInputSubsystems.h"
 #include "Player/IMGPlayerController.h"
@@ -21,6 +22,7 @@
 #include "PlayerMappableInputConfig.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 #include "InputMappingContext.h"
+#include "VisualLogger/VisualLogger.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGHeroComponent)
 
@@ -36,6 +38,50 @@ namespace IMGHero
 
 const FName UIMGHeroComponent::NAME_BindInputsNow("BindInputsNow");
 const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
+
+FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& DesiredMovementIntent, float DeltaSeconds, float TurningStrength)
+{
+	const FVector ClampedDesiredIntent = DesiredMovementIntent.GetClampedToMaxSize(1.0f);
+	const float DesiredMagnitude = ClampedDesiredIntent.Size2D();
+	if (DesiredMagnitude <= UE_KINDA_SMALL_NUMBER)
+	{
+		Reset();
+		return FVector::ZeroVector;
+	}
+
+	const FVector DesiredDirection = ClampedDesiredIntent / DesiredMagnitude;
+	const float DesiredAngleRadians = FMath::Atan2(DesiredDirection.Y, DesiredDirection.X);
+
+	// Negative strength is an explicit bypass. Initialize on the first active
+	// input so a character never inherits a stale direction after being idle.
+	if (!bHasMovementIntent || TurningStrength < 0.0f || DeltaSeconds <= 0.0f)
+	{
+		MovementIntentAngleRadians = DesiredAngleRadians;
+		bHasMovementIntent = true;
+	}
+	else if (TurningStrength > 0.0f)
+	{
+		// Use the same strength-to-smoothing-time convention as Mover. The angle
+		// specialization follows the shortest wrapped arc and remains frame-rate
+		// independent without filtering the player's analog input magnitude.
+		SpringMath::ExponentialSmoothingApproxAngle(
+			MovementIntentAngleRadians,
+			DesiredAngleRadians,
+			DeltaSeconds,
+			SpringMath::StrengthToSmoothingTime(TurningStrength));
+	}
+
+	return FVector(
+		FMath::Cos(MovementIntentAngleRadians) * DesiredMagnitude,
+		FMath::Sin(MovementIntentAngleRadians) * DesiredMagnitude,
+		0.0f);
+}
+
+void UIMGHeroComponent::FMovementIntentProcessor::Reset()
+{
+	MovementIntentAngleRadians = 0.0f;
+	bHasMovementIntent = false;
+}
 
 UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -230,6 +276,7 @@ void UIMGHeroComponent::BeginPlay()
 
 void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	MovementIntentProcessor.Reset();
 	UnregisterInitStateFeature();
 
 	Super::EndPlay(EndPlayReason);
@@ -254,6 +301,7 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	check(InputSubsystem);
 
+	MovementIntentProcessor.Reset();
 	InputSubsystem->ClearAllMappings();
 
 	if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
@@ -296,6 +344,8 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 					IMGIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, BindHandles);
 
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move, false);
+					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Completed, this, &ThisClass::Input_MoveCompleted, false);
+					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Canceled, this, &ThisClass::Input_MoveCompleted, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Stick, ETriggerEvent::Triggered, this, &ThisClass::Input_LookStick, false);
 					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crouch, ETriggerEvent::Triggered, this, &ThisClass::Input_Crouch, /*bLogIfNotFound=*/ false);
@@ -347,6 +397,11 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 {
 	APawn* Pawn = GetPawn<APawn>();
 	AController* Controller = Pawn ? Pawn->GetController() : nullptr;
+	if (!Pawn || !Controller)
+	{
+		MovementIntentProcessor.Reset();
+		return;
+	}
 
 	// If the player has attempted to move again then cancel auto running
 	if (AIMGPlayerController* IMGController = Cast<AIMGPlayerController>(Controller))
@@ -354,24 +409,41 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 		IMGController->SetIsAutoRunning(false);
 	}
 
-	if (Controller)
+	// Preserve the existing all-or-nothing movement strength; this layer shapes
+	// direction only and must not introduce a separate analog-speed policy.
+	const FVector2D MoveInput = InputActionValue.Get<FVector2D>().GetSafeNormal();
+	const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+
+	// Build one desired world-space intent before shaping it. This keeps the
+	// processor independent from input devices and matches Mover's input-producer
+	// boundary: mappings describe player intent, while movement consumes the
+	// processed world-space result.
+	const FVector DesiredMovementIntent =
+		MovementRotation.RotateVector(FVector::RightVector) * MoveInput.X
+		+ MovementRotation.RotateVector(FVector::ForwardVector) * MoveInput.Y;
+
+	const UWorld* World = GetWorld();
+	const FVector MovementIntent = MovementIntentProcessor.Update(
+		DesiredMovementIntent,
+		World ? World->GetDeltaSeconds() : 0.0f,
+		TurningStrength);
+
+	if (!MovementIntent.IsNearlyZero())
 	{
-		const FVector2D Value = InputActionValue.Get<FVector2D>().GetSafeNormal();
-
-		const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
-
-		if (Value.X != 0.0f)
-		{
-			const FVector MovementDirection = MovementRotation.RotateVector(FVector::RightVector);
-			Pawn->AddMovementInput(MovementDirection, Value.X);
-		}
-
-		if (Value.Y != 0.0f)
-		{
-			const FVector MovementDirection = MovementRotation.RotateVector(FVector::ForwardVector);
-			Pawn->AddMovementInput(MovementDirection, Value.Y);
-		}
+		Pawn->AddMovementInput(MovementIntent.GetSafeNormal(), MovementIntent.Size());
 	}
+
+	const FVector DebugOrigin = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + DesiredMovementIntent * 100.0f, FColor::Green, TEXT("Desired Movement Intent"));
+	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + MovementIntent * 100.0f, FColor::Cyan, TEXT("Processed Movement Intent"));
+}
+
+void UIMGHeroComponent::Input_MoveCompleted(const FInputActionValue&)
+{
+	// Direction has no meaning while the input magnitude is zero. Resetting here
+	// makes the first input after an idle period fully responsive and prevents a
+	// stale intent from steering the next movement request.
+	MovementIntentProcessor.Reset();
 }
 
 void UIMGHeroComponent::Input_LookMouse(const FInputActionValue& InputActionValue)

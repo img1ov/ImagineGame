@@ -84,6 +84,7 @@ protected:
 
 	UE_API void Input_AutoRun(const FInputActionValue& InputActionValue);
 	void Input_Move(const FInputActionValue& InputActionValue);
+	void Input_MoveCompleted(const FInputActionValue&);
 	UE_API void Input_LookMouse(const FInputActionValue& InputActionValue);
 	UE_API void Input_LookStick(const FInputActionValue& InputActionValue);
 	UE_API void Input_Crouch(const FInputActionValue& InputActionValue);
@@ -92,9 +93,35 @@ protected:
 	UE_API TSubclassOf<UIMGCameraMode> DetermineCameraMode() const;
 
 protected:
+	/**
+	 * Stateful boundary between raw player input and the movement system.
+	 *
+	 * Keeping this state separate from Input_Move makes the latter an adapter:
+	 * it builds a world-space desired intent, delegates shaping here, then hands
+	 * the result to the active movement implementation. The same processor can
+	 * therefore feed AddMovementInput today or a Mover input command later.
+	 */
+	struct FMovementIntentProcessor
+	{
+		FVector Update(const FVector& DesiredMovementIntent, float DeltaSeconds, float TurningStrength);
+		void Reset();
+
+	private:
+		float MovementIntentAngleRadians = 0.0f;
+		bool bHasMovementIntent = false;
+	};
 
 	UPROPERTY(EditAnywhere)
 	TArray<FInputMappingContextAndPriority> DefaultInputMappings;
+
+	/**
+	 * Controls how quickly movement intent turns toward the desired world-space direction.
+	 * This follows Mover's smoothing-strength convention rather than representing degrees per second:
+	 * larger values respond faster, smaller non-negative values feel heavier, and a negative value
+	 * bypasses smoothing to preserve the legacy instant response.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement Intent", meta=(ClampMin="-1", UIMin="-1", UIMax="100"))
+	float TurningStrength = 60.0f;
 
 	/** Camera mode set by an ability. */
 	UPROPERTY()
@@ -105,6 +132,9 @@ protected:
 
 	/** True when player input bindings have been applied, will never be true for non - players */
 	bool bReadyToBindInputs;
+
+	/** Runtime-only state for movement intent shaping. */
+	FMovementIntentProcessor MovementIntentProcessor;
 };
 
 #undef UE_API

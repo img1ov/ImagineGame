@@ -232,7 +232,8 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedStance)
 	EIMGStance ReplicatedStance = EIMGStance::Stand;
 
-	UPROPERTY(EditDefaultsOnly, Category = "IMG|Stance", meta = (ClampMin = "0"))
+	/** Default eye height while crawling. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera", meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm"))
 	float CrawledEyeHeight = 30.0f;
 
 	UPROPERTY()

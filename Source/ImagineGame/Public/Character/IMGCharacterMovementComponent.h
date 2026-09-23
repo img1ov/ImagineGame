@@ -121,13 +121,16 @@ public:
 	UE_API virtual void Crouch(bool bClientSimulation = false) override;
 	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Stance")
+	/** Whether this movement component can enter the Crawl stance. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Stance")
 	bool bCanCrawl = true;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Stance", meta = (ClampMin = "0"))
+	/** Collision capsule half-height used while crawling. It cannot be smaller than the capsule radius at runtime. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Stance", meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm"))
 	float CrawlHalfHeight = 44.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Stance", meta = (ClampMin = "0"))
+	/** Maximum ground speed while crawling. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Stance", meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm/s"))
 	float MaxCrawlSpeed = 120.0f;
 	
 	// TODO : Fix: OffsetRootBone one-frame “flick” on Listen Server (CMC timing bug)
