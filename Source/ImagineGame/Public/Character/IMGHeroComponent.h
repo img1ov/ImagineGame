@@ -32,11 +32,24 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	GENERATED_BODY()
 
 	/**
-	 * Controls how quickly movement intent turns toward the desired direction.
-	 * Higher values respond faster; a negative value bypasses smoothing.
+	 * Normalized strength used to turn movement intent toward the desired direction.
+	 * At 60 Hz, the value is the fraction of the remaining angular error removed
+	 * each frame. Zero preserves the current heading; one bypasses smoothing and
+	 * responds immediately. Delta-time correction keeps the response frame-rate independent.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="-1", UIMin="-1", UIMax="100"))
-	float TurningStrength = -1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="0", ClampMax="1", UIMin="0", UIMax="1"))
+	float TurningStrength = 1.0f;
+
+	/**
+	 * Initializes a new movement intent from the actor's current facing before
+	 * smoothing toward the requested direction. This preserves heading continuity
+	 * when movement starts after an idle period.
+	 *
+	 * Disable this for strafe controls, where facing and movement direction are
+	 * intentionally independent.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent")
+	bool bInitializeFromActorFacing = true;
 };
 
 /**
@@ -117,12 +130,22 @@ protected:
 	 */
 	struct FMovementIntentProcessor
 	{
-		FVector Update(const FVector& DesiredMovementIntent, float DeltaSeconds, const FIMGMovementIntentSettings& Settings);
+		FVector Update(
+			const FVector& DesiredMovementIntent,
+			const FVector& ActorFacingDirection,
+			float DeltaSeconds,
+			const FIMGMovementIntentSettings& Settings);
 		void Reset();
 
 	private:
-		float MovementIntentAngleRadians = 0.0f;
-		bool bHasMovementIntent = false;
+		void Initialize(
+			const FVector& DesiredDirection,
+			const FVector& ActorFacingDirection,
+			bool bInitializeFromActorFacing);
+		static float CalculateFrameIndependentAlpha(float TurningStrength, float DeltaSeconds);
+
+		float SmoothedAngleRadians = 0.0f;
+		bool bIsInitialized = false;
 	};
 
 	UPROPERTY(EditAnywhere)

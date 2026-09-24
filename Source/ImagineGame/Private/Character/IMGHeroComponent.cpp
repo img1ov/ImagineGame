@@ -5,7 +5,6 @@
 
 #include "Components/GameFrameworkComponentDelegates.h"
 #include "Logging/MessageLog.h"
-#include "Math/SpringMath.h"
 #include "IMGLogChannels.h"
 #include "EnhancedInputSubsystems.h"
 #include "Player/IMGPlayerController.h"
@@ -39,9 +38,14 @@ namespace IMGHero
 const FName UIMGHeroComponent::NAME_BindInputsNow("BindInputsNow");
 const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
 
-FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& DesiredMovementIntent, float DeltaSeconds, const FIMGMovementIntentSettings& Settings)
+FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
+	const FVector& DesiredMovementIntent,
+	const FVector& ActorFacingDirection,
+	float DeltaSeconds,
+	const FIMGMovementIntentSettings& Settings)
 {
-	const FVector ClampedDesiredIntent = DesiredMovementIntent.GetClampedToMaxSize(1.0f);
+	const FVector PlanarDesiredIntent(DesiredMovementIntent.X, DesiredMovementIntent.Y, 0.0f);
+	const FVector ClampedDesiredIntent = PlanarDesiredIntent.GetClampedToMaxSize(1.0f);
 	const float DesiredMagnitude = ClampedDesiredIntent.Size2D();
 	if (DesiredMagnitude <= UE_KINDA_SMALL_NUMBER)
 	{
@@ -51,36 +55,72 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(const FVector& Desir
 
 	const FVector DesiredDirection = ClampedDesiredIntent / DesiredMagnitude;
 	const float DesiredAngleRadians = FMath::Atan2(DesiredDirection.Y, DesiredDirection.X);
+	const float TurningStrength = FMath::Clamp(Settings.TurningStrength, 0.0f, 1.0f);
 
-	// Negative strength is an explicit bypass. Initialize on the first active
-	// input so a character never inherits a stale direction after being idle.
-	if (!bHasMovementIntent || Settings.TurningStrength < 0.0f || DeltaSeconds <= 0.0f)
+	// Full strength is an explicit bypass. Besides avoiding unnecessary work,
+	// this guarantees that the default setting remains perfectly responsive.
+	if (TurningStrength >= 1.0f || DeltaSeconds <= 0.0f)
 	{
-		MovementIntentAngleRadians = DesiredAngleRadians;
-		bHasMovementIntent = true;
+		SmoothedAngleRadians = DesiredAngleRadians;
+		bIsInitialized = true;
 	}
-	else if (Settings.TurningStrength > 0.0f)
+	else
 	{
-		// Use the same strength-to-smoothing-time convention as Mover. The angle
-		// specialization follows the shortest wrapped arc and remains frame-rate
-		// independent without filtering the player's analog input magnitude.
-		SpringMath::ExponentialSmoothingApproxAngle(
-			MovementIntentAngleRadians,
-			DesiredAngleRadians,
-			DeltaSeconds,
-			SpringMath::StrengthToSmoothingTime(Settings.TurningStrength));
+		if (!bIsInitialized)
+		{
+			Initialize(DesiredDirection, ActorFacingDirection, Settings.bInitializeFromActorFacing);
+		}
+
+		const float TurnAlpha = CalculateFrameIndependentAlpha(TurningStrength, DeltaSeconds);
+		SmoothedAngleRadians += FMath::FindDeltaAngleRadians(
+			SmoothedAngleRadians,
+			DesiredAngleRadians) * TurnAlpha;
 	}
 
 	return FVector(
-		FMath::Cos(MovementIntentAngleRadians) * DesiredMagnitude,
-		FMath::Sin(MovementIntentAngleRadians) * DesiredMagnitude,
+		FMath::Cos(SmoothedAngleRadians) * DesiredMagnitude,
+		FMath::Sin(SmoothedAngleRadians) * DesiredMagnitude,
 		0.0f);
+}
+
+void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
+	const FVector& DesiredDirection,
+	const FVector& ActorFacingDirection,
+	bool bInitializeFromActorFacing)
+{
+	// Warm-start from the latest actor facing rather than a stale pre-idle
+	// intent. Fall back to the desired direction when facing has no planar axis.
+	const FVector PlanarFacingDirection = FVector(
+		ActorFacingDirection.X,
+		ActorFacingDirection.Y,
+		0.0f).GetSafeNormal();
+	const FVector& InitialDirection = bInitializeFromActorFacing && !PlanarFacingDirection.IsNearlyZero()
+		? PlanarFacingDirection
+		: DesiredDirection;
+
+	SmoothedAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
+	bIsInitialized = true;
+}
+
+float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlpha(
+	float TurningStrength,
+	float DeltaSeconds)
+{
+	if (TurningStrength <= 0.0f || DeltaSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// TurningStrength is the fraction of the remaining angular error removed
+	// per frame at 60 Hz. Adjust the blend factor to preserve that response over time.
+	constexpr float ReferenceFrameRate = 60.0f;
+	return 1.0f - FMath::Pow(1.0f - TurningStrength, DeltaSeconds * ReferenceFrameRate);
 }
 
 void UIMGHeroComponent::FMovementIntentProcessor::Reset()
 {
-	MovementIntentAngleRadians = 0.0f;
-	bHasMovementIntent = false;
+	SmoothedAngleRadians = 0.0f;
+	bIsInitialized = false;
 }
 
 UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer)
@@ -425,6 +465,7 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	const UWorld* World = GetWorld();
 	const FVector MovementIntent = MovementIntentProcessor.Update(
 		DesiredMovementIntent,
+		Pawn->GetActorForwardVector(),
 		World ? World->GetDeltaSeconds() : 0.0f,
 		MovementIntentSettings);
 
@@ -440,9 +481,8 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 
 void UIMGHeroComponent::Input_MoveCompleted(const FInputActionValue&)
 {
-	// Direction has no meaning while the input magnitude is zero. Resetting here
-	// makes the first input after an idle period fully responsive and prevents a
-	// stale intent from steering the next movement request.
+	// Direction has no meaning while input magnitude is zero. Discard the old
+	// intent so the next movement starts from its configured initial direction.
 	MovementIntentProcessor.Reset();
 }
 
