@@ -132,8 +132,6 @@ public:
 	bool IsCrawling() const { return GetStance() == EIMGStance::Crawl; }
 	UFUNCTION(BlueprintPure, Category = "IMG|Stance")
 	bool IsStanding() const { return GetStance() == EIMGStance::Stand; }
-	float GetCrawledEyeHeight() const { return CrawledEyeHeight; }
-	float GetStandingEyeHeight() const { return GetClass()->GetDefaultObject<AIMGCharacter>()->BaseEyeHeight; }
 	UE_API virtual void Crouch(bool bClientSimulation = false) override;
 	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
 	UE_API virtual void Jump() override;

@@ -9,7 +9,6 @@
 #include "Camera/IMGCameraAssistInterface.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Character.h"
-#include "Character/IMGCharacter.h"
 #include "Math/RotationMatrix.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCameraMode_ThirdPerson)
@@ -118,23 +117,15 @@ void UIMGCameraMode_ThirdPerson::OnActivation()
 
 void UIMGCameraMode_ThirdPerson::UpdateForTarget(float DeltaTime)
 {
-
 	if (const ACharacter* TargetCharacter = Cast<ACharacter>(GetTargetActor()))
 	{
-		if (const AIMGCharacter* IMGCharacter = Cast<AIMGCharacter>(TargetCharacter); IMGCharacter && IMGCharacter->IsCrawling())
-		{
-			SetTargetStanceOffset(FVector(0.0f, 0.0f, IMGCharacter->GetCrawledEyeHeight() - IMGCharacter->GetStandingEyeHeight()));
-			return;
-		}
-		if (TargetCharacter->IsCrouched())
-		{
-			const ACharacter* TargetCharacterCDO = TargetCharacter->GetClass()->GetDefaultObject<ACharacter>();
-			const float CrouchedHeightAdjustment = TargetCharacterCDO->CrouchedEyeHeight - TargetCharacterCDO->BaseEyeHeight;
-
-			SetTargetStanceOffset(FVector(0.0f, 0.0f, CrouchedHeightAdjustment));
-
-			return;
-		}
+		// ACharacter owns the active eye height. Native crouch updates it through
+		// RecalculateBaseEyeHeight, while custom stances can update it in their
+		// lifecycle callbacks without introducing a camera dependency.
+		const ACharacter* TargetCharacterCDO = TargetCharacter->GetClass()->GetDefaultObject<ACharacter>();
+		const float EyeHeightAdjustment = TargetCharacter->BaseEyeHeight - TargetCharacterCDO->BaseEyeHeight;
+		SetTargetStanceOffset(FVector(0.0f, 0.0f, EyeHeightAdjustment));
+		return;
 	}
 
 	SetTargetStanceOffset(FVector::ZeroVector);
