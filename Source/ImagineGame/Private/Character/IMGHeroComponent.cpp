@@ -56,10 +56,15 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 	const FVector DesiredDirection = ClampedDesiredIntent / DesiredMagnitude;
 	const float DesiredAngleRadians = FMath::Atan2(DesiredDirection.Y, DesiredDirection.X);
 	const float TurningStrength = FMath::Clamp(Settings.TurningStrength, 0.0f, 1.0f);
+	const bool bBypassSmoothingForSharpTurn = UpdateSharpTurnSmoothingBypass(
+		DesiredAngleRadians,
+		DeltaSeconds,
+		Settings);
 
-	// Full strength is an explicit bypass. Besides avoiding unnecessary work,
-	// this guarantees that the default setting remains perfectly responsive.
-	if (TurningStrength >= 1.0f || DeltaSeconds <= 0.0f)
+	// Full strength and sharp turns are explicit bypasses. Keeping the smoothed
+	// heading synchronized with the raw direction also gives smoothing a clean
+	// starting point when a sharp-turn bypass window expires.
+	if (TurningStrength >= 1.0f || bBypassSmoothingForSharpTurn || DeltaSeconds <= 0.0f)
 	{
 		SmoothedAngleRadians = DesiredAngleRadians;
 		bIsInitialized = true;
@@ -102,6 +107,49 @@ void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 	bIsInitialized = true;
 }
 
+bool UIMGHeroComponent::FMovementIntentProcessor::UpdateSharpTurnSmoothingBypass(
+	float DesiredAngleRadians,
+	float DeltaSeconds,
+	const FIMGMovementIntentSettings& Settings)
+{
+	const bool bDetectionEnabled = Settings.SharpTurnAngleThreshold >= 0.0f;
+	bool bSharpTurnDetected = false;
+
+	if (bDetectionEnabled && bHasPreviousDesiredDirection)
+	{
+		const float DirectionChangeDegrees = FMath::Abs(FMath::RadiansToDegrees(
+			FMath::FindDeltaAngleRadians(PreviousDesiredAngleRadians, DesiredAngleRadians)));
+		bSharpTurnDetected = DirectionChangeDegrees > Settings.SharpTurnAngleThreshold;
+	}
+
+	PreviousDesiredAngleRadians = DesiredAngleRadians;
+	bHasPreviousDesiredDirection = true;
+
+	if (!bDetectionEnabled)
+	{
+		SharpTurnSmoothingBypassTimeRemaining = 0.0f;
+		return false;
+	}
+
+	if (bSharpTurnDetected)
+	{
+		SharpTurnSmoothingBypassTimeRemaining = FMath::Max(
+			Settings.SharpTurnSmoothingBypassDuration,
+			0.0f);
+	}
+
+	// Detection always bypasses its own frame. The optional duration extends
+	// that behavior without misusing a cooldown: input remains fully responsive
+	// throughout the window, and repeated sharp turns simply refresh it.
+	const bool bShouldBypassSmoothing = bSharpTurnDetected
+		|| SharpTurnSmoothingBypassTimeRemaining > 0.0f;
+	SharpTurnSmoothingBypassTimeRemaining = FMath::Max(
+		SharpTurnSmoothingBypassTimeRemaining - FMath::Max(DeltaSeconds, 0.0f),
+		0.0f);
+
+	return bShouldBypassSmoothing;
+}
+
 float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlpha(
 	float TurningStrength,
 	float DeltaSeconds)
@@ -120,7 +168,10 @@ float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlph
 void UIMGHeroComponent::FMovementIntentProcessor::Reset()
 {
 	SmoothedAngleRadians = 0.0f;
+	PreviousDesiredAngleRadians = 0.0f;
+	SharpTurnSmoothingBypassTimeRemaining = 0.0f;
 	bIsInitialized = false;
+	bHasPreviousDesiredDirection = false;
 }
 
 UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer)

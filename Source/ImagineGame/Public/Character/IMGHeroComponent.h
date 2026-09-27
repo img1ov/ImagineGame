@@ -50,6 +50,23 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent")
 	bool bInitializeFromActorFacing = true;
+
+	/**
+	 * Minimum angle between consecutive desired movement directions that is
+	 * treated as a sharp turn. A sharp turn bypasses direction smoothing so
+	 * downstream movement and animation systems can observe the change immediately.
+	 *
+	 * Set to -1 to disable sharp-turn detection.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="-1", ClampMax="180", UIMin="-1", UIMax="180", Units="Degrees"))
+	float SharpTurnAngleThreshold = -1.0f;
+
+	/**
+	 * Time to continue bypassing direction smoothing after a sharp turn.
+	 * Zero limits the bypass to the frame in which the turn is detected.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="0", UIMin="0", Units="Seconds", EditCondition="SharpTurnAngleThreshold >= 0"))
+	float SharpTurnSmoothingBypassDuration = 0.0f;
 };
 
 /**
@@ -142,10 +159,17 @@ protected:
 			const FVector& DesiredDirection,
 			const FVector& ActorFacingDirection,
 			bool bInitializeFromActorFacing);
+		bool UpdateSharpTurnSmoothingBypass(
+			float DesiredAngleRadians,
+			float DeltaSeconds,
+			const FIMGMovementIntentSettings& Settings);
 		static float CalculateFrameIndependentAlpha(float TurningStrength, float DeltaSeconds);
 
 		float SmoothedAngleRadians = 0.0f;
+		float PreviousDesiredAngleRadians = 0.0f;
+		float SharpTurnSmoothingBypassTimeRemaining = 0.0f;
 		bool bIsInitialized = false;
+		bool bHasPreviousDesiredDirection = false;
 	};
 
 	UPROPERTY(EditAnywhere)
