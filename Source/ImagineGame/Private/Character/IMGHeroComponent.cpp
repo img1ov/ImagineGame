@@ -56,6 +56,12 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 	const FVector DesiredDirection = ClampedDesiredIntent / DesiredMagnitude;
 	const float DesiredAngleRadians = FMath::Atan2(DesiredDirection.Y, DesiredDirection.X);
 	const float TurningStrength = FMath::Clamp(Settings.TurningStrength, 0.0f, 1.0f);
+
+	if (!bIsInitialized)
+	{
+		Initialize(DesiredDirection, ActorFacingDirection, Settings.bInitializeFromActorFacing);
+	}
+
 	const bool bBypassSmoothingForSharpTurn = UpdateSharpTurnSmoothingBypass(
 		DesiredAngleRadians,
 		DeltaSeconds,
@@ -71,11 +77,6 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 	}
 	else
 	{
-		if (!bIsInitialized)
-		{
-			Initialize(DesiredDirection, ActorFacingDirection, Settings.bInitializeFromActorFacing);
-		}
-
 		const float TurnAlpha = CalculateFrameIndependentAlpha(TurningStrength, DeltaSeconds);
 		SmoothedAngleRadians += FMath::FindDeltaAngleRadians(
 			SmoothedAngleRadians,
@@ -103,7 +104,14 @@ void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 		? PlanarFacingDirection
 		: DesiredDirection;
 
-	SmoothedAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
+	const float InitialAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
+	SmoothedAngleRadians = InitialAngleRadians;
+
+	// Seed direction-change detection from the same state used by smoothing.
+	// Actor-facing starts can therefore keep a small, weighty turn while a large
+	// redirection crosses the sharp-turn threshold and becomes responsive at once.
+	PreviousDesiredAngleRadians = InitialAngleRadians;
+	bHasPreviousDesiredDirection = true;
 	bIsInitialized = true;
 }
 

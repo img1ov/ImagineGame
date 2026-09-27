@@ -55,6 +55,8 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	 * Minimum angle between consecutive desired movement directions that is
 	 * treated as a sharp turn. A sharp turn bypasses direction smoothing so
 	 * downstream movement and animation systems can observe the change immediately.
+	 * When movement initializes from actor facing, that facing is used as the
+	 * initial reference so large directional starts receive the same treatment.
 	 *
 	 * Set to -1 to disable sharp-turn detection.
 	 */
