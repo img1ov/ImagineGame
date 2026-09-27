@@ -59,7 +59,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 
 	if (!bIsInitialized)
 	{
-		Initialize(DesiredDirection, ActorFacingDirection, Settings.bInitializeFromActorFacing);
+		Initialize(DesiredDirection, ActorFacingDirection);
 	}
 
 	const bool bBypassSmoothingForSharpTurn = UpdateSharpTurnSmoothingBypass(
@@ -91,8 +91,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 
 void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 	const FVector& DesiredDirection,
-	const FVector& ActorFacingDirection,
-	bool bInitializeFromActorFacing)
+	const FVector& ActorFacingDirection)
 {
 	// Warm-start from the latest actor facing rather than a stale pre-idle
 	// intent. Fall back to the desired direction when facing has no planar axis.
@@ -100,7 +99,7 @@ void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 		ActorFacingDirection.X,
 		ActorFacingDirection.Y,
 		0.0f).GetSafeNormal();
-	const FVector& InitialDirection = bInitializeFromActorFacing && !PlanarFacingDirection.IsNearlyZero()
+	const FVector& InitialDirection = !PlanarFacingDirection.IsNearlyZero()
 		? PlanarFacingDirection
 		: DesiredDirection;
 

@@ -41,22 +41,11 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	float TurningStrength = 1.0f;
 
 	/**
-	 * Initializes a new movement intent from the actor's current facing before
-	 * smoothing toward the requested direction. This preserves heading continuity
-	 * when movement starts after an idle period.
-	 *
-	 * Disable this for strafe controls, where facing and movement direction are
-	 * intentionally independent.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent")
-	bool bInitializeFromActorFacing = true;
-
-	/**
 	 * Minimum angle between consecutive desired movement directions that is
 	 * treated as a sharp turn. A sharp turn bypasses direction smoothing so
 	 * downstream movement and animation systems can observe the change immediately.
-	 * When movement initializes from actor facing, that facing is used as the
-	 * initial reference so large directional starts receive the same treatment.
+	 * Actor facing is used as the initial reference when movement starts, so this
+	 * threshold also controls whether a directional start is smoothed or immediate.
 	 *
 	 * Set to -1 to disable sharp-turn detection.
 	 */
@@ -159,8 +148,7 @@ protected:
 	private:
 		void Initialize(
 			const FVector& DesiredDirection,
-			const FVector& ActorFacingDirection,
-			bool bInitializeFromActorFacing);
+			const FVector& ActorFacingDirection);
 		bool UpdateSharpTurnSmoothingBypass(
 			float DesiredAngleRadians,
 			float DeltaSeconds,
