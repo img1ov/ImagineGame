@@ -25,7 +25,7 @@ struct FFrame;
 struct FGameplayTag;
 struct FInputActionValue;
 
-/** Tuning for the world-space movement intent produced from player input. */
+/** Tuning for world-space movement requests before they reach the movement system. */
 USTRUCT(BlueprintType)
 struct IMAGINEGAME_API FIMGMovementIntentSettings
 {
@@ -74,6 +74,18 @@ public:
 	/** Returns the hero component if one exists on the specified actor. */
 	UFUNCTION(BlueprintPure, Category="IMG")
 	static UIMGHeroComponent* FindHeroComponent(const AActor* Actor){ return (Actor ? Actor->FindComponentByClass<UIMGHeroComponent>() : nullptr);}
+
+	/**
+	 * Shapes and submits a world-space movement request through this hero's
+	 * movement-intent pipeline. Player input, AI, and scripted movement should
+	 * share this entry point so they receive identical directional response.
+	 */
+	UFUNCTION(BlueprintCallable, Category="IMG|Movement Intent", meta=(AdvancedDisplay="bForce"))
+	UE_API void AddMovementIntent(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false);
+
+	/** Clears runtime movement-intent state after a movement request ends. */
+	UFUNCTION(BlueprintCallable, Category="IMG|Movement Intent")
+	UE_API void ResetMovementIntent();
 
 	/** Overrides the camera from an active gameplay ability. */
 	UE_API void SetAbilityCameraMode(TSubclassOf<UIMGCameraMode> CameraMode, const FGameplayAbilitySpecHandle& OwningSpecHandle);
@@ -127,12 +139,11 @@ protected:
 
 protected:
 	/**
-	 * Stateful boundary between raw player input and the movement system.
+	 * Stateful boundary between world-space movement requests and the movement system.
 	 *
-	 * Keeping this state separate from Input_Move makes the latter an adapter:
-	 * it builds a world-space desired intent, delegates shaping here, then hands
-	 * the result to the active movement implementation. The same processor can
-	 * therefore feed AddMovementInput today or a Mover input command later.
+	 * The processor owns direction shaping only. AddMovementIntent handles the
+	 * engine-facing submission, allowing the same processor to feed
+	 * AddMovementInput today or a Mover input command later.
 	 */
 	struct FMovementIntentProcessor
 	{
@@ -161,7 +172,7 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TArray<FInputMappingContextAndPriority> DefaultInputMappings;
 
-	/** Settings applied while converting player input into world-space movement intent. */
+	/** Settings applied to world-space movement requests before submission. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ShowOnlyInnerProperties))
 	FIMGMovementIntentSettings MovementIntentSettings;
 

@@ -180,6 +180,38 @@ UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer
 	bReadyToBindInputs = false;
 }
 
+void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleValue, bool bForce)
+{
+	APawn* Pawn = GetPawn<APawn>();
+	if (!Pawn)
+	{
+		ResetMovementIntent();
+		return;
+	}
+
+	const FVector DesiredMovementIntent = WorldDirection * ScaleValue;
+	const UWorld* World = GetWorld();
+	const FVector MovementIntent = MovementIntentProcessor.Update(
+		DesiredMovementIntent,
+		Pawn->GetVelocity(),
+		World ? World->GetDeltaSeconds() : 0.0f,
+		MovementIntentSettings);
+
+	if (!MovementIntent.IsNearlyZero())
+	{
+		Pawn->AddMovementInput(MovementIntent, 1.0f, bForce);
+	}
+
+	const FVector DebugOrigin = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + DesiredMovementIntent * 100.0f, FColor::Green, TEXT("Desired Movement Intent"));
+	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + MovementIntent * 100.0f, FColor::Cyan, TEXT("Processed Movement Intent"));
+}
+
+void UIMGHeroComponent::ResetMovementIntent()
+{
+	MovementIntentProcessor.Reset();
+}
+
 void UIMGHeroComponent::AddAdditionalInputConfig(const UIMGInputConfig* InputConfig)
 {
 	TArray<uint32> BindHandles;
@@ -367,7 +399,7 @@ void UIMGHeroComponent::BeginPlay()
 
 void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	MovementIntentProcessor.Reset();
+	ResetMovementIntent();
 	UnregisterInitStateFeature();
 
 	Super::EndPlay(EndPlayReason);
@@ -392,7 +424,7 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	check(InputSubsystem);
 
-	MovementIntentProcessor.Reset();
+	ResetMovementIntent();
 	InputSubsystem->ClearAllMappings();
 
 	if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
@@ -490,7 +522,7 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	AController* Controller = Pawn ? Pawn->GetController() : nullptr;
 	if (!Pawn || !Controller)
 	{
-		MovementIntentProcessor.Reset();
+		ResetMovementIntent();
 		return;
 	}
 
@@ -505,36 +537,20 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	const FVector2D MoveInput = InputActionValue.Get<FVector2D>().GetSafeNormal();
 	const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
 
-	// Build one desired world-space intent before shaping it. This keeps the
-	// processor independent from input devices and matches Mover's input-producer
-	// boundary: mappings describe player intent, while movement consumes the
-	// processed world-space result.
+	// Input mapping ends here. The shared movement-intent entry point owns all
+	// shaping and submission for player, AI, and scripted callers.
 	const FVector DesiredMovementIntent =
 		MovementRotation.RotateVector(FVector::RightVector) * MoveInput.X
 		+ MovementRotation.RotateVector(FVector::ForwardVector) * MoveInput.Y;
 
-	const UWorld* World = GetWorld();
-	const FVector MovementIntent = MovementIntentProcessor.Update(
-		DesiredMovementIntent,
-		Pawn->GetVelocity(),
-		World ? World->GetDeltaSeconds() : 0.0f,
-		MovementIntentSettings);
-
-	if (!MovementIntent.IsNearlyZero())
-	{
-		Pawn->AddMovementInput(MovementIntent.GetSafeNormal(), MovementIntent.Size());
-	}
-
-	const FVector DebugOrigin = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
-	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + DesiredMovementIntent * 100.0f, FColor::Green, TEXT("Desired Movement Intent"));
-	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + MovementIntent * 100.0f, FColor::Cyan, TEXT("Processed Movement Intent"));
+	AddMovementIntent(DesiredMovementIntent);
 }
 
 void UIMGHeroComponent::Input_MoveCompleted(const FInputActionValue&)
 {
 	// Direction has no meaning while input magnitude is zero. Discard the old
 	// intent so the next movement starts from its configured initial direction.
-	MovementIntentProcessor.Reset();
+	ResetMovementIntent();
 }
 
 void UIMGHeroComponent::Input_LookMouse(const FInputActionValue& InputActionValue)

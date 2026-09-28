@@ -14,6 +14,7 @@
 #include "Development/IMGDeveloperSettings.h"
 #include "GameMapsSettings.h"
 #include "Camera/IMGPlayerCameraManager.h"
+#include "Character/IMGHeroComponent.h"
 #include "Components/PrimitiveComponent.h"
 
 #include "CommonInputSubsystem.h"
@@ -182,7 +183,14 @@ void AIMGPlayerController::PlayerTick(float DeltaTime)
 		{
 			const FRotator MovementRotation(0.0f, GetControlRotation().Yaw, 0.0f);
 			const FVector MovementDirection = MovementRotation.RotateVector(FVector::ForwardVector);
-			CurrentPawn->AddMovementInput(MovementDirection, 1.0f);
+			if (UIMGHeroComponent* HeroComponent = UIMGHeroComponent::FindHeroComponent(CurrentPawn))
+			{
+				HeroComponent->AddMovementIntent(MovementDirection);
+			}
+			else
+			{
+				CurrentPawn->AddMovementInput(MovementDirection);
+			}
 		}
 	}
 
