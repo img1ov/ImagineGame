@@ -40,7 +40,7 @@ const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
 
 FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 	const FVector& DesiredMovementIntent,
-	const FVector& ActorFacingDirection,
+	const FVector& CurrentVelocity,
 	float DeltaSeconds,
 	const FIMGMovementIntentSettings& Settings)
 {
@@ -59,29 +59,36 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 
 	if (!bIsInitialized)
 	{
-		Initialize(DesiredDirection, ActorFacingDirection);
+		Initialize(DesiredDirection, CurrentVelocity);
 	}
 
-	const bool bBypassSmoothingForSharpTurn = UpdateSharpTurnSmoothingBypass(
-		DesiredAngleRadians,
-		DeltaSeconds,
-		Settings);
-
-	// Full strength and sharp turns are explicit bypasses. Keeping the smoothed
-	// heading synchronized with the raw direction also gives smoothing a clean
-	// starting point when a sharp-turn bypass window expires.
-	if (TurningStrength >= 1.0f || bBypassSmoothingForSharpTurn || DeltaSeconds <= 0.0f)
+	// Full strength is the unsmoothed path. Keep the intermediate direction in
+	// sync and discard bypass state that cannot affect the result.
+	if (TurningStrength >= 1.0f)
 	{
 		SmoothedAngleRadians = DesiredAngleRadians;
-		bIsInitialized = true;
+		SharpTurnBypassRetriggerTimeRemaining = 0.0f;
+		return ClampedDesiredIntent;
 	}
-	else
+
+	// There is no meaningful time interval over which to smooth or advance the
+	// retrigger timer, but the intermediate direction must still remain current.
+	if (DeltaSeconds <= 0.0f)
 	{
-		const float TurnAlpha = CalculateFrameIndependentAlpha(TurningStrength, DeltaSeconds);
-		SmoothedAngleRadians += FMath::FindDeltaAngleRadians(
-			SmoothedAngleRadians,
-			DesiredAngleRadians) * TurnAlpha;
+		SmoothedAngleRadians = DesiredAngleRadians;
+		return ClampedDesiredIntent;
 	}
+
+	if (TryTriggerSharpTurnBypass(DesiredAngleRadians, DeltaSeconds, Settings))
+	{
+		SmoothedAngleRadians = DesiredAngleRadians;
+		return ClampedDesiredIntent;
+	}
+
+	const float TurnAlpha = CalculateFrameIndependentAlpha(TurningStrength, DeltaSeconds);
+	SmoothedAngleRadians += FMath::FindDeltaAngleRadians(
+		SmoothedAngleRadians,
+		DesiredAngleRadians) * TurnAlpha;
 
 	return FVector(
 		FMath::Cos(SmoothedAngleRadians) * DesiredMagnitude,
@@ -91,70 +98,58 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 
 void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 	const FVector& DesiredDirection,
-	const FVector& ActorFacingDirection)
+	const FVector& CurrentVelocity)
 {
-	// Warm-start from the latest actor facing rather than a stale pre-idle
-	// intent. Fall back to the desired direction when facing has no planar axis.
-	const FVector PlanarFacingDirection = FVector(
-		ActorFacingDirection.X,
-		ActorFacingDirection.Y,
+	// Match Mover's smooth walking state: initialize from actual movement, not
+	// from input history or actor facing. At rest there is no movement direction,
+	// so the requested direction establishes the new intent without artificial lag.
+	const FVector CurrentMovementDirection = FVector(
+		CurrentVelocity.X,
+		CurrentVelocity.Y,
 		0.0f).GetSafeNormal();
-	const FVector& InitialDirection = !PlanarFacingDirection.IsNearlyZero()
-		? PlanarFacingDirection
+	const FVector& InitialDirection = !CurrentMovementDirection.IsNearlyZero()
+		? CurrentMovementDirection
 		: DesiredDirection;
 
-	const float InitialAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
-	SmoothedAngleRadians = InitialAngleRadians;
-
-	// Seed direction-change detection from the same state used by smoothing.
-	// Actor-facing starts can therefore keep a small, weighty turn while a large
-	// redirection crosses the sharp-turn threshold and becomes responsive at once.
-	PreviousDesiredAngleRadians = InitialAngleRadians;
-	bHasPreviousDesiredDirection = true;
+	SmoothedAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
 	bIsInitialized = true;
 }
 
-bool UIMGHeroComponent::FMovementIntentProcessor::UpdateSharpTurnSmoothingBypass(
+bool UIMGHeroComponent::FMovementIntentProcessor::TryTriggerSharpTurnBypass(
 	float DesiredAngleRadians,
 	float DeltaSeconds,
 	const FIMGMovementIntentSettings& Settings)
 {
-	const bool bDetectionEnabled = Settings.SharpTurnAngleThreshold >= 0.0f;
-	bool bSharpTurnDetected = false;
-
-	if (bDetectionEnabled && bHasPreviousDesiredDirection)
+	if (Settings.SharpTurnAngleThreshold < 0.0f)
 	{
-		const float DirectionChangeDegrees = FMath::Abs(FMath::RadiansToDegrees(
-			FMath::FindDeltaAngleRadians(PreviousDesiredAngleRadians, DesiredAngleRadians)));
-		bSharpTurnDetected = DirectionChangeDegrees > Settings.SharpTurnAngleThreshold;
-	}
-
-	PreviousDesiredAngleRadians = DesiredAngleRadians;
-	bHasPreviousDesiredDirection = true;
-
-	if (!bDetectionEnabled)
-	{
-		SharpTurnSmoothingBypassTimeRemaining = 0.0f;
+		SharpTurnBypassRetriggerTimeRemaining = 0.0f;
 		return false;
 	}
 
-	if (bSharpTurnDetected)
+	// A bypass is a one-shot response. While its retrigger time is active,
+	// subsequent direction changes deliberately use the normal smoothing path.
+	SharpTurnBypassRetriggerTimeRemaining = FMath::Max(
+		SharpTurnBypassRetriggerTimeRemaining - DeltaSeconds,
+		0.0f);
+	if (SharpTurnBypassRetriggerTimeRemaining > 0.0f)
 	{
-		SharpTurnSmoothingBypassTimeRemaining = FMath::Max(
-			Settings.SharpTurnSmoothingBypassDuration,
-			0.0f);
+		return false;
 	}
 
-	// Detection always bypasses its own frame. The optional duration extends
-	// that behavior without misusing a cooldown: input remains fully responsive
-	// throughout the window, and repeated sharp turns simply refresh it.
-	const bool bShouldBypassSmoothing = bSharpTurnDetected
-		|| SharpTurnSmoothingBypassTimeRemaining > 0.0f;
-	SharpTurnSmoothingBypassTimeRemaining = FMath::Max(
-		SharpTurnSmoothingBypassTimeRemaining - FMath::Max(DeltaSeconds, 0.0f),
-		0.0f);
+	// Mover turns its persistent IntermediateVelocity toward DesiredVelocity.
+	// SmoothedAngleRadians is this processor's equivalent intermediate state;
+	// actual velocity is used only when that state is initialized.
+	const float DirectionChangeDegrees = FMath::Abs(FMath::RadiansToDegrees(
+		FMath::FindDeltaAngleRadians(SmoothedAngleRadians, DesiredAngleRadians)));
+	if (DirectionChangeDegrees <= Settings.SharpTurnAngleThreshold)
+	{
+		return false;
+	}
 
-	return bShouldBypassSmoothing;
+	SharpTurnBypassRetriggerTimeRemaining = FMath::Max(
+		Settings.SharpTurnBypassRetriggerTime,
+		0.0f);
+	return true;
 }
 
 float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlpha(
@@ -175,10 +170,8 @@ float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlph
 void UIMGHeroComponent::FMovementIntentProcessor::Reset()
 {
 	SmoothedAngleRadians = 0.0f;
-	PreviousDesiredAngleRadians = 0.0f;
-	SharpTurnSmoothingBypassTimeRemaining = 0.0f;
+	SharpTurnBypassRetriggerTimeRemaining = 0.0f;
 	bIsInitialized = false;
-	bHasPreviousDesiredDirection = false;
 }
 
 UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer)
@@ -523,7 +516,7 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	const UWorld* World = GetWorld();
 	const FVector MovementIntent = MovementIntentProcessor.Update(
 		DesiredMovementIntent,
-		Pawn->GetActorForwardVector(),
+		Pawn->GetVelocity(),
 		World ? World->GetDeltaSeconds() : 0.0f,
 		MovementIntentSettings);
 

@@ -41,11 +41,9 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	float TurningStrength = 1.0f;
 
 	/**
-	 * Minimum angle between consecutive desired movement directions that is
-	 * treated as a sharp turn. A sharp turn bypasses direction smoothing so
-	 * downstream movement and animation systems can observe the change immediately.
-	 * Actor facing is used as the initial reference when movement starts, so this
-	 * threshold also controls whether a directional start is smoothed or immediate.
+	 * Minimum angle between the currently smoothed movement intent and the desired
+	 * movement direction that is treated as a sharp turn. A sharp turn bypasses
+	 * direction smoothing so downstream systems observe the redirection immediately.
 	 *
 	 * Set to -1 to disable sharp-turn detection.
 	 */
@@ -53,11 +51,11 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	float SharpTurnAngleThreshold = -1.0f;
 
 	/**
-	 * Time to continue bypassing direction smoothing after a sharp turn.
-	 * Zero limits the bypass to the frame in which the turn is detected.
+	 * Time before another sharp-turn bypass may trigger. Direction changes during
+	 * this interval use normal smoothing. Zero permits immediate retriggering.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="0", UIMin="0", Units="Seconds", EditCondition="SharpTurnAngleThreshold >= 0"))
-	float SharpTurnSmoothingBypassDuration = 0.0f;
+	float SharpTurnBypassRetriggerTime = 0.0f;
 };
 
 /**
@@ -140,7 +138,7 @@ protected:
 	{
 		FVector Update(
 			const FVector& DesiredMovementIntent,
-			const FVector& ActorFacingDirection,
+			const FVector& CurrentVelocity,
 			float DeltaSeconds,
 			const FIMGMovementIntentSettings& Settings);
 		void Reset();
@@ -148,18 +146,16 @@ protected:
 	private:
 		void Initialize(
 			const FVector& DesiredDirection,
-			const FVector& ActorFacingDirection);
-		bool UpdateSharpTurnSmoothingBypass(
+			const FVector& CurrentVelocity);
+		bool TryTriggerSharpTurnBypass(
 			float DesiredAngleRadians,
 			float DeltaSeconds,
 			const FIMGMovementIntentSettings& Settings);
 		static float CalculateFrameIndependentAlpha(float TurningStrength, float DeltaSeconds);
 
 		float SmoothedAngleRadians = 0.0f;
-		float PreviousDesiredAngleRadians = 0.0f;
-		float SharpTurnSmoothingBypassTimeRemaining = 0.0f;
+		float SharpTurnBypassRetriggerTimeRemaining = 0.0f;
 		bool bIsInitialized = false;
-		bool bHasPreviousDesiredDirection = false;
 	};
 
 	UPROPERTY(EditAnywhere)
