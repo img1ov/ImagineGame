@@ -5,6 +5,7 @@
 #include "Components/PawnComponent.h"
 #include "GameFeatures/GameFeatureAction_AddInputContextMapping.h"
 #include "GameplayAbilitySpecHandle.h"
+#include "GameplayTagContainer.h"
 #include "Input/IMGInputConfig.h"
 
 #include "IMGHeroComponent.generated.h"
@@ -41,21 +42,25 @@ struct IMAGINEGAME_API FIMGMovementIntentSettings
 	float TurningStrength = 1.0f;
 
 	/**
-	 * Minimum angle between the currently smoothed movement intent and the desired
-	 * movement direction that is treated as a sharp turn. A sharp turn bypasses
+	 * Angle threshold between the currently smoothed movement intent and the desired
+	 * movement direction that is treated as a pivot. A pivot bypasses
 	 * direction smoothing so downstream systems observe the redirection immediately.
 	 *
 	 * Set to -1 to disable sharp-turn detection.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="-1", ClampMax="180", UIMin="-1", UIMax="180", Units="Degrees"))
-	float SharpTurnAngleThreshold = -1.0f;
+	float PivotAngleThreshold = -1.0f;
 
 	/**
 	 * Time before another sharp-turn bypass may trigger. Direction changes during
 	 * this interval use normal smoothing. Zero permits immediate retriggering.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="0", UIMin="0", Units="Seconds", EditCondition="SharpTurnAngleThreshold >= 0"))
-	float SharpTurnBypassRetriggerTime = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(ClampMin="0", UIMin="0", Units="Seconds", EditCondition="PivotAngleThreshold >= 0"))
+	float PivotRetriggerInterval = 0.0f;
+
+	/** Gameplay event sent when a pivot triggers the direction-smoothing bypass. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Movement Intent", meta=(Categories="GameplayEvent", EditCondition="PivotAngleThreshold >= 0"))
+	FGameplayTag PivotGameplayEventTag;
 };
 
 /**
@@ -147,25 +152,27 @@ protected:
 	 */
 	struct FMovementIntentProcessor
 	{
-		FVector Update(
+		FVector UpdateMovementIntent(
 			const FVector& DesiredMovementIntent,
 			const FVector& CurrentVelocity,
 			float DeltaSeconds,
-			const FIMGMovementIntentSettings& Settings);
+			const FIMGMovementIntentSettings& Settings,
+			bool& bOutTriggeredPivot);
 		void Reset();
 
 	private:
 		void Initialize(
 			const FVector& DesiredDirection,
 			const FVector& CurrentVelocity);
-		bool TryTriggerSharpTurnBypass(
+		bool EvaluatePivot(
 			float DesiredAngleRadians,
 			float DeltaSeconds,
 			const FIMGMovementIntentSettings& Settings);
 		static float CalculateFrameIndependentAlpha(float TurningStrength, float DeltaSeconds);
 
 		float SmoothedAngleRadians = 0.0f;
-		float SharpTurnBypassRetriggerTimeRemaining = 0.0f;
+		/** Time remaining before another pivot may be triggered. */
+		float PivotTimer = 0.0f;
 		bool bIsInitialized = false;
 	};
 

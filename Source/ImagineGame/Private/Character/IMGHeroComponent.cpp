@@ -38,12 +38,15 @@ namespace IMGHero
 const FName UIMGHeroComponent::NAME_BindInputsNow("BindInputsNow");
 const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
 
-FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
+FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 	const FVector& DesiredMovementIntent,
 	const FVector& CurrentVelocity,
 	float DeltaSeconds,
-	const FIMGMovementIntentSettings& Settings)
+	const FIMGMovementIntentSettings& Settings,
+	bool& bOutTriggeredPivot)
 {
+	bOutTriggeredPivot = false;
+
 	const FVector PlanarDesiredIntent(DesiredMovementIntent.X, DesiredMovementIntent.Y, 0.0f);
 	const FVector ClampedDesiredIntent = PlanarDesiredIntent.GetClampedToMaxSize(1.0f);
 	const float DesiredMagnitude = ClampedDesiredIntent.Size2D();
@@ -67,7 +70,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 	if (TurningStrength >= 1.0f)
 	{
 		SmoothedAngleRadians = DesiredAngleRadians;
-		SharpTurnBypassRetriggerTimeRemaining = 0.0f;
+		PivotTimer = 0.0f;
 		return ClampedDesiredIntent;
 	}
 
@@ -79,8 +82,9 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::Update(
 		return ClampedDesiredIntent;
 	}
 
-	if (TryTriggerSharpTurnBypass(DesiredAngleRadians, DeltaSeconds, Settings))
+	if (EvaluatePivot(DesiredAngleRadians, DeltaSeconds, Settings))
 	{
+		bOutTriggeredPivot = true;
 		SmoothedAngleRadians = DesiredAngleRadians;
 		return ClampedDesiredIntent;
 	}
@@ -115,23 +119,23 @@ void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 	bIsInitialized = true;
 }
 
-bool UIMGHeroComponent::FMovementIntentProcessor::TryTriggerSharpTurnBypass(
+bool UIMGHeroComponent::FMovementIntentProcessor::EvaluatePivot(
 	float DesiredAngleRadians,
 	float DeltaSeconds,
 	const FIMGMovementIntentSettings& Settings)
 {
-	if (Settings.SharpTurnAngleThreshold < 0.0f)
+	if (Settings.PivotAngleThreshold < 0.0f)
 	{
-		SharpTurnBypassRetriggerTimeRemaining = 0.0f;
+		PivotTimer = 0.0f;
 		return false;
 	}
 
 	// A bypass is a one-shot response. While its retrigger time is active,
 	// subsequent direction changes deliberately use the normal smoothing path.
-	SharpTurnBypassRetriggerTimeRemaining = FMath::Max(
-		SharpTurnBypassRetriggerTimeRemaining - DeltaSeconds,
+	PivotTimer = FMath::Max(
+		PivotTimer - DeltaSeconds,
 		0.0f);
-	if (SharpTurnBypassRetriggerTimeRemaining > 0.0f)
+	if (PivotTimer > 0.0f)
 	{
 		return false;
 	}
@@ -141,13 +145,13 @@ bool UIMGHeroComponent::FMovementIntentProcessor::TryTriggerSharpTurnBypass(
 	// actual velocity is used only when that state is initialized.
 	const float DirectionChangeDegrees = FMath::Abs(FMath::RadiansToDegrees(
 		FMath::FindDeltaAngleRadians(SmoothedAngleRadians, DesiredAngleRadians)));
-	if (DirectionChangeDegrees <= Settings.SharpTurnAngleThreshold)
+	if (DirectionChangeDegrees <= Settings.PivotAngleThreshold)
 	{
 		return false;
 	}
 
-	SharpTurnBypassRetriggerTimeRemaining = FMath::Max(
-		Settings.SharpTurnBypassRetriggerTime,
+	PivotTimer = FMath::Max(
+		Settings.PivotRetriggerInterval,
 		0.0f);
 	return true;
 }
@@ -170,7 +174,7 @@ float UIMGHeroComponent::FMovementIntentProcessor::CalculateFrameIndependentAlph
 void UIMGHeroComponent::FMovementIntentProcessor::Reset()
 {
 	SmoothedAngleRadians = 0.0f;
-	SharpTurnBypassRetriggerTimeRemaining = 0.0f;
+	PivotTimer = 0.0f;
 	bIsInitialized = false;
 }
 
@@ -191,20 +195,32 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 
 	const FVector DesiredMovementIntent = WorldDirection * ScaleValue;
 	const UWorld* World = GetWorld();
-	const FVector MovementIntent = MovementIntentProcessor.Update(
+	bool bTriggeredPivot = false;
+	const FVector MovementIntent = MovementIntentProcessor.UpdateMovementIntent(
 		DesiredMovementIntent,
 		Pawn->GetVelocity(),
 		World ? World->GetDeltaSeconds() : 0.0f,
-		MovementIntentSettings);
+		MovementIntentSettings,
+		bTriggeredPivot);
+
+	if (bTriggeredPivot && MovementIntentSettings.PivotGameplayEventTag.IsValid())
+	{
+		const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn);
+		UIMGAbilitySystemComponent* IMGASC = PawnExtComp ? PawnExtComp->GetIMGAbilitySystemComponent() : nullptr;
+		if (IMGASC)
+		{
+			FGameplayEventData Payload;
+			Payload.EventTag = MovementIntentSettings.PivotGameplayEventTag;
+			Payload.Instigator = Pawn;
+			Payload.Target = Pawn;
+			IMGASC->HandleGameplayEvent(Payload.EventTag, &Payload);
+		}
+	}
 
 	if (!MovementIntent.IsNearlyZero())
 	{
 		Pawn->AddMovementInput(MovementIntent, 1.0f, bForce);
 	}
-
-	const FVector DebugOrigin = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
-	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + DesiredMovementIntent * 100.0f, FColor::Green, TEXT("Desired Movement Intent"));
-	UE_VLOG_ARROW(Pawn, LogIMG, VeryVerbose, DebugOrigin, DebugOrigin + MovementIntent * 100.0f, FColor::Cyan, TEXT("Processed Movement Intent"));
 }
 
 void UIMGHeroComponent::ResetMovementIntent()
