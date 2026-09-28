@@ -154,7 +154,7 @@ protected:
 	{
 		FVector UpdateMovementIntent(
 			const FVector& DesiredMovementIntent,
-			const FVector& CurrentVelocity,
+			const FVector& ActorFacing,
 			float DeltaSeconds,
 			const FIMGMovementIntentSettings& Settings,
 			bool& bOutTriggeredPivot);
@@ -163,7 +163,7 @@ protected:
 	private:
 		void Initialize(
 			const FVector& DesiredDirection,
-			const FVector& CurrentVelocity);
+			const FVector& ActorFacing);
 		bool EvaluatePivot(
 			float DesiredAngleRadians,
 			float DeltaSeconds,

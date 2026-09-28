@@ -40,7 +40,7 @@ const FName UIMGHeroComponent::NAME_ActorFeatureName("IMG");
 
 FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 	const FVector& DesiredMovementIntent,
-	const FVector& CurrentVelocity,
+	const FVector& ActorFacing,
 	float DeltaSeconds,
 	const FIMGMovementIntentSettings& Settings,
 	bool& bOutTriggeredPivot)
@@ -62,16 +62,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 
 	if (!bIsInitialized)
 	{
-		Initialize(DesiredDirection, CurrentVelocity);
-	}
-
-	// Full strength is the unsmoothed path. Keep the intermediate direction in
-	// sync and discard bypass state that cannot affect the result.
-	if (TurningStrength >= 1.0f)
-	{
-		SmoothedAngleRadians = DesiredAngleRadians;
-		PivotTimer = 0.0f;
-		return ClampedDesiredIntent;
+		Initialize(DesiredDirection, ActorFacing);
 	}
 
 	// There is no meaningful time interval over which to smooth or advance the
@@ -82,9 +73,17 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 		return ClampedDesiredIntent;
 	}
 
+	// Evaluate pivots before the unsmoothed path so startup pivots still emit
+	// their configured gameplay event at full turning strength.
 	if (EvaluatePivot(DesiredAngleRadians, DeltaSeconds, Settings))
 	{
 		bOutTriggeredPivot = true;
+		SmoothedAngleRadians = DesiredAngleRadians;
+		return ClampedDesiredIntent;
+	}
+
+	if (TurningStrength >= 1.0f)
+	{
 		SmoothedAngleRadians = DesiredAngleRadians;
 		return ClampedDesiredIntent;
 	}
@@ -102,17 +101,14 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 
 void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
 	const FVector& DesiredDirection,
-	const FVector& CurrentVelocity)
+	const FVector& ActorFacing)
 {
-	// Match Mover's smooth walking state: initialize from actual movement, not
-	// from input history or actor facing. At rest there is no movement direction,
-	// so the requested direction establishes the new intent without artificial lag.
-	const FVector CurrentMovementDirection = FVector(
-		CurrentVelocity.X,
-		CurrentVelocity.Y,
+	const FVector ActorFacing2D = FVector(
+		ActorFacing.X,
+		ActorFacing.Y,
 		0.0f).GetSafeNormal();
-	const FVector& InitialDirection = !CurrentMovementDirection.IsNearlyZero()
-		? CurrentMovementDirection
+	const FVector& InitialDirection = !ActorFacing2D.IsNearlyZero()
+		? ActorFacing2D
 		: DesiredDirection;
 
 	SmoothedAngleRadians = FMath::Atan2(InitialDirection.Y, InitialDirection.X);
@@ -198,7 +194,7 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 	bool bTriggeredPivot = false;
 	const FVector MovementIntent = MovementIntentProcessor.UpdateMovementIntent(
 		DesiredMovementIntent,
-		Pawn->GetVelocity(),
+		Pawn->GetActorForwardVector(),
 		World ? World->GetDeltaSeconds() : 0.0f,
 		MovementIntentSettings,
 		bTriggeredPivot);
