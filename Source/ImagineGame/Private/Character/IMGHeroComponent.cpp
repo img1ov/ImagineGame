@@ -21,7 +21,6 @@
 #include "PlayerMappableInputConfig.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 #include "InputMappingContext.h"
-#include "VisualLogger/VisualLogger.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGHeroComponent)
 
@@ -33,6 +32,14 @@ namespace IMGHero
 {
 	static const float LookYawRate = 165.0f;
 	static const float LookPitchRate = 165.0f;
+
+	static FVector MakePlanarMovementIntent(float AngleRadians, float Magnitude)
+	{
+		float SinAngle = 0.0f;
+		float CosAngle = 1.0f;
+		FMath::SinCos(&SinAngle, &CosAngle, AngleRadians);
+		return FVector(CosAngle * Magnitude, SinAngle * Magnitude, 0.0f);
+	}
 };
 
 const FName UIMGHeroComponent::NAME_BindInputsNow("BindInputsNow");
@@ -65,12 +72,11 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 		Initialize(DesiredDirection, ActorFacing);
 	}
 
-	// There is no meaningful time interval over which to smooth or advance the
-	// retrigger timer, but the intermediate direction must still remain current.
+	// A zero time step must not advance either the intermediate heading or the
+	// pivot cooldown. Preserve the current heading while retaining input magnitude.
 	if (DeltaSeconds <= 0.0f)
 	{
-		SmoothedAngleRadians = DesiredAngleRadians;
-		return ClampedDesiredIntent;
+		return IMGHero::MakePlanarMovementIntent(SmoothedAngleRadians, DesiredMagnitude);
 	}
 
 	// Evaluate pivots before the unsmoothed path so startup pivots still emit
@@ -93,10 +99,7 @@ FVector UIMGHeroComponent::FMovementIntentProcessor::UpdateMovementIntent(
 		SmoothedAngleRadians,
 		DesiredAngleRadians) * TurnAlpha;
 
-	return FVector(
-		FMath::Cos(SmoothedAngleRadians) * DesiredMagnitude,
-		FMath::Sin(SmoothedAngleRadians) * DesiredMagnitude,
-		0.0f);
+	return IMGHero::MakePlanarMovementIntent(SmoothedAngleRadians, DesiredMagnitude);
 }
 
 void UIMGHeroComponent::FMovementIntentProcessor::Initialize(
@@ -136,9 +139,8 @@ bool UIMGHeroComponent::FMovementIntentProcessor::EvaluatePivot(
 		return false;
 	}
 
-	// Mover turns its persistent IntermediateVelocity toward DesiredVelocity.
-	// SmoothedAngleRadians is this processor's equivalent intermediate state;
-	// actual velocity is used only when that state is initialized.
+	// SmoothedAngleRadians is the processor's persistent intermediate heading.
+	// It is seeded from actor facing so a startup redirection can trigger a pivot.
 	const float DirectionChangeDegrees = FMath::Abs(FMath::RadiansToDegrees(
 		FMath::FindDeltaAngleRadians(SmoothedAngleRadians, DesiredAngleRadians)));
 	if (DirectionChangeDegrees <= Settings.PivotAngleThreshold)
