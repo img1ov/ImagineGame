@@ -11,6 +11,7 @@ public class ImagineEditor : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"GameplayTags",
 			"EditorFramework",
 			"UnrealEd",
 			"PhysicsCore",
