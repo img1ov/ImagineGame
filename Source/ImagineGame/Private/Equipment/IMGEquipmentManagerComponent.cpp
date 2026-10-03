@@ -64,7 +64,7 @@ UIMGAbilitySystemComponent* FIMGEquipmentList::GetAbilitySystemComponent() const
 	return Cast<UIMGAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(OwningActor));
 }
 
-UIMGEquipmentInstance* FIMGEquipmentList::AddEntry(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition)
+UIMGEquipmentInstance* FIMGEquipmentList::AddEntry(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition, UObject* Instigator)
 {
 	UIMGEquipmentInstance* Result = nullptr;
 
@@ -84,12 +84,16 @@ UIMGEquipmentInstance* FIMGEquipmentList::AddEntry(TSubclassOf<UIMGEquipmentDefi
 	NewEntry.EquipmentDefinition = EquipmentDefinition;
 	NewEntry.Instance = NewObject<UIMGEquipmentInstance>(OwnerComponent->GetOwner(), InstanceType);  //@TODO: Using the actor instead of component as the outer due to UE-127172
 	Result = NewEntry.Instance;
+	Result->SetInstigator(Instigator);
 
 	if (UIMGAbilitySystemComponent* ASC = GetAbilitySystemComponent())
 	{
 		for (const TObjectPtr<const UIMGAbilitySet>& AbilitySet : EquipmentCDO->AbilitySetsToGrant)
 		{
-			AbilitySet->GiveToAbilitySystem(ASC, /*inout*/ &NewEntry.GrantedHandles, Result);
+			if (AbilitySet)
+			{
+				AbilitySet->GiveToAbilitySystem(ASC, /*inout*/ &NewEntry.GrantedHandles, Result);
+			}
 		}
 	}
 	else
@@ -144,12 +148,12 @@ void UIMGEquipmentManagerComponent::GetLifetimeReplicatedProps(TArray< FLifetime
 	DOREPLIFETIME(ThisClass, EquipmentList);
 }
 
-UIMGEquipmentInstance* UIMGEquipmentManagerComponent::EquipItem(TSubclassOf<UIMGEquipmentDefinition> EquipmentClass)
+UIMGEquipmentInstance* UIMGEquipmentManagerComponent::EquipItem(TSubclassOf<UIMGEquipmentDefinition> EquipmentClass, UObject* Instigator)
 {
 	UIMGEquipmentInstance* Result = nullptr;
 	if (EquipmentClass != nullptr)
 	{
-		Result = EquipmentList.AddEntry(EquipmentClass);
+		Result = EquipmentList.AddEntry(EquipmentClass, Instigator);
 		if (Result != nullptr)
 		{
 			Result->OnEquipped();

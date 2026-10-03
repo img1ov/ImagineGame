@@ -1,11 +1,16 @@
 #include "Weapons/IMGWeaponSpawner.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Equipment/IMGPickupDefinition.h"
+#include "Equipment/IMGQuickBarComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Controller.h"
+#include "Inventory/IMGInventoryItemInstance.h"
+#include "Inventory/IMGInventoryManagerComponent.h"
 #include "Inventory/InventoryFragment_SetStats.h"
 #include "Kismet/GameplayStatics.h"
 #include "IMGLogChannels.h"
@@ -118,7 +123,7 @@ void AIMGWeaponSpawner::CheckForExistingOverlaps()
 	}
 }
 
-void AIMGWeaponSpawner::AttemptPickUpWeapon_Implementation(APawn* Pawn)
+void AIMGWeaponSpawner::AttemptPickUpWeapon(APawn* Pawn)
 {
 	if (GetLocalRole() == ROLE_Authority && bIsWeaponAvailable && UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Pawn))
 	{
@@ -136,6 +141,76 @@ void AIMGWeaponSpawner::AttemptPickUpWeapon_Implementation(APawn* Pawn)
 			}
 		}		
 	}
+}
+
+bool AIMGWeaponSpawner::GiveWeapon(TSubclassOf<UIMGInventoryItemDefinition> WeaponItemClass, APawn* ReceivingPawn)
+{
+	if (!HasAuthority() || !WeaponItemClass || !ReceivingPawn)
+	{
+		return false;
+	}
+
+	AController* Controller = ReceivingPawn->GetController();
+	UIMGInventoryManagerComponent* Inventory = Controller ? Controller->FindComponentByClass<UIMGInventoryManagerComponent>() : nullptr;
+	UIMGQuickBarComponent* QuickBar = Controller ? Controller->FindComponentByClass<UIMGQuickBarComponent>() : nullptr;
+	if (!Inventory || !QuickBar)
+	{
+		return false;
+	}
+
+	if (WeaponDefinition && WeaponDefinition->bGiveAmmoForDuplicateWeapons)
+	{
+		if (UIMGInventoryItemInstance* ExistingItem = Inventory->FindFirstItemStackByDefinition(WeaponItemClass))
+		{
+			const FGameplayTag AmmoTag = WeaponDefinition->SpareAmmoTag;
+			if (!AmmoTag.IsValid())
+			{
+				return false;
+			}
+
+			const int32 DesiredAmmo = GetDefaultStatFromItemDef(WeaponItemClass, AmmoTag);
+			const int32 AmmoToAdd = DesiredAmmo - ExistingItem->GetStatTagStackCount(AmmoTag);
+			if (AmmoToAdd <= 0)
+			{
+				return false;
+			}
+
+			ExistingItem->AddStatTagStack(AmmoTag, AmmoToAdd);
+			return true;
+		}
+	}
+
+	if (!Inventory->CanAddItemDefinition(WeaponItemClass, 1))
+	{
+		return false;
+	}
+
+	const int32 SlotIndex = QuickBar->GetNextFreeItemSlot();
+	if (SlotIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	UIMGInventoryItemInstance* Item = Inventory->AddItemDefinition(WeaponItemClass, 1);
+	if (!Item)
+	{
+		return false;
+	}
+
+	QuickBar->AddItemToSlot(SlotIndex, Item);
+	if (QuickBar->GetSlots()[SlotIndex] != Item)
+	{
+		Inventory->RemoveItemInstance(Item);
+		return false;
+	}
+
+	const FGameplayTag BlockAutoEquipTag = WeaponDefinition ? WeaponDefinition->BlockAutoEquipTag : FGameplayTag();
+	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ReceivingPawn);
+	if (!BlockAutoEquipTag.IsValid() || !AbilitySystem || !AbilitySystem->HasMatchingGameplayTag(BlockAutoEquipTag))
+	{
+		QuickBar->SetActiveSlotIndex(SlotIndex);
+	}
+	return true;
 }
 
 void AIMGWeaponSpawner::StartCoolDown()

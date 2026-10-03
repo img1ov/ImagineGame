@@ -11,6 +11,8 @@ struct FGameplayAbilityTargetDataHandle;
 struct FGameplayEffectContextHandle;
 struct FHitResult;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FIMGWeaponShotConfirmed, bool, bAccepted, bool, bShowHitMarker);
+
 // Hit markers are shown for ranged weapon impacts in the reticle
 // A 'successful' hit marker is shown for impacts that damaged an enemy
 struct FIMGScreenSpaceHitLocation
@@ -35,7 +37,7 @@ struct FIMGServerSideHitMarkerBatch
 };
 
 // Tracks weapon state and recent confirmed hit markers to display on screen
-UCLASS()
+UCLASS(Blueprintable, meta=(BlueprintSpawnableComponent))
 class UIMGWeaponStateComponent : public UControllerComponent
 {
 	GENERATED_BODY()
@@ -43,6 +45,9 @@ class UIMGWeaponStateComponent : public UControllerComponent
 public:
 
 	UIMGWeaponStateComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	UPROPERTY(BlueprintAssignable, Category = "Weapon|Presentation")
+	FIMGWeaponShotConfirmed OnShotConfirmed;
 
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

@@ -7,6 +7,7 @@
 #include "IMGQuickBarComponent.generated.h"
 
 class AActor;
+class APawn;
 class UIMGEquipmentInstance;
 class UIMGEquipmentManagerComponent;
 class UObject;
@@ -16,7 +17,7 @@ struct FFrame;
  * UIMGQuickBarComponent
  */
 UCLASS(Blueprintable, meta=(BlueprintSpawnableComponent))
-class UIMGQuickBarComponent : public UControllerComponent
+class IMAGINEGAME_API UIMGQuickBarComponent : public UControllerComponent
 {
 	GENERATED_BODY()
 
@@ -54,8 +55,14 @@ public:
 	UIMGInventoryItemInstance* RemoveItemFromSlot(int32 SlotIndex);
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	UFUNCTION()
+	void HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn);
+
+	void OnPawnAbilitySystemReady();
+
 	void UnequipItemInSlot();
 	void EquipItemInSlot();
 

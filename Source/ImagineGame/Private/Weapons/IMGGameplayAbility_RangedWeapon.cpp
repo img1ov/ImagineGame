@@ -2,8 +2,8 @@
 #include "Weapons/IMGRangedWeaponInstance.h"
 #include "Physics/IMGCollisionChannels.h"
 #include "IMGLogChannels.h"
+#include "IMGGameplayTags.h"
 #include "AIController.h"
-#include "NativeGameplayTags.h"
 #include "Weapons/IMGWeaponStateComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/IMGGameplayAbilityTargetData_SingleTargetHit.h"
@@ -34,9 +34,6 @@ namespace IMGConsoleVariables
 		TEXT("When bullet hit debug drawing is enabled (see DrawBulletHitDuration), how big should the hit radius be? (in uu)"),
 		ECVF_Default);
 }
-
-// Weapon fire will be blocked/canceled if the player has this tag
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_WeaponFireBlocked, "Ability.Weapon.NoFiring");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -71,7 +68,7 @@ FVector VRandConeNormalDistribution(const FVector& Dir, const float ConeHalfAngl
 UIMGGameplayAbility_RangedWeapon::UIMGGameplayAbility_RangedWeapon(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SourceBlockedTags.AddTag(TAG_WeaponFireBlocked);
+	SourceBlockedTags.AddTag(IMGGameplayTags::Ability_Weapon_NoFiring);
 }
 
 UIMGRangedWeaponInstance* UIMGGameplayAbility_RangedWeapon::GetWeaponInstance() const
@@ -490,35 +487,30 @@ void UIMGGameplayAbility_RangedWeapon::OnTargetDataReadyCallback(const FGameplay
 			MyAbilityComponent->CallServerSetReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey(), LocalTargetDataHandle, ApplicationTag, MyAbilityComponent->ScopedPredictionKey);
 		}
 
-		const bool bIsTargetDataValid = true;
-
-		bool bProjectileWeapon = false;
+		const bool bIsTargetDataValid = !CurrentActorInfo->IsNetAuthority() || ValidateRangedWeaponTargetData(LocalTargetDataHandle);
+		const bool bShotCommitted = bIsTargetDataValid && CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
 
 #if WITH_SERVER_CODE
-		if (!bProjectileWeapon)
+		if (AController* Controller = GetControllerFromActorInfo())
 		{
-			if (AController* Controller = GetControllerFromActorInfo())
+			if (Controller->GetLocalRole() == ROLE_Authority)
 			{
-				if (Controller->GetLocalRole() == ROLE_Authority)
+				if (UIMGWeaponStateComponent* WeaponStateComponent = Controller->FindComponentByClass<UIMGWeaponStateComponent>())
 				{
-					// Confirm hit markers
-					if (UIMGWeaponStateComponent* WeaponStateComponent = Controller->FindComponentByClass<UIMGWeaponStateComponent>())
+					TArray<uint8> HitReplaces;
+					for (uint8 i = 0; (i < LocalTargetDataHandle.Num()) && (i < 255); ++i)
 					{
-						TArray<uint8> HitReplaces;
-						for (uint8 i = 0; (i < LocalTargetDataHandle.Num()) && (i < 255); ++i)
+						FGameplayAbilityTargetData* Data = LocalTargetDataHandle.Get(i);
+						if (Data && Data->GetScriptStruct() && Data->GetScriptStruct()->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
 						{
-							if (FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<FGameplayAbilityTargetData_SingleTargetHit*>(LocalTargetDataHandle.Get(i)))
+							const FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<FGameplayAbilityTargetData_SingleTargetHit*>(Data);
+							if (SingleTargetHit->bHitReplaced)
 							{
-								if (SingleTargetHit->bHitReplaced)
-								{
-									HitReplaces.Add(i);
-								}
+								HitReplaces.Add(i);
 							}
 						}
-
-						WeaponStateComponent->ClientConfirmTargetData(LocalTargetDataHandle.UniqueId, bIsTargetDataValid, HitReplaces);
 					}
-
+					WeaponStateComponent->ClientConfirmTargetData(LocalTargetDataHandle.UniqueId, bShotCommitted, HitReplaces);
 				}
 			}
 		}
@@ -526,15 +518,14 @@ void UIMGGameplayAbility_RangedWeapon::OnTargetDataReadyCallback(const FGameplay
 
 
 		// See if we still have ammo
-		if (bIsTargetDataValid && CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
+		if (bShotCommitted)
 		{
 			// We fired the weapon, add spread
 			UIMGRangedWeaponInstance* WeaponData = GetWeaponInstance();
 			check(WeaponData);
 			WeaponData->AddSpread();
 
-			// Let the blueprint do stuff like apply effects to the targets
-			OnRangedWeaponTargetDataReady(LocalTargetDataHandle);
+			HandleRangedWeaponTargetData(LocalTargetDataHandle);
 		}
 		else
 		{
@@ -545,6 +536,17 @@ void UIMGGameplayAbility_RangedWeapon::OnTargetDataReadyCallback(const FGameplay
 
 	// We've processed the data
 	MyAbilityComponent->ConsumeClientReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
+}
+
+bool UIMGGameplayAbility_RangedWeapon::ValidateRangedWeaponTargetData(FGameplayAbilityTargetDataHandle& TargetData) const
+{
+	return true;
+}
+
+void UIMGGameplayAbility_RangedWeapon::HandleRangedWeaponTargetData(const FGameplayAbilityTargetDataHandle& TargetData)
+{
+	UE_LOG(LogIMGAbilitySystem, Error, TEXT("Ranged weapon ability %s has no native target-data handler."), *GetPathName());
+	K2_EndAbility();
 }
 
 void UIMGGameplayAbility_RangedWeapon::StartRangedWeaponTargeting()

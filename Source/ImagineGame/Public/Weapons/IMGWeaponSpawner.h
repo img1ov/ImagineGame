@@ -83,10 +83,9 @@ public:
 	//Check for pawns standing on pad when the weapon is spawned. 
 	UE_API void CheckForExistingOverlaps();
 
-	UFUNCTION(BlueprintNativeEvent)
 	UE_API void AttemptPickUpWeapon(APawn* Pawn);
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|WeaponPickup")
+	UFUNCTION(BlueprintCallable, Category = "IMG|WeaponPickup")
 	UE_API bool GiveWeapon(TSubclassOf<UIMGInventoryItemDefinition> WeaponItemClass, APawn* ReceivingPawn);
 
 	UE_API void StartCoolDown();

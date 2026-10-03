@@ -75,7 +75,7 @@ public:
 		return FFastArraySerializer::FastArrayDeltaSerialize<FIMGAppliedEquipmentEntry, FIMGEquipmentList>(Entries, DeltaParms, *this);
 	}
 
-	UIMGEquipmentInstance* AddEntry(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition);
+	UIMGEquipmentInstance* AddEntry(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition, UObject* Instigator);
 	void RemoveEntry(UIMGEquipmentInstance* Instance);
 
 private:
@@ -112,7 +112,7 @@ public:
 	UE_API UIMGEquipmentManagerComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
-	UE_API UIMGEquipmentInstance* EquipItem(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition);
+	UE_API UIMGEquipmentInstance* EquipItem(TSubclassOf<UIMGEquipmentDefinition> EquipmentDefinition, UObject* Instigator);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	UE_API void UnequipItem(UIMGEquipmentInstance* ItemInstance);

@@ -42,7 +42,7 @@ enum class EIMGAbilityTargetingSource : uint8
  * An ability granted by and associated with a ranged weapon instance
  */
 UCLASS()
-class UIMGGameplayAbility_RangedWeapon : public UIMGGameplayAbility_FromEquipment
+class IMAGINEGAME_API UIMGGameplayAbility_RangedWeapon : public UIMGGameplayAbility_FromEquipment
 {
 	GENERATED_BODY()
 
@@ -108,13 +108,11 @@ protected:
 	FTransform GetTargetingTransform(APawn* SourcePawn, EIMGAbilityTargetingSource Source) const;
 
 	void OnTargetDataReadyCallback(const FGameplayAbilityTargetDataHandle& InData, FGameplayTag ApplicationTag);
+	virtual bool ValidateRangedWeaponTargetData(FGameplayAbilityTargetDataHandle& TargetData) const;
+	virtual void HandleRangedWeaponTargetData(const FGameplayAbilityTargetDataHandle& TargetData);
 
 	UFUNCTION(BlueprintCallable)
 	void StartRangedWeaponTargeting();
-
-	// Called when target data is ready
-	UFUNCTION(BlueprintImplementableEvent)
-	void OnRangedWeaponTargetDataReady(const FGameplayAbilityTargetDataHandle& TargetData);
 
 private:
 	FDelegateHandle OnTargetDataReadyCallbackDelegateHandle;

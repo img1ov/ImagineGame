@@ -17,7 +17,7 @@ struct FGameplayTag;
  * UIMGInventoryItemInstance
  */
 UCLASS(BlueprintType)
-class UIMGInventoryItemInstance : public UObject
+class IMAGINEGAME_API UIMGInventoryItemInstance : public UObject
 {
 	GENERATED_BODY()
 	
@@ -59,6 +59,11 @@ public:
 	}
 	
 private:
+	UFUNCTION()
+	void OnRep_StatTags();
+
+	void BroadcastStatTagsChanged();
+
 	/** Register all replication fragments */
 	virtual void RegisterReplicationFragments(UE::Net::FFragmentRegistrationContext& Context, UE::Net::EFragmentRegistrationFlags RegistrationFlags) override;
 
@@ -67,7 +72,7 @@ private:
 	friend struct FIMGInventoryList;
 
 private:
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_StatTags)
 	FGameplayTagStackContainer StatTags;
 
 	// The item definition

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Engine/DataAsset.h"
+#include "GameplayTagContainer.h"
 
 #include "IMGPickupDefinition.generated.h"
 
@@ -57,6 +58,14 @@ class UIMGWeaponPickupDefinition : public UIMGPickupDefinition
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Pickup")
+	bool bGiveAmmoForDuplicateWeapons = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Pickup")
+	FGameplayTag SpareAmmoTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Pickup")
+	FGameplayTag BlockAutoEquipTag;
 
 	//Sets the height of the display mesh above the Weapon spawner
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Pickup|Mesh")

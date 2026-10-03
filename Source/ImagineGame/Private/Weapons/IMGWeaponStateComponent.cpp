@@ -1,6 +1,7 @@
 #include "Weapons/IMGWeaponStateComponent.h"
 
 #include "Abilities/GameplayAbilityTargetTypes.h"
+#include "AbilitySystem/IMGGameplayAbilityTargetData_SingleTargetHit.h"
 #include "Equipment/IMGEquipmentManagerComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameplayEffectTypes.h"
@@ -41,13 +42,15 @@ void UIMGWeaponStateComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 
 bool UIMGWeaponStateComponent::ShouldShowHitAsSuccess(const FHitResult& Hit) const
 {
-	AActor* HitActor = Hit.GetActor();
+	FIMGGameplayAbilityTargetData_SingleTargetHit TargetData;
+	TargetData.HitResult = Hit;
+	const TArray<TWeakObjectPtr<AActor>> Actors = TargetData.GetActors();
+	AActor* Target = Actors.Num() == 1 ? Actors[0].Get() : nullptr;
 
 	//@TODO: Don't treat a hit that dealt no damage (due to invulnerability or similar) as a success
-	UWorld* World = GetWorld();
 	if (UIMGTeamSubsystem* TeamSubsystem = UWorld::GetSubsystem<UIMGTeamSubsystem>(GetWorld()))
 	{
-		return TeamSubsystem->CanCauseDamage(GetController<APlayerController>(), Hit.GetActor());
+		return Target && TeamSubsystem->CanCauseDamage(GetController<APlayerController>(), Target);
 	}
 
 	return false;
@@ -68,23 +71,21 @@ void UIMGWeaponStateComponent::ClientConfirmTargetData_Implementation(uint16 Uni
 		FIMGServerSideHitMarkerBatch& Batch = UnconfirmedServerSideHitMarkers[i];
 		if (Batch.UniqueId == UniqueId)
 		{
+			bool bShowHitMarker = false;
 			if (bSuccess && (HitReplaces.Num() != Batch.Markers.Num()))
 			{
-				UWorld* World = GetWorld();
-				bool bFoundShowAsSuccessHit = false;
-
 				int32 HitLocationIndex = 0;
 				for (const FIMGScreenSpaceHitLocation& Entry : Batch.Markers)
 				{
 					if (!HitReplaces.Contains(HitLocationIndex) && Entry.bShowAsSuccess)
 					{
 						// Only need to do this once
-						if (!bFoundShowAsSuccessHit)
+						if (!bShowHitMarker)
 						{
 							ActuallyUpdateDamageInstigatedTime();
 						}
 
-						bFoundShowAsSuccessHit = true;
+						bShowHitMarker = true;
 
 						LastWeaponDamageScreenLocations.Add(Entry);
 					}
@@ -93,6 +94,7 @@ void UIMGWeaponStateComponent::ClientConfirmTargetData_Implementation(uint16 Uni
 			}
 
 			UnconfirmedServerSideHitMarkers.RemoveAt(i);
+			OnShotConfirmed.Broadcast(bSuccess, bShowHitMarker);
 			break;
 		}
 	}
