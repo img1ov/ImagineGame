@@ -11,7 +11,6 @@
 #include "Messages/IMGVerbMessage.h"
 #include "Messages/IMGVerbMessageHelpers.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
-#include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
 #include "System/IMGGameData.h"
 
@@ -148,18 +147,6 @@ void UIMGHealthComponent::HandleOutOfHealth(AActor* DamageInstigator, AActor* Da
 	const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
 {
 #if WITH_SERVER_CODE
-	// Drive death state on the server. Replication will trigger StartDeath/FinishDeath on clients via OnRep_DeathState.
-	if (GetOwnerRole() == ROLE_Authority && DeathState == EIMGDeathState::NotDead)
-	{
-		StartDeath();
-
-		// If no ability/animation finishes death explicitly, finish next tick so we don't get stuck in "dying".
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::FinishDeath);
-		}
-	}
-
 	if (AbilitySystemComponent && DamageEffectSpec)
 	{
 		// Send the "GameplayEvent.Death" gameplay event through the owner's ability system.  This can be used to trigger a death gameplay ability.

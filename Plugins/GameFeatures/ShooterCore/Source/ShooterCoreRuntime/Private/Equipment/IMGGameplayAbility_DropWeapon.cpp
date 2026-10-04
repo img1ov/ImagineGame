@@ -17,21 +17,19 @@ void UIMGGameplayAbility_DropWeapon::ActivateAbility(const FGameplayAbilitySpecH
 	const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+	AController* Controller = GetControllerFromActorInfo();
+	UIMGQuickBarComponent* QuickBar = Controller ? Controller->FindComponentByClass<UIMGQuickBarComponent>() : nullptr;
+	UIMGInventoryManagerComponent* Inventory = Controller ? Controller->FindComponentByClass<UIMGInventoryManagerComponent>() : nullptr;
+	if (!QuickBar || !Inventory || !QuickBar->GetActiveSlotItem() || !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
 		K2_EndAbility();
 		return;
 	}
-	AController* Controller = GetControllerFromActorInfo();
-	UIMGQuickBarComponent* QuickBar = Controller ? Controller->FindComponentByClass<UIMGQuickBarComponent>() : nullptr;
-	UIMGInventoryManagerComponent* Inventory = Controller ? Controller->FindComponentByClass<UIMGInventoryManagerComponent>() : nullptr;
-	if (QuickBar && Inventory && QuickBar->GetActiveSlotItem())
+	if (UIMGInventoryItemInstance* Item = QuickBar->RemoveItemFromSlot(QuickBar->GetActiveSlotIndex()))
 	{
-		if (UIMGInventoryItemInstance* Item = QuickBar->RemoveItemFromSlot(QuickBar->GetActiveSlotIndex()))
-		{
-			Inventory->RemoveItemInstance(Item);
-			QuickBar->CycleActiveSlotForward();
-		}
+		// TODO: Spawn a world pickup that preserves the item's runtime state before removing it.
+		Inventory->RemoveItemInstance(Item);
+		QuickBar->CycleActiveSlotForward();
 	}
 	K2_EndAbility();
 }

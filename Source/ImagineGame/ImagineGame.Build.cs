@@ -50,8 +50,6 @@ public class ImagineGame : ModuleRules
 			"PropertyPath",
 			"UIExtension",
 			"EnhancedInput",
-			"StateTreeModule",
-			"GameplayStateTreeModule",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
