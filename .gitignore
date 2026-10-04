@@ -31,6 +31,9 @@
 compile_commands.json
 .vsconfig
 
+# Local agent instructions
+AGENTS.md
+
 # IDE and editor state
 /.vs/
 /.vscode/
