@@ -5,8 +5,6 @@
 #include "Equipment/IMGEquipmentDefinition.h"
 #include "Equipment/IMGEquipmentInstance.h"
 #include "Equipment/IMGEquipmentManagerComponent.h"
-#include "Character/IMGPawnExtensionComponent.h"
-#include "GameFramework/Controller.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
 #include "Inventory/InventoryFragment_EquippableItem.h"
@@ -44,53 +42,6 @@ void UIMGQuickBarComponent::BeginPlay()
 	}
 
 	Super::BeginPlay();
-	if (AController* Controller = Cast<AController>(GetOwner()))
-	{
-		Controller->OnPossessedPawnChanged.AddDynamic(this, &ThisClass::HandlePossessedPawnChanged);
-		HandlePossessedPawnChanged(nullptr, Controller->GetPawn());
-	}
-}
-
-void UIMGQuickBarComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	if (AController* Controller = Cast<AController>(GetOwner()))
-	{
-		Controller->OnPossessedPawnChanged.RemoveDynamic(this, &ThisClass::HandlePossessedPawnChanged);
-	}
-	Super::EndPlay(EndPlayReason);
-}
-
-void UIMGQuickBarComponent::HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn)
-{
-	if (!GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
-	if (EquippedItem)
-	{
-		if (UIMGEquipmentManagerComponent* OldManager = IsValid(OldPawn) ? OldPawn->FindComponentByClass<UIMGEquipmentManagerComponent>() : nullptr)
-		{
-			if (IsValid(OldManager) && IsValid(EquippedItem))
-			{
-				OldManager->UnequipItem(EquippedItem);
-			}
-		}
-		EquippedItem = nullptr;
-	}
-
-	if (UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(NewPawn))
-	{
-		Extension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::OnPawnAbilitySystemReady));
-	}
-}
-
-void UIMGQuickBarComponent::OnPawnAbilitySystemReady()
-{
-	if (GetOwner()->HasAuthority() && !EquippedItem && Slots.IsValidIndex(ActiveSlotIndex))
-	{
-		EquipItemInSlot();
-	}
 }
 
 void UIMGQuickBarComponent::CycleActiveSlotForward()
@@ -137,14 +88,6 @@ void UIMGQuickBarComponent::EquipItemInSlot()
 {
 	check(Slots.IsValidIndex(ActiveSlotIndex));
 	check(EquippedItem == nullptr);
-	if (AController* Controller = Cast<AController>(GetOwner()))
-	{
-		const UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Controller->GetPawn());
-		if (!Extension || !Extension->GetIMGAbilitySystemComponent())
-		{
-			return;
-		}
-	}
 
 	if (UIMGInventoryItemInstance* SlotItem = Slots[ActiveSlotIndex])
 	{
@@ -155,7 +98,11 @@ void UIMGQuickBarComponent::EquipItemInSlot()
 			{
 				if (UIMGEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
 				{
-					EquippedItem = EquipmentManager->EquipItem(EquipDef, SlotItem);
+					EquippedItem = EquipmentManager->EquipItem(EquipDef);
+					if (EquippedItem != nullptr)
+					{
+						EquippedItem->SetInstigator(SlotItem);
+					}
 				}
 			}
 		}
@@ -240,7 +187,6 @@ UIMGInventoryItemInstance* UIMGQuickBarComponent::RemoveItemFromSlot(int32 SlotI
 	{
 		UnequipItemInSlot();
 		ActiveSlotIndex = -1;
-		OnRep_ActiveSlotIndex();
 	}
 
 	if (Slots.IsValidIndex(SlotIndex))

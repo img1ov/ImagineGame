@@ -1,13 +1,17 @@
 #include "Weapons/IMGGameplayAbility_WeaponFire.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/IMGGameplayAbilityTargetData_SingleTargetHit.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Engine/World.h"
+#include "GameFramework/Controller.h"
 #include "GameplayCueFunctionLibrary.h"
 #include "Inventory/IMGInventoryItemInstance.h"
 #include "Physics/IMGCollisionChannels.h"
 #include "TimerManager.h"
+#include "Weapons/IMGWeaponStateComponent.h"
 #include "Weapons/IMGRangedWeaponInstance.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_WeaponFire)
@@ -39,16 +43,24 @@ bool UIMGGameplayAbility_WeaponFire::CanActivateAbility(const FGameplayAbilitySp
 void UIMGGameplayAbility_WeaponFire::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	UIMGGameplayAbility_FromEquipment::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!ASC || !GetWeaponInstance())
+	{
+		K2_EndAbility();
+		return;
+	}
+	TargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey()).AddUObject(this, &ThisClass::OnTargetDataReady);
+	GetWeaponInstance()->UpdateFiringTime();
 	if (FireMontage)
 	{
 		UAbilityTask_PlayMontageAndWait* MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-			this, NAME_None, FireMontage, FireMontagePlayRate, NAME_None, false);
+			this, NAME_None, FireMontage, FireMontagePlayRate, NAME_None, true);
 		MontageTask->ReadyForActivation();
 	}
 	if (ActorInfo->IsLocallyControlled())
 	{
-		StartRangedWeaponTargeting();
+		StartTargeting();
 	}
 }
 
@@ -59,10 +71,99 @@ void UIMGGameplayAbility_WeaponFire::EndAbility(const FGameplayAbilitySpecHandle
 	{
 		World->GetTimerManager().ClearTimer(FireTimerHandle);
 	}
-	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+	{
+		UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+		ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey()).Remove(TargetDataDelegateHandle);
+		ASC->ConsumeClientReplicatedTargetData(Handle, ActivationInfo.GetActivationPredictionKey());
+	}
+	UIMGGameplayAbility_FromEquipment::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-bool UIMGGameplayAbility_WeaponFire::ValidateRangedWeaponTargetData(FGameplayAbilityTargetDataHandle& TargetData) const
+void UIMGGameplayAbility_WeaponFire::ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+	if (ActorInfo && ActorInfo->IsNetAuthority())
+	{
+		if (UIMGInventoryItemInstance* Item = GetAssociatedItem())
+		{
+			Item->RemoveStatTagStack(MagazineAmmoTag, 1);
+		}
+	}
+}
+
+void UIMGGameplayAbility_WeaponFire::StartTargeting()
+{
+	TArray<FHitResult> FoundHits;
+	PerformLocalTargeting(FoundHits);
+
+	FGameplayAbilityTargetDataHandle TargetData;
+	if (const AController* Controller = GetControllerFromActorInfo())
+	{
+		if (const UIMGWeaponStateComponent* WeaponState = Controller->FindComponentByClass<UIMGWeaponStateComponent>())
+		{
+			TargetData.UniqueId = WeaponState->GetUnconfirmedServerSideHitMarkerCount();
+		}
+	}
+	const int32 CartridgeID = FMath::Rand();
+	for (const FHitResult& Hit : FoundHits)
+	{
+		FIMGGameplayAbilityTargetData_SingleTargetHit* Data = new FIMGGameplayAbilityTargetData_SingleTargetHit();
+		Data->HitResult = Hit;
+		Data->CartridgeID = CartridgeID;
+		TargetData.Add(Data);
+	}
+	if (AController* Controller = GetControllerFromActorInfo())
+	{
+		if (UIMGWeaponStateComponent* WeaponState = Controller->FindComponentByClass<UIMGWeaponStateComponent>())
+		{
+			WeaponState->AddUnconfirmedServerSideHitMarkers(TargetData, FoundHits);
+		}
+	}
+	OnTargetDataReady(TargetData, FGameplayTag());
+}
+
+void UIMGGameplayAbility_WeaponFire::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& TargetData, FGameplayTag ApplicationTag)
+{
+	if (!IsActive() || !CurrentActorInfo || !CurrentActorInfo->AbilitySystemComponent.IsValid())
+	{
+		return;
+	}
+	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
+	FScopedPredictionWindow PredictionWindow(ASC);
+	FGameplayAbilityTargetDataHandle LocalTargetData(TargetData);
+	const bool bValid = ValidateTargetData(LocalTargetData);
+	if (bValid && CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
+	{
+		ASC->CallServerSetReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey(),
+			LocalTargetData, ApplicationTag, ASC->ScopedPredictionKey);
+	}
+
+	const bool bCommitted = bValid && CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
+	if (CurrentActorInfo->IsNetAuthority())
+	{
+		if (AController* Controller = GetControllerFromActorInfo())
+		{
+			if (UIMGWeaponStateComponent* WeaponState = Controller->FindComponentByClass<UIMGWeaponStateComponent>())
+			{
+				WeaponState->ClientConfirmTargetData(LocalTargetData.UniqueId, bCommitted, {});
+			}
+		}
+	}
+	if (bCommitted)
+	{
+		GetWeaponInstance()->AddSpread();
+		HandleTargetData(LocalTargetData);
+	}
+	else
+	{
+		K2_EndAbility();
+	}
+	ASC->ConsumeClientReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
+}
+
+bool UIMGGameplayAbility_WeaponFire::ValidateTargetData(FGameplayAbilityTargetDataHandle& TargetData) const
 {
 	const UIMGRangedWeaponInstance* Weapon = GetWeaponInstance();
 	const AActor* Avatar = GetAvatarActorFromActorInfo();
@@ -89,9 +190,16 @@ bool UIMGGameplayAbility_WeaponFire::ValidateRangedWeaponTargetData(FGameplayAbi
 			return false;
 		}
 
-		const TArray<TWeakObjectPtr<AActor>> ResolvedActors = Data->GetActors();
-		AActor* Target = ResolvedActors.Num() == 1 ? ResolvedActors[0].Get() : nullptr;
-		if (!Target || !UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target))
+		if (!CurrentActorInfo->IsNetAuthority())
+		{
+			continue;
+		}
+		AActor* Target = Hit->GetActor();
+		while (Target && !UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target))
+		{
+			Target = Target->GetAttachParentActor();
+		}
+		if (!Target)
 		{
 			continue;
 		}
@@ -137,18 +245,37 @@ bool UIMGGameplayAbility_WeaponFire::ValidateRangedWeaponTargetData(FGameplayAbi
 	return true;
 }
 
-void UIMGGameplayAbility_WeaponFire::HandleRangedWeaponTargetData(const FGameplayAbilityTargetDataHandle& TargetData)
+void UIMGGameplayAbility_WeaponFire::HandleTargetData(const FGameplayAbilityTargetDataHandle& TargetData)
 {
 	LastShotTime = GetWorld()->GetTimeSeconds();
 
 	if (CurrentActorInfo->IsNetAuthority())
 	{
-		if (UIMGInventoryItemInstance* Item = GetAssociatedItem())
-		{
-			Item->RemoveStatTagStack(MagazineAmmoTag, 1);
-		}
 		ApplyGameplayEffectToTarget(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, TargetData, DamageEffect,
 			GetAbilityLevel(CurrentSpecHandle, CurrentActorInfo));
+		for (int32 Index = 0; Index < TargetData.Num(); ++Index)
+		{
+			const FGameplayAbilityTargetData* Data = TargetData.Get(Index);
+			const FHitResult* Hit = Data ? Data->GetHitResult() : nullptr;
+			AActor* HitActor = Hit ? Hit->GetActor() : nullptr;
+			if (!HitActor || UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(HitActor))
+			{
+				continue;
+			}
+			for (AActor* Parent = HitActor->GetAttachParentActor(); Parent; Parent = Parent->GetAttachParentActor())
+			{
+				if (UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Parent))
+				{
+					FGameplayAbilityTargetDataHandle ParentData;
+					FGameplayAbilityTargetData_ActorArray* ActorData = new FGameplayAbilityTargetData_ActorArray();
+					ActorData->TargetActorArray.Add(Parent);
+					ParentData.Add(ActorData);
+					ApplyGameplayEffectToTarget(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, ParentData, DamageEffect,
+						GetAbilityLevel(CurrentSpecHandle, CurrentActorInfo));
+					break;
+				}
+			}
+		}
 	}
 
 	if (FireCueTag.IsValid())

@@ -59,11 +59,6 @@ public:
 	}
 	
 private:
-	UFUNCTION()
-	void OnRep_StatTags();
-
-	void BroadcastStatTagsChanged();
-
 	/** Register all replication fragments */
 	virtual void RegisterReplicationFragments(UE::Net::FFragmentRegistrationContext& Context, UE::Net::EFragmentRegistrationFlags RegistrationFlags) override;
 
@@ -72,7 +67,7 @@ private:
 	friend struct FIMGInventoryList;
 
 private:
-	UPROPERTY(ReplicatedUsing = OnRep_StatTags)
+	UPROPERTY(Replicated)
 	FGameplayTagStackContainer StatTags;
 
 	// The item definition

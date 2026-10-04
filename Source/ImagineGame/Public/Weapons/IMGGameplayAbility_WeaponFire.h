@@ -8,7 +8,7 @@ class UGameplayEffect;
 class UAnimMontage;
 
 UCLASS()
-class SHOOTERCORERUNTIME_API UIMGGameplayAbility_WeaponFire : public UIMGGameplayAbility_RangedWeapon
+class IMAGINEGAME_API UIMGGameplayAbility_WeaponFire : public UIMGGameplayAbility_RangedWeapon
 {
 	GENERATED_BODY()
 
@@ -23,8 +23,12 @@ protected:
 		const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
-	virtual bool ValidateRangedWeaponTargetData(FGameplayAbilityTargetDataHandle& TargetData) const override;
-	virtual void HandleRangedWeaponTargetData(const FGameplayAbilityTargetDataHandle& TargetData) override;
+	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) const override;
+	bool ValidateTargetData(FGameplayAbilityTargetDataHandle& TargetData) const;
+	void HandleTargetData(const FGameplayAbilityTargetDataHandle& TargetData);
+	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& TargetData, FGameplayTag ApplicationTag);
+	void StartTargeting();
 
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Ammo")
 	FGameplayTag MagazineAmmoTag;
@@ -60,5 +64,6 @@ private:
 	void FinishShot();
 
 	FTimerHandle FireTimerHandle;
+	FDelegateHandle TargetDataDelegateHandle;
 	double LastShotTime = -1.0e10;
 };

@@ -7,7 +7,7 @@
 class UAnimMontage;
 
 UCLASS()
-class SHOOTERCORERUNTIME_API UIMGGameplayAbility_WeaponReload : public UIMGGameplayAbility_FromEquipment
+class IMAGINEGAME_API UIMGGameplayAbility_WeaponReload : public UIMGGameplayAbility_FromEquipment
 {
 	GENERATED_BODY()
 

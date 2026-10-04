@@ -7,7 +7,6 @@
 #include "IMGQuickBarComponent.generated.h"
 
 class AActor;
-class APawn;
 class UIMGEquipmentInstance;
 class UIMGEquipmentManagerComponent;
 class UObject;
@@ -55,14 +54,8 @@ public:
 	UIMGInventoryItemInstance* RemoveItemFromSlot(int32 SlotIndex);
 
 	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
-	UFUNCTION()
-	void HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn);
-
-	void OnPawnAbilitySystemReady();
-
 	void UnequipItemInSlot();
 	void EquipItemInSlot();
 

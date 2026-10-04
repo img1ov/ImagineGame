@@ -31,7 +31,7 @@ public:
 	UFUNCTION(BlueprintPure, Category=Equipment)
 	UObject* GetInstigator() const { return Instigator; }
 
-	void SetInstigator(UObject* InInstigator);
+	void SetInstigator(UObject* InInstigator) { Instigator = InInstigator; }
 
 	UFUNCTION(BlueprintPure, Category=Equipment)
 	APawn* GetPawn() const;
@@ -57,9 +57,6 @@ protected:
 
 	UFUNCTION(BlueprintImplementableEvent, Category=Equipment, meta=(DisplayName="OnUnequipped"))
 	void K2_OnUnequipped();
-
-	UFUNCTION(BlueprintImplementableEvent, Category=Equipment, meta=(DisplayName="OnInstigatorChanged"))
-	void K2_OnInstigatorChanged(UObject* NewInstigator);
 
 private:
 	UFUNCTION()

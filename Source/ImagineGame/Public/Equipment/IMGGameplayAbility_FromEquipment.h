@@ -14,7 +14,7 @@ class UIMGInventoryItemInstance;
  * An ability granted by and associated with an equipment instance
  */
 UCLASS()
-class IMAGINEGAME_API UIMGGameplayAbility_FromEquipment : public UIMGGameplayAbility
+class UIMGGameplayAbility_FromEquipment : public UIMGGameplayAbility
 {
 	GENERATED_BODY()
 

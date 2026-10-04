@@ -21,7 +21,6 @@ struct FIMGGameplayAbilityTargetData_SingleTargetHit : public FGameplayAbilityTa
 	{ }
 
 	virtual void AddTargetDataToContext(FGameplayEffectContextHandle& Context, bool bIncludeActorArray) const override;
-	virtual TArray<TWeakObjectPtr<AActor>> GetActors() const override;
 
 	/** ID to allow the identification of multiple bullets that were part of the same cartridge */
 	UPROPERTY()

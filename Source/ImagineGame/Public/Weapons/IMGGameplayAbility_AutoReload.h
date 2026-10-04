@@ -5,7 +5,7 @@
 #include "IMGGameplayAbility_AutoReload.generated.h"
 
 UCLASS()
-class SHOOTERCORERUNTIME_API UIMGGameplayAbility_AutoReload : public UIMGGameplayAbility_FromEquipment
+class IMAGINEGAME_API UIMGGameplayAbility_AutoReload : public UIMGGameplayAbility_FromEquipment
 {
 	GENERATED_BODY()
 

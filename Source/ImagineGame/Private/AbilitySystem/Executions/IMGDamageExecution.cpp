@@ -76,14 +76,9 @@ void UIMGDamageExecution::Execute_Implementation(const FGameplayEffectCustomExec
 
 	// Handle case of no hit result or hit result not actually returning an actor
 	UAbilitySystemComponent* TargetAbilitySystemComponent = ExecutionParams.GetTargetAbilitySystemComponent();
-	AActor* DamageTarget = TargetAbilitySystemComponent ? TargetAbilitySystemComponent->GetAvatarActor_Direct() : nullptr;
-	if (!DamageTarget)
-	{
-		DamageTarget = HitActor;
-	}
 	if (!HitActor)
 	{
-		HitActor = DamageTarget;
+		HitActor = TargetAbilitySystemComponent ? TargetAbilitySystemComponent->GetAvatarActor_Direct() : nullptr;
 		if (HitActor)
 		{
 			ImpactLocation = HitActor->GetActorLocation();
@@ -92,12 +87,12 @@ void UIMGDamageExecution::Execute_Implementation(const FGameplayEffectCustomExec
 
 	// Apply rules for team damage/self damage/etc...
 	float DamageInteractionAllowedMultiplier = 0.0f;
-	if (DamageTarget)
+	if (HitActor)
 	{
-		UIMGTeamSubsystem* TeamSubsystem = DamageTarget->GetWorld()->GetSubsystem<UIMGTeamSubsystem>();
+		UIMGTeamSubsystem* TeamSubsystem = HitActor->GetWorld()->GetSubsystem<UIMGTeamSubsystem>();
 		if (ensure(TeamSubsystem))
 		{
-			DamageInteractionAllowedMultiplier = TeamSubsystem->CanCauseDamage(EffectCauser, DamageTarget) ? 1.0 : 0.0;
+			DamageInteractionAllowedMultiplier = TeamSubsystem->CanCauseDamage(EffectCauser, HitActor) ? 1.0 : 0.0;
 		}
 	}
 

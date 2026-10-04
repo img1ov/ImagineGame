@@ -8,7 +8,7 @@ class AController;
 class UIMGHealthComponent;
 
 UCLASS()
-class IMAGINEGAME_API UIMGGameplayAbility_AutoRespawn : public UIMGGameplayAbility
+class SHOOTERCORERUNTIME_API UIMGGameplayAbility_AutoRespawn : public UIMGGameplayAbility
 {
 	GENERATED_BODY()
 

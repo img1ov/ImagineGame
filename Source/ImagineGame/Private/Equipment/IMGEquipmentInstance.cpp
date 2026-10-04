@@ -54,15 +54,6 @@ APawn* UIMGEquipmentInstance::GetPawn() const
 	return Cast<APawn>(GetOuter());
 }
 
-void UIMGEquipmentInstance::SetInstigator(UObject* InInstigator)
-{
-	if (Instigator != InInstigator)
-	{
-		Instigator = InInstigator;
-		OnRep_Instigator();
-	}
-}
-
 APawn* UIMGEquipmentInstance::GetTypedPawn(TSubclassOf<APawn> PawnType) const
 {
 	APawn* Result = nullptr;
@@ -121,5 +112,4 @@ void UIMGEquipmentInstance::OnUnequipped()
 
 void UIMGEquipmentInstance::OnRep_Instigator()
 {
-	K2_OnInstigatorChanged(Instigator);
 }

@@ -57,7 +57,7 @@ void UIMGGameplayAbility_WeaponReload::ActivateAbility(const FGameplayAbilitySpe
 		}
 
 		UAbilityTask_PlayMontageAndWait* MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-			this, NAME_None, ReloadMontage, 1.0f, NAME_None, false);
+			this, NAME_None, ReloadMontage, 1.0f, NAME_None, true);
 		MontageTask->OnCompleted.AddDynamic(this, &ThisClass::OnMontageCompleted);
 		MontageTask->OnInterrupted.AddDynamic(this, &ThisClass::OnMontageInterrupted);
 		MontageTask->OnCancelled.AddDynamic(this, &ThisClass::OnMontageInterrupted);
