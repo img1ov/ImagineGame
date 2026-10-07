@@ -35,7 +35,7 @@ bool FSharedRepMovement::FillForCharacter(ACharacter* Character)
 		RepMovement.LinearVelocity = CharacterMovement->Velocity;
 		RepMovementMode = CharacterMovement->PackNetworkMovementMode();
 		bProxyIsJumpForceApplied = Character->GetProxyIsJumpForceApplied() || (Character->JumpForceTimeRemaining > 0.0f);
-		bIsCrouched = Character->IsCrouched();
+		Stance = CastChecked<UIMGCharacterMovementComponent>(CharacterMovement)->GetStance();
 
 		// Timestamp is sent as zero if unused
 		if ((CharacterMovement->NetworkSmoothingMode == ENetworkSmoothingMode::Linear) || CharacterMovement->bNetworkAlwaysReplicateTransformUpdateTimestamp)
@@ -79,7 +79,7 @@ bool FSharedRepMovement::Equals(const FSharedRepMovement& Other, ACharacter* Cha
 		return false;
 	}
 
-	if (bIsCrouched != Other.bIsCrouched)
+	if (Stance != Other.Stance)
 	{
 		return false;
 	}
@@ -93,7 +93,19 @@ bool FSharedRepMovement::NetSerialize(FArchive& Ar, class UPackageMap* Map, bool
 	RepMovement.NetSerialize(Ar, Map, bOutSuccess);
 	Ar << RepMovementMode;
 	Ar << bProxyIsJumpForceApplied;
-	Ar << bIsCrouched;
+	uint8 PackedStance = static_cast<uint8>(Stance);
+	Ar.SerializeBits(&PackedStance, 2);
+	if (Ar.IsLoading())
+	{
+		if (PackedStance > static_cast<uint8>(EIMGStance::Crawl))
+		{
+			bOutSuccess = false;
+		}
+		else
+		{
+			Stance = static_cast<EIMGStance>(PackedStance);
+		}
+	}
 
 	// Timestamp, if non-zero.
 	uint8 bHasTimeStamp = (RepTimeStamp != 0.f);
@@ -248,6 +260,14 @@ bool AIMGCharacter::ChangeStance(EIMGStance NewStance)
 	return Movement && Movement->RequestStance(NewStance);
 }
 
+void AIMGCharacter::Jump()
+{
+	if (ChangeStance(EIMGStance::Stand))
+	{
+		Super::Jump();
+	}
+}
+
 void AIMGCharacter::Crouch(bool bClientSimulation)
 {
 	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
@@ -261,14 +281,6 @@ void AIMGCharacter::UnCrouch(bool bClientSimulation)
 	if (UIMGCharacterMovementComponent* Movement = GetIMGMovementComponent())
 	{
 		Movement->UnCrouch(bClientSimulation);
-	}
-}
-
-void AIMGCharacter::Jump()
-{
-	if (ChangeStance(EIMGStance::Stand))
-	{
-		Super::Jump();
 	}
 }
 
@@ -306,27 +318,6 @@ void AIMGCharacter::ClientCorrectStance_Implementation(EIMGStance AuthoritativeS
 	OnRep_ReplicatedStance();
 }
 
-void AIMGCharacter::OnRep_IsCrouched()
-{
-	// Stance replication owns the capsule and its callbacks, including the crouched state.
-}
-
-void AIMGCharacter::PreInitializeComponents()
-{
-	Super::PreInitializeComponents();
-}
-
-void AIMGCharacter::BeginPlay()
-{
-	Super::BeginPlay();
-
-}
-
-void AIMGCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-}
-
 void AIMGCharacter::Reset()
 {
 	DisableMovementAndCollision();
@@ -348,7 +339,9 @@ void AIMGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 
 	DOREPLIFETIME_CONDITION(ThisClass, ReplicatedAcceleration, COND_SimulatedOnly);
 	DOREPLIFETIME(ThisClass, MyTeamID);
-	DOREPLIFETIME(ThisClass, ReplicatedStance);
+	// A single stance snapshot owns all proxy transitions, including crouch.
+	DISABLE_REPLICATED_PRIVATE_PROPERTY(ACharacter, bIsCrouched);
+	DOREPLIFETIME_CONDITION(ThisClass, ReplicatedStance, COND_SimulatedOnly);
 }
 
 void AIMGCharacter::PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker)
@@ -674,9 +667,18 @@ void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightA
 {
 	BaseEyeHeight = CrawledEyeHeight;
 	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
-	const float MeshZ = DefaultCharacter->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
-	GetMesh()->SetRelativeLocation(FVector(GetMesh()->GetRelativeLocation().X, GetMesh()->GetRelativeLocation().Y, MeshZ));
-	BaseTranslationOffset.Z = MeshZ;
+	if (GetMesh() && DefaultCharacter->GetMesh())
+	{
+		// Match native crouch: a relative-location setter can skip this write when
+		// deferred capsule movement makes the desired mesh world displacement zero.
+		FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+		MeshRelativeLocation.Z = DefaultCharacter->GetMesh()->GetRelativeLocation().Z + HalfHeightAdjust;
+		BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+	}
+	else
+	{
+		BaseTranslationOffset.Z = DefaultCharacter->BaseTranslationOffset.Z + HalfHeightAdjust;
+	}
 	if (UIMGAbilitySystemComponent* ASC = GetIMGAbilitySystemComponent())
 	{
 		ASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crawling, 1);
@@ -685,11 +687,22 @@ void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightA
 
 void AIMGCharacter::OnEndCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
-	BaseEyeHeight = DefaultCharacter->BaseEyeHeight;
-	const float MeshZ = DefaultCharacter->GetMesh()->GetRelativeLocation().Z;
-	GetMesh()->SetRelativeLocation(FVector(GetMesh()->GetRelativeLocation().X, GetMesh()->GetRelativeLocation().Y, MeshZ));
-	BaseTranslationOffset.Z = MeshZ;
+	// Crouch installs its own final offset; do not reset the mesh between callbacks.
+	if (GetStance() == EIMGStance::Stand)
+	{
+		const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
+		BaseEyeHeight = DefaultCharacter->BaseEyeHeight;
+		if (GetMesh() && DefaultCharacter->GetMesh())
+		{
+			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+			MeshRelativeLocation.Z = DefaultCharacter->GetMesh()->GetRelativeLocation().Z;
+			BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+		}
+		else
+		{
+			BaseTranslationOffset.Z = DefaultCharacter->BaseTranslationOffset.Z;
+		}
+	}
 	if (UIMGAbilitySystemComponent* ASC = GetIMGAbilitySystemComponent())
 	{
 		ASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crawling, 0);
@@ -760,11 +773,10 @@ void AIMGCharacter::FastSharedReplication_Implementation(const FSharedRepMovemen
 		// Jump force
 		SetProxyIsJumpForceApplied(SharedRepMovement.bProxyIsJumpForceApplied);
 
-		// Crouch
-		if (IsCrouched() != SharedRepMovement.bIsCrouched)
+		if (ReplicatedStance != SharedRepMovement.Stance)
 		{
-			SetIsCrouched(SharedRepMovement.bIsCrouched);
-			OnRep_IsCrouched();
+			ReplicatedStance = SharedRepMovement.Stance;
+			OnRep_ReplicatedStance();
 		}
 	}
 }

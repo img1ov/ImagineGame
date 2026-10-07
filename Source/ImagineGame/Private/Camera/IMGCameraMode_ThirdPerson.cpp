@@ -1,6 +1,7 @@
 
 #include "Camera/IMGCameraMode_ThirdPerson.h"
 #include "Camera/IMGCameraMode.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Camera/IMGPenetrationAvoidanceFeeler.h"
 #include "Curves/CurveVector.h"
@@ -178,17 +179,33 @@ void UIMGCameraMode_ThirdPerson::UpdatePreventPenetration(float DeltaTime)
 		FVector SafeLocation = PPActor->GetActorLocation();
 		FMath::PointDistToLine(SafeLocation, View.Rotation.Vector(), View.Location, ClosestPointOnLineToCapsuleCenter);
 
-		// Adjust Safe distance height to be same as aim line, but within capsule.
-		float const PushInDistance = PenetrationAvoidanceFeelers[0].Extent + CollisionPushOutDistance;
-		float const MaxHalfHeight = PPActor->GetSimpleCollisionHalfHeight() - PushInDistance;
-		SafeLocation.Z = FMath::Clamp(ClosestPointOnLineToCapsuleCenter.Z, SafeLocation.Z - MaxHalfHeight, SafeLocation.Z + MaxHalfHeight);
-
-		float DistanceSqr;
-		PPActorRootComponent->GetSquaredDistanceToCollision(ClosestPointOnLineToCapsuleCenter, DistanceSqr, SafeLocation);
-		// Push back inside capsule to avoid initial penetration when doing line checks.
-		if (PenetrationAvoidanceFeelers.Num() > 0)
+		const float PushInDistance = FMath::Max(0.0f, PenetrationAvoidanceFeelers[0].Extent + CollisionPushOutDistance);
+		if (const UCapsuleComponent* Capsule = Cast<UCapsuleComponent>(PPActorRootComponent))
 		{
-			SafeLocation += (SafeLocation - ClosestPointOnLineToCapsuleCenter).GetSafeNormal() * PushInDistance;
+			float Radius, HalfHeight;
+			Capsule->GetScaledCapsuleSize(Radius, HalfHeight);
+			const FVector CapsuleCenter = Capsule->GetComponentLocation();
+			const FVector CapsuleAxis = Capsule->GetUpVector();
+			const float SegmentHalfLength = FMath::Max(0.0f, HalfHeight - Radius);
+			const float SafeRadius = FMath::Max(0.0f, Radius - PushInDistance);
+			const double DistanceAlongAxis = FVector::DotProduct(ClosestPointOnLineToCapsuleCenter - CapsuleCenter, CapsuleAxis);
+			const FVector AxisPoint = CapsuleCenter + CapsuleAxis * FMath::Clamp(DistanceAlongAxis, -double(SegmentHalfLength), double(SegmentHalfLength));
+
+			// Project into the inset capsule continuously. Pushing only exterior points
+			// inward produces a jump when the aim line crosses the original surface.
+			SafeLocation = SafeRadius > 0.0f
+				? AxisPoint + (ClosestPointOnLineToCapsuleCenter - AxisPoint).GetClampedToMaxSize(SafeRadius)
+				: CapsuleCenter;
+		}
+		else
+		{
+			const float MaxHalfHeight = FMath::Max(0.0f, PPActor->GetSimpleCollisionHalfHeight() - PushInDistance);
+			SafeLocation.Z = FMath::Clamp(ClosestPointOnLineToCapsuleCenter.Z, SafeLocation.Z - MaxHalfHeight, SafeLocation.Z + MaxHalfHeight);
+			float DistanceSqr;
+			if (PPActorRootComponent->GetSquaredDistanceToCollision(ClosestPointOnLineToCapsuleCenter, DistanceSqr, SafeLocation))
+			{
+				SafeLocation += (SafeLocation - ClosestPointOnLineToCapsuleCenter).GetSafeNormal() * PushInDistance;
+			}
 		}
 
 		// Then aim line to desired camera position

@@ -68,7 +68,7 @@ struct FSharedRepMovement
 	bool bProxyIsJumpForceApplied = false;
 
 	UPROPERTY(Transient)
-	bool bIsCrouched = false;
+	EIMGStance Stance = EIMGStance::Stand;
 };
 
 template<>
@@ -94,8 +94,6 @@ class AIMGCharacter : public AModularCharacter, public IAbilitySystemInterface, 
 	GENERATED_BODY()
 	friend class UIMGCharacterMovementComponent;
 	friend struct FIMGStanceStateMachine;
-	friend struct FIMGCrouchStance;
-	friend struct FIMGCrawlStance;
 
 public:
 
@@ -132,16 +130,13 @@ public:
 	bool IsCrawling() const { return GetStance() == EIMGStance::Crawl; }
 	UFUNCTION(BlueprintPure, Category = "IMG|Stance")
 	bool IsStanding() const { return GetStance() == EIMGStance::Stand; }
+	UE_API virtual void Jump() override;
 	UE_API virtual void Crouch(bool bClientSimulation = false) override;
 	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
-	UE_API virtual void Jump() override;
 	UE_API void Crawl();
 	UE_API void UnCrawl();
 
 	//~AActor interface
-	UE_API virtual void PreInitializeComponents() override;
-	UE_API virtual void BeginPlay() override;
-	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	UE_API virtual void Reset() override;
 	UE_API virtual void Restart() override;
 	UE_API virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -174,7 +169,6 @@ protected:
 
 	UE_API virtual void OnRep_Controller() override;
 	UE_API virtual void OnRep_PlayerState() override;
-	UE_API virtual void OnRep_IsCrouched() override;
 
 	UE_API virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 

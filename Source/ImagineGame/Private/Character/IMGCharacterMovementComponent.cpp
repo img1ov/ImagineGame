@@ -5,119 +5,13 @@
 #include "AbilitySystemGlobals.h"
 #include "Character/IMGCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/ScopedMovementUpdate.h"
+#include "Engine/World.h"
 #include "GameFramework/Character.h"
-#include "Player/IMGPlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCharacterMovementComponent)
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_MovementStopped, "Gameplay.MovementStopped");
-
-/** Immutable behavior for one stance. Instances are static and allocation-free. */
-struct FIMGStanceStateBase
-{
-	virtual ~FIMGStanceStateBase() = default;
-
-	virtual float GetHalfHeight(const UIMGCharacterMovementComponent& Movement) const = 0;
-	virtual bool CanEnter(const UIMGCharacterMovementComponent& Movement) const = 0;
-	virtual float GetMaxSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const { return DefaultSpeed; }
-
-	virtual void OnEnter(UIMGCharacterMovementComponent& Movement) const {}
-	virtual void OnUpdate(UIMGCharacterMovementComponent& Movement, float DeltaSeconds) const {}
-	virtual void OnExit(UIMGCharacterMovementComponent& Movement) const {}
-};
-
-struct FIMGStandStance final : FIMGStanceStateBase
-{
-	virtual float GetHalfHeight(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return Movement.CharacterOwner->GetClass()->GetDefaultObject<ACharacter>()->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
-	}
-
-	virtual bool CanEnter(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return Movement.HasValidData();
-	}
-};
-
-struct FIMGCrouchStance final : FIMGStanceStateBase
-{
-	virtual float GetHalfHeight(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return FMath::Max(Movement.CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), Movement.GetCrouchedHalfHeight());
-	}
-
-	virtual bool CanEnter(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return Movement.IsMovingOnGround() && Movement.CanCrouchInCurrentState();
-	}
-
-	virtual void OnEnter(UIMGCharacterMovementComponent& Movement) const override
-	{
-		AIMGCharacter* Character = CastChecked<AIMGCharacter>(Movement.CharacterOwner.Get());
-		Character->SetIsCrouched(true);
-
-		const float HalfHeightAdjust = Movement.GetStanceHalfHeight(EIMGStance::Stand) - GetHalfHeight(Movement);
-		Character->OnStartCrouch(HalfHeightAdjust, HalfHeightAdjust * Character->GetCapsuleComponent()->GetShapeScale());
-	}
-
-	virtual void OnUpdate(UIMGCharacterMovementComponent& Movement, float DeltaSeconds) const override
-	{
-		if (!CanEnter(Movement))
-		{
-			Movement.RequestStance(EIMGStance::Stand);
-		}
-	}
-
-	virtual void OnExit(UIMGCharacterMovementComponent& Movement) const override
-	{
-		AIMGCharacter* Character = CastChecked<AIMGCharacter>(Movement.CharacterOwner.Get());
-		Character->SetIsCrouched(false);
-
-		const float HalfHeightAdjust = Movement.GetStanceHalfHeight(EIMGStance::Stand) - GetHalfHeight(Movement);
-		Character->OnEndCrouch(HalfHeightAdjust, HalfHeightAdjust * Character->GetCapsuleComponent()->GetShapeScale());
-	}
-};
-
-struct FIMGCrawlStance final : FIMGStanceStateBase
-{
-	virtual float GetHalfHeight(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return FMath::Max(Movement.CharacterOwner->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), Movement.CrawlHalfHeight);
-	}
-
-	virtual bool CanEnter(const UIMGCharacterMovementComponent& Movement) const override
-	{
-		return Movement.bCanCrawl && Movement.HasValidData() && Movement.IsMovingOnGround()
-			&& Movement.UpdatedComponent && !Movement.UpdatedComponent->IsSimulatingPhysics();
-	}
-
-	virtual float GetMaxSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const override
-	{
-		return Movement.IsMovingOnGround() ? FMath::Min(DefaultSpeed, Movement.MaxCrawlSpeed) : DefaultSpeed;
-	}
-
-	virtual void OnEnter(UIMGCharacterMovementComponent& Movement) const override
-	{
-		AIMGCharacter* Character = CastChecked<AIMGCharacter>(Movement.CharacterOwner.Get());
-		const float HalfHeightAdjust = Movement.GetStanceHalfHeight(EIMGStance::Stand) - GetHalfHeight(Movement);
-		Character->OnStartCrawl(HalfHeightAdjust, HalfHeightAdjust * Character->GetCapsuleComponent()->GetShapeScale());
-	}
-
-	virtual void OnUpdate(UIMGCharacterMovementComponent& Movement, float DeltaSeconds) const override
-	{
-		if (!CanEnter(Movement))
-		{
-			Movement.RequestStance(EIMGStance::Stand);
-		}
-	}
-
-	virtual void OnExit(UIMGCharacterMovementComponent& Movement) const override
-	{
-		AIMGCharacter* Character = CastChecked<AIMGCharacter>(Movement.CharacterOwner.Get());
-		const float HalfHeightAdjust = Movement.GetStanceHalfHeight(EIMGStance::Stand) - GetHalfHeight(Movement);
-		Character->OnEndCrawl(HalfHeightAdjust, HalfHeightAdjust * Character->GetCapsuleComponent()->GetShapeScale());
-	}
-};
 
 class FSavedMove_IMG final : public FSavedMove_Character
 {
@@ -133,7 +27,6 @@ public:
 	virtual uint8 GetCompressedFlags() const override
 	{
 		uint8 Flags = FSavedMove_Character::GetCompressedFlags();
-		Flags |= (SavedStance == EIMGStance::Crouch) ? FLAG_Custom_0 : 0;
 		Flags |= (SavedStance == EIMGStance::Crawl) ? FLAG_Custom_1 : 0;
 		return Flags;
 	}
@@ -180,28 +73,11 @@ UIMGCharacterMovementComponent::UIMGCharacterMovementComponent(const FObjectInit
 	MaxWalkSpeedCrouched = 250.0f;
 }
 
-const FIMGStanceStateBase& FIMGStanceStateMachine::ResolveState(EIMGStance Stance)
-{
-	static const FIMGStandStance StandState;
-	static const FIMGCrouchStance CrouchState;
-	static const FIMGCrawlStance CrawlState;
-
-	switch (Stance)
-	{
-	case EIMGStance::Crouch:
-		return CrouchState;
-	case EIMGStance::Crawl:
-		return CrawlState;
-	case EIMGStance::Stand:
-	default:
-		return StandState;
-	}
-}
-
 bool FIMGStanceStateMachine::TransitionTo(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance, bool bClientSimulation)
 {
 	AIMGCharacter* Character = Cast<AIMGCharacter>(Movement.CharacterOwner.Get());
-	if (!Character || static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl))
+	if (!Character || !Movement.HasValidData()
+		|| static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl))
 	{
 		return false;
 	}
@@ -211,89 +87,80 @@ bool FIMGStanceStateMachine::TransitionTo(UIMGCharacterMovementComponent& Moveme
 		return true;
 	}
 
-	const FIMGStanceStateBase& NextState = ResolveState(NewStance);
-	if (!bClientSimulation && !NextState.CanEnter(Movement))
+	if (bTransitionInProgress || (!bClientSimulation && !Movement.CanEnterStance(NewStance)))
 	{
 		return false;
 	}
 
-	// Capsule fitting is validated before either state's lifecycle is changed.
-	if (!Movement.ResizeForStance(NewStance, bClientSimulation))
-	{
-		return false;
-	}
-
-	ResolveState(CurrentStance).OnExit(Movement);
+	// Native crouch callbacks edit the mesh relative transform directly. Defer capsule
+	// propagation until those callbacks finish, including requests outside PerformMovement.
+	FScopedMovementUpdate ScopedMovement(Movement.UpdatedComponent, EScopedUpdate::DeferredUpdates);
+	TGuardValue<bool> TransitionGuard(bTransitionInProgress, true);
+	const EIMGStance PreviousStance = CurrentStance;
 	CurrentStance = NewStance;
-	Character->SetReplicatedStance(NewStance);
-	NextState.OnEnter(Movement);
+	if (!Movement.ApplyStanceTransition(PreviousStance, NewStance, bClientSimulation))
+	{
+		CurrentStance = PreviousStance;
+		return false;
+	}
+
+	Character->SetReplicatedStance(CurrentStance);
 	return true;
 }
 
 bool FIMGStanceStateMachine::RequestTransition(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance)
 {
-	if (static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl))
+	if (!Movement.CharacterOwner || Movement.CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy
+		|| static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl))
 	{
 		return false;
 	}
 
-	if (Movement.CharacterOwner && Movement.CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		return false;
-	}
-
-	if (NewStance != EIMGStance::Stand && (Movement.IsFalling() || Movement.IsFlying()))
-	{
-		return false;
-	}
-
-	DesiredStance = NewStance;
-	if (Movement.HasValidData() && !TransitionTo(Movement, NewStance))
-	{
-		DesiredStance = CurrentStance;
-		return false;
-	}
-
-	return true;
+	Movement.SetDesiredStanceFromMove(NewStance);
+	// Requests from stance callbacks are consumed by the next movement update.
+	return bTransitionInProgress || ReconcileDesiredStance(Movement);
 }
 
 void FIMGStanceStateMachine::SetDesiredStance(EIMGStance NewStance)
 {
-	DesiredStance = static_cast<uint8>(NewStance) <= static_cast<uint8>(EIMGStance::Crawl)
-		? NewStance
-		: EIMGStance::Stand;
+	if (static_cast<uint8>(NewStance) <= static_cast<uint8>(EIMGStance::Crawl))
+	{
+		DesiredStance = NewStance;
+	}
 }
 
 bool FIMGStanceStateMachine::ReconcileDesiredStance(UIMGCharacterMovementComponent& Movement)
 {
-	if (DesiredStance == CurrentStance)
+	const EIMGStance RequestedStance = DesiredStance;
+	if (TransitionTo(Movement, RequestedStance))
 	{
 		return true;
 	}
 
-	if (TransitionTo(Movement, DesiredStance))
+	if (DesiredStance == RequestedStance)
 	{
-		return true;
+		Movement.SetDesiredStanceFromMove(CurrentStance);
 	}
-
-	DesiredStance = CurrentStance;
 	return false;
 }
 
 bool FIMGStanceStateMachine::ApplyReplicatedStance(UIMGCharacterMovementComponent& Movement, EIMGStance ReplicatedStance)
 {
-	SetDesiredStance(ReplicatedStance);
-	return TransitionTo(Movement, DesiredStance, true);
+	if (static_cast<uint8>(ReplicatedStance) > static_cast<uint8>(EIMGStance::Crawl))
+	{
+		return false;
+	}
+
+	Movement.SetDesiredStanceFromMove(ReplicatedStance);
+	return TransitionTo(Movement, ReplicatedStance, true);
 }
 
-void FIMGStanceStateMachine::UpdateCurrentState(UIMGCharacterMovementComponent& Movement, float DeltaSeconds)
+void FIMGStanceStateMachine::UpdateCurrentState(UIMGCharacterMovementComponent& Movement)
 {
-	ResolveState(CurrentStance).OnUpdate(Movement, DeltaSeconds);
-}
-
-float FIMGStanceStateMachine::GetMaxWalkSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const
-{
-	return ResolveState(CurrentStance).GetMaxSpeed(Movement, DefaultSpeed);
+	if (CurrentStance != EIMGStance::Stand && !Movement.CanEnterStance(CurrentStance))
+	{
+		Movement.RequestStance(EIMGStance::Stand);
+	}
 }
 
 EIMGStance UIMGCharacterMovementComponent::GetStance() const
@@ -301,12 +168,101 @@ EIMGStance UIMGCharacterMovementComponent::GetStance() const
 	return StanceMachine.GetCurrentStance();
 }
 
-float UIMGCharacterMovementComponent::GetStanceHalfHeight(EIMGStance Stance) const
+EIMGStance UIMGCharacterMovementComponent::GetDesiredStance() const
 {
-	return FIMGStanceStateMachine::ResolveState(Stance).GetHalfHeight(*this);
+	return StanceMachine.GetDesiredStance();
 }
 
-bool UIMGCharacterMovementComponent::ResizeForStance(EIMGStance NewStance, bool bClientSimulation)
+bool UIMGCharacterMovementComponent::CanEnterStance(EIMGStance NewStance) const
+{
+	if (!HasValidData())
+	{
+		return false;
+	}
+
+	switch (NewStance)
+	{
+	case EIMGStance::Stand:
+		return true;
+	case EIMGStance::Crouch:
+		return CanCrouchInCurrentState();
+	case EIMGStance::Crawl:
+		return bCanCrawl && IsMovingOnGround() && !UpdatedComponent->IsSimulatingPhysics();
+	default:
+		return false;
+	}
+}
+
+float UIMGCharacterMovementComponent::GetStanceHalfHeight(EIMGStance Stance) const
+{
+	const ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
+	const UCapsuleComponent* Capsule = CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy
+		? DefaultCharacter->GetCapsuleComponent() : CharacterOwner->GetCapsuleComponent();
+	switch (Stance)
+	{
+	case EIMGStance::Crouch:
+		return FMath::Max(Capsule->GetUnscaledCapsuleRadius(), GetCrouchedHalfHeight());
+	case EIMGStance::Crawl:
+		return FMath::Max(Capsule->GetUnscaledCapsuleRadius(), CrawlHalfHeight);
+	default:
+		return DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	}
+}
+
+bool UIMGCharacterMovementComponent::ApplyStanceTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation)
+{
+	AIMGCharacter* Character = CastChecked<AIMGCharacter>(CharacterOwner.Get());
+	if (PreviousStance != EIMGStance::Crawl && NewStance != EIMGStance::Crawl)
+	{
+		// Native simulated crouch expects the replicated boolean to be set before its callback.
+		if (bClientSimulation)
+		{
+			Character->SetIsCrouched(NewStance == EIMGStance::Crouch);
+		}
+		if (NewStance == EIMGStance::Crouch)
+		{
+			Super::Crouch(bClientSimulation);
+		}
+		else
+		{
+			Super::UnCrouch(bClientSimulation);
+		}
+		return Character->IsCrouched() == (NewStance == EIMGStance::Crouch);
+	}
+
+	// Crawl crossings resize directly: an intermediate standing capsule may not fit.
+	if (!ResizeForCrawlTransition(PreviousStance, NewStance, bClientSimulation))
+	{
+		return false;
+	}
+
+	const float StandingHalfHeight = GetStanceHalfHeight(EIMGStance::Stand);
+	const float ComponentScale = Character->GetCapsuleComponent()->GetShapeScale();
+	const float PreviousAdjust = StandingHalfHeight - GetStanceHalfHeight(PreviousStance);
+	const float NewAdjust = StandingHalfHeight - GetStanceHalfHeight(NewStance);
+	Character->SetIsCrouched(NewStance == EIMGStance::Crouch);
+
+	if (PreviousStance == EIMGStance::Crouch)
+	{
+		Character->OnEndCrouch(PreviousAdjust, PreviousAdjust * ComponentScale);
+	}
+	else if (PreviousStance == EIMGStance::Crawl)
+	{
+		Character->OnEndCrawl(PreviousAdjust, PreviousAdjust * ComponentScale);
+	}
+
+	if (NewStance == EIMGStance::Crouch)
+	{
+		Character->OnStartCrouch(NewAdjust, NewAdjust * ComponentScale);
+	}
+	else if (NewStance == EIMGStance::Crawl)
+	{
+		Character->OnStartCrawl(NewAdjust, NewAdjust * ComponentScale);
+	}
+	return true;
+}
+
+bool UIMGCharacterMovementComponent::ResizeForCrawlTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation)
 {
 	if (!HasValidData())
 	{
@@ -314,9 +270,14 @@ bool UIMGCharacterMovementComponent::ResizeForStance(EIMGStance NewStance, bool 
 	}
 
 	UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
-	const float OldHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+	const bool bSimulatedProxy = bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy;
+	// Proxy shrink is applied once to the target size, never accumulated across transitions.
+	const float CapsuleRadius = bSimulatedProxy
+		? CharacterOwner->GetClass()->GetDefaultObject<ACharacter>()->GetCapsuleComponent()->GetUnscaledCapsuleRadius()
+		: Capsule->GetUnscaledCapsuleRadius();
+	const float OldHalfHeight = bSimulatedProxy ? GetStanceHalfHeight(PreviousStance) : Capsule->GetUnscaledCapsuleHalfHeight();
 	const float NewHalfHeight = GetStanceHalfHeight(NewStance);
-	if (FMath::IsNearlyEqual(OldHalfHeight, NewHalfHeight))
+	if (!bSimulatedProxy && FMath::IsNearlyEqual(OldHalfHeight, NewHalfHeight))
 	{
 		return true;
 	}
@@ -326,13 +287,13 @@ bool UIMGCharacterMovementComponent::ResizeForStance(EIMGStance NewStance, bool 
 	const FVector ProposedLocation = UpdatedComponent->GetComponentLocation()
 		+ (bCrouchMaintainsBaseLocation ? BaseLocationOffset : FVector::ZeroVector);
 
-	if (!bClientSimulation && NewHalfHeight > OldHalfHeight && !(NewStance == EIMGStance::Stand && (IsFalling() || IsFlying())))
+	if (!bClientSimulation && NewHalfHeight > OldHalfHeight)
 	{
 		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(IMGStanceTrace), false, CharacterOwner.Get());
 		FCollisionResponseParams ResponseParams;
 		InitCollisionParams(QueryParams, ResponseParams);
 
-		const float ScaledRadius = Capsule->GetUnscaledCapsuleRadius() * ComponentScale;
+		const float ScaledRadius = CapsuleRadius * ComponentScale;
 		const float ScaledHalfHeight = FMath::Max(ScaledRadius, NewHalfHeight * ComponentScale - UE_KINDA_SMALL_NUMBER);
 		const FCollisionShape TargetCapsuleShape = FCollisionShape::MakeCapsule(ScaledRadius, ScaledHalfHeight);
 		if (GetWorld()->OverlapBlockingTestByChannel(
@@ -348,26 +309,26 @@ bool UIMGCharacterMovementComponent::ResizeForStance(EIMGStance NewStance, bool 
 	}
 
 	const bool bExpandingCapsule = NewHalfHeight > OldHalfHeight;
-	if (bCrouchMaintainsBaseLocation && bExpandingCapsule)
+	if (!bClientSimulation && bCrouchMaintainsBaseLocation && bExpandingCapsule)
 	{
 		UpdatedComponent->MoveComponent(BaseLocationOffset, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
 	}
 
-	Capsule->SetCapsuleSize(Capsule->GetUnscaledCapsuleRadius(), NewHalfHeight, true);
+	Capsule->SetCapsuleSize(CapsuleRadius, NewHalfHeight, true);
 
-	if (bCrouchMaintainsBaseLocation && !bExpandingCapsule)
+	if (!bClientSimulation && bCrouchMaintainsBaseLocation && !bExpandingCapsule)
 	{
 		UpdatedComponent->MoveComponent(BaseLocationOffset, UpdatedComponent->GetComponentQuat(), false, nullptr, EMoveComponentFlags::MOVECOMP_NoFlags, ETeleportType::TeleportPhysics);
 	}
 
 	bForceNextFloorCheck = true;
-	if (bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
+	if (bSimulatedProxy)
 	{
 		bShrinkProxyCapsule = true;
 	}
 
 	AdjustProxyCapsuleSize();
-	if ((bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
+	if (bSimulatedProxy
 		|| (IsNetMode(NM_ListenServer) && CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy))
 	{
 		if (FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character())
@@ -382,22 +343,29 @@ bool UIMGCharacterMovementComponent::ResizeForStance(EIMGStance NewStance, bool 
 
 bool UIMGCharacterMovementComponent::RequestStance(EIMGStance NewStance)
 {
-	if (StanceMachine.RequestTransition(*this, NewStance))
-	{
-		bWantsToCrouch = false;
-		return true;
-	}
-	return false;
+	return StanceMachine.RequestTransition(*this, NewStance);
 }
 
-void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
+void UIMGCharacterMovementComponent::Crouch(bool bClientSimulation)
 {
-	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
-
-	if ((IsFalling() || IsFlying()) && CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	if (bClientSimulation)
 	{
-		// Airborne stances expand around the current center after the base movement mode
-		// has disabled ground-only base preservation.
+		ApplyReplicatedStance(EIMGStance::Crouch);
+	}
+	else
+	{
+		RequestStance(EIMGStance::Crouch);
+	}
+}
+
+void UIMGCharacterMovementComponent::UnCrouch(bool bClientSimulation)
+{
+	if (bClientSimulation)
+	{
+		ApplyReplicatedStance(EIMGStance::Stand);
+	}
+	else
+	{
 		RequestStance(EIMGStance::Stand);
 	}
 }
@@ -405,15 +373,51 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 void UIMGCharacterMovementComponent::SetDesiredStanceFromMove(EIMGStance NewStance)
 {
 	StanceMachine.SetDesiredStance(NewStance);
-	bWantsToCrouch = false;
+	bWantsToCrouch = GetDesiredStance() == EIMGStance::Crouch;
+}
+
+void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
+{
+	if (!CharacterOwner || CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		return;
+	}
+
+	// Accept native crouch intent (e.g. navigation) through the same state machine.
+	if (bWantsToCrouch != (GetDesiredStance() == EIMGStance::Crouch))
+	{
+		SetDesiredStanceFromMove(bWantsToCrouch ? EIMGStance::Crouch : EIMGStance::Stand);
+	}
+	StanceMachine.UpdateCurrentState(*this);
+	if (!StanceMachine.ReconcileDesiredStance(*this))
+	{
+		if (AIMGCharacter* Character = Cast<AIMGCharacter>(CharacterOwner.Get());
+			Character && Character->HasAuthority() && Character->GetRemoteRole() == ROLE_AutonomousProxy)
+		{
+			Character->ClientCorrectStance(GetStance());
+		}
+	}
+}
+
+void UIMGCharacterMovementComponent::UpdateCharacterStateAfterMovement(float DeltaSeconds)
+{
+	if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		StanceMachine.UpdateCurrentState(*this);
+	}
+}
+
+void UIMGCharacterMovementComponent::ApplyReplicatedStance(EIMGStance ReplicatedStance)
+{
+	StanceMachine.ApplyReplicatedStance(*this, ReplicatedStance);
 }
 
 void UIMGCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 {
 	Super::UpdateFromCompressedFlags(Flags);
-	const uint8 StanceFlags = Flags & (FSavedMove_Character::FLAG_Custom_0 | FSavedMove_Character::FLAG_Custom_1);
-	SetDesiredStanceFromMove(StanceFlags == FSavedMove_Character::FLAG_Custom_0 ? EIMGStance::Crouch
-		: StanceFlags == FSavedMove_Character::FLAG_Custom_1 ? EIMGStance::Crawl : EIMGStance::Stand);
+	SetDesiredStanceFromMove((Flags & FSavedMove_Character::FLAG_Custom_1) != 0
+		? EIMGStance::Crawl
+		: (bWantsToCrouch ? EIMGStance::Crouch : EIMGStance::Stand));
 }
 
 FNetworkPredictionData_Client* UIMGCharacterMovementComponent::GetPredictionData_Client() const
@@ -424,71 +428,6 @@ FNetworkPredictionData_Client* UIMGCharacterMovementComponent::GetPredictionData
 		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_IMG(*this);
 	}
 	return ClientPredictionData;
-}
-
-void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
-{
-	// Base implementation owns bWantsToCrouch. IMG stance requests replace that path.
-	if (!CharacterOwner || CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		return;
-	}
-
-	if (!StanceMachine.ReconcileDesiredStance(*this))
-	{
-		if (AIMGCharacter* Character = Cast<AIMGCharacter>(CharacterOwner.Get()); Character && Character->HasAuthority() && Character->GetRemoteRole() == ROLE_AutonomousProxy)
-		{
-			Character->ClientCorrectStance(Character->GetStance());
-		}
-	}
-}
-
-void UIMGCharacterMovementComponent::UpdateCharacterStateAfterMovement(float DeltaSeconds)
-{
-	// State validation runs once after movement so transitions caused by physics are settled.
-	if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
-	{
-		StanceMachine.UpdateCurrentState(*this, DeltaSeconds);
-	}
-}
-
-void UIMGCharacterMovementComponent::ApplyReplicatedStance(EIMGStance ReplicatedStance)
-{
-	StanceMachine.ApplyReplicatedStance(*this, ReplicatedStance);
-}
-
-void UIMGCharacterMovementComponent::Crouch(bool bClientSimulation)
-{
-	if (bClientSimulation)
-	{
-		StanceMachine.ApplyReplicatedStance(*this, EIMGStance::Crouch);
-	}
-	else
-	{
-		RequestStance(EIMGStance::Crouch);
-	}
-}
-
-void UIMGCharacterMovementComponent::UnCrouch(bool bClientSimulation)
-{
-	if (GetDesiredStance() != EIMGStance::Crouch && GetStance() != EIMGStance::Crouch)
-	{
-		return;
-	}
-
-	if (bClientSimulation)
-	{
-		StanceMachine.ApplyReplicatedStance(*this, EIMGStance::Stand);
-	}
-	else
-	{
-		RequestStance(EIMGStance::Stand);
-	}
-}
-
-void UIMGCharacterMovementComponent::InitializeComponent()
-{
-	Super::InitializeComponent();
 }
 
 void UIMGCharacterMovementComponent::SimulateMovement(float DeltaTime)
@@ -589,7 +528,8 @@ float UIMGCharacterMovementComponent::GetMaxSpeed() const
 		}
 	}
 
-	return StanceMachine.GetMaxWalkSpeed(*this, Super::GetMaxSpeed());
+	const float MaxSpeed = Super::GetMaxSpeed();
+	return IsCrawling() && IsMovingOnGround() ? FMath::Min(MaxSpeed, MaxCrawlSpeed) : MaxSpeed;
 }
 
 void UIMGCharacterMovementComponent::SetStrafeEnabled(const bool bEnable)
@@ -613,6 +553,13 @@ void UIMGCharacterMovementComponent::TickCharacterPose(float DeltaTime)
 		return;
 	}
 	Super::TickCharacterPose(DeltaTime);
+}
+
+bool UIMGCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
+{
+	// Server moves and prediction replay also need to stand before changing movement mode.
+	return RequestStance(EIMGStance::Stand) && GetStance() == EIMGStance::Stand
+		&& Super::DoJump(bReplayingMoves, DeltaTime);
 }
 
 bool UIMGCharacterMovementComponent::CanAttemptJump() const

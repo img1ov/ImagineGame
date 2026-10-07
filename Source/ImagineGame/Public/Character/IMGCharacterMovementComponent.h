@@ -22,7 +22,6 @@ enum class EIMGStance : uint8
 };
 
 class UIMGCharacterMovementComponent;
-struct FIMGStanceStateBase;
 
 /**
  * Lightweight native stance state machine.
@@ -39,16 +38,15 @@ struct IMAGINEGAME_API FIMGStanceStateMachine
 	void SetDesiredStance(EIMGStance NewStance);
 	bool ReconcileDesiredStance(UIMGCharacterMovementComponent& Movement);
 	bool ApplyReplicatedStance(UIMGCharacterMovementComponent& Movement, EIMGStance ReplicatedStance);
-	void UpdateCurrentState(UIMGCharacterMovementComponent& Movement, float DeltaSeconds);
-	float GetMaxWalkSpeed(const UIMGCharacterMovementComponent& Movement, float DefaultSpeed) const;
+	void UpdateCurrentState(UIMGCharacterMovementComponent& Movement);
 
 private:
 	friend class UIMGCharacterMovementComponent;
-	static const FIMGStanceStateBase& ResolveState(EIMGStance Stance);
 	bool TransitionTo(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance, bool bClientSimulation = false);
 
 	EIMGStance CurrentStance = EIMGStance::Stand;
 	EIMGStance DesiredStance = EIMGStance::Stand;
+	bool bTransitionInProgress = false;
 };
 
 /**
@@ -90,36 +88,31 @@ public:
 	
 	UE_API UIMGCharacterMovementComponent(const FObjectInitializer& ObjectInitializer);
 	
-	UE_API virtual void InitializeComponent() override;
-	
 	UE_API virtual bool CanAttemptJump() const override;
+	UE_API virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 	
 	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement")
 	UE_API const FIMGCharacterGroundInfo& GetGroundInfo();
 	
 	UE_API void SetReplicatedAcceleration(const FVector& InAcceleration);
 	
-	UE_API void SetReplicatedRotation(const FRotator& InRotation);
-	
 	//~UMovementComponent interface
 	UE_API virtual void SimulateMovement(float DeltaTime) override;
 	UE_API virtual FRotator GetDeltaRotation(float DeltaTime) const override;
 	
 	UE_API virtual float GetMaxSpeed() const override;
-	UE_API virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+	UE_API virtual void Crouch(bool bClientSimulation = false) override;
+	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
 	UE_API virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	UE_API virtual void UpdateCharacterStateAfterMovement(float DeltaSeconds) override;
 	UE_API virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	UE_API virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 
 	UE_API bool RequestStance(EIMGStance NewStance);
-	UE_API EIMGStance GetDesiredStance() const { return StanceMachine.GetDesiredStance(); }
+	UE_API EIMGStance GetDesiredStance() const;
 	UE_API EIMGStance GetStance() const;
 	UE_API bool IsCrawling() const { return GetStance() == EIMGStance::Crawl; }
 	UE_API void ApplyReplicatedStance(EIMGStance ReplicatedStance);
-
-	UE_API virtual void Crouch(bool bClientSimulation = false) override;
-	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
 
 	/** Whether this movement component can enter the Crawl stance. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Stance")
@@ -143,15 +136,14 @@ public:
 
 protected:
 	FIMGStanceStateMachine StanceMachine;
-	bool ResizeForStance(EIMGStance NewStance, bool bClientSimulation);
+	bool CanEnterStance(EIMGStance NewStance) const;
+	bool ApplyStanceTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation);
+	bool ResizeForCrawlTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation);
 	float GetStanceHalfHeight(EIMGStance Stance) const;
 	void SetDesiredStanceFromMove(EIMGStance NewStance);
 
 	friend class FSavedMove_IMG;
 	friend struct FIMGStanceStateMachine;
-	friend struct FIMGStandStance;
-	friend struct FIMGCrouchStance;
-	friend struct FIMGCrawlStance;
 	
 	// Cached ground info for the character.  Do not access this directly!  It's only updated when accessed via GetGroundInfo().
 	FIMGCharacterGroundInfo CachedGroundInfo;
