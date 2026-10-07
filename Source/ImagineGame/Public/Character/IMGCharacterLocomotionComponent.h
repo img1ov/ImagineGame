@@ -11,6 +11,7 @@ class UCharacterMovementComponent;
 class UGameFrameworkComponentManager;
 class UIMGAbilitySystemComponent;
 class UIMGLocomotionSet;
+class UIMGPawnExtensionComponent;
 struct FActorInitStateChangedParams;
 struct FOnAttributeChangeData;
 
@@ -32,6 +33,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
 	UCharacterMovementComponent* GetCharacterMovementComponent() const { return MovementComponent; }
 
+	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
+	UE_API bool IsLocomotionReady() const;
+
 	UE_API virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected:
@@ -40,7 +44,7 @@ protected:
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	/** Called once for each ASC/LocomotionSet pairing. Read current attribute values here. */
+	/** Called after binding the current ASC/LocomotionSet. Read attributes' CurrentValue here. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Locomotion", meta = (DisplayName = "On Locomotion Ready"))
 	void OnLocomotionReady();
 
@@ -62,6 +66,8 @@ private:
 	void RefreshLocomotionSet();
 	void UnbindLocomotionSet();
 	void HandleGameplayReady(const FActorInitStateChangedParams& Params);
+	void HandleAbilitySystemInitialized();
+	void HandleAbilitySystemUninitialized();
 	void HandleAttributeChanged(const FOnAttributeChangeData& ChangeData);
 
 	UPROPERTY(Transient)
@@ -74,9 +80,11 @@ private:
 	TObjectPtr<UCharacterMovementComponent> MovementComponent;
 
 	TWeakObjectPtr<UGameFrameworkComponentManager> ComponentManager;
+	TWeakObjectPtr<UIMGPawnExtensionComponent> PawnExtensionComponent;
 	FDelegateHandle GameplayReadyHandle;
-	TArray<FGameplayAttribute> BoundAttributes;
+	TMap<FGameplayAttribute, FDelegateHandle> AttributeChangeHandles;
 	bool bGameplayReady = false;
+	bool bRefreshingLocomotionSet = false;
 };
 
 #undef UE_API

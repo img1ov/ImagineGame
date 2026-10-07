@@ -73,6 +73,9 @@ public:
 	/** Register with the OnAbilitySystemUninitialized delegate fired when our pawn is removed as the ability system's avatar actor */
 	UE_API void OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate Delegate);
 
+	/** Removes both ability system lifecycle subscriptions owned by this listener. */
+	UE_API void UnregisterAbilitySystemDelegates(const UObject* Listener);
+
 protected:
 	
 	UE_API virtual void OnRegister() override;

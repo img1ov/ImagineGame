@@ -262,6 +262,15 @@ void UIMGPawnExtensionComponent::OnAbilitySystemUninitialized_Register(FSimpleMu
 	}
 }
 
+void UIMGPawnExtensionComponent::UnregisterAbilitySystemDelegates(const UObject* Listener)
+{
+	if (Listener)
+	{
+		OnAbilitySystemInitialized.RemoveAll(Listener);
+		OnAbilitySystemUninitialized.RemoveAll(Listener);
+	}
+}
+
 void UIMGPawnExtensionComponent::OnRegister()
 {
 	Super::OnRegister();
