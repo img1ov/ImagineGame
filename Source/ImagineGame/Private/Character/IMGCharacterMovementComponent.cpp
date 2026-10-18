@@ -518,6 +518,34 @@ FRotator UIMGCharacterMovementComponent::GetDeltaRotation(float DeltaTime) const
 	return Super::GetDeltaRotation(DeltaTime);
 }
 
+FRotator UIMGCharacterMovementComponent::ComputeOrientToMovementRotation(
+	const FRotator& CurrentRotation,
+	float DeltaTime,
+	FRotator& DeltaRotation) const
+{
+	const bool bHasInputAcceleration = Acceleration.SizeSquared() >= UE_KINDA_SMALL_NUMBER;
+	const bool bHasPathFollowingDirection = bHasRequestedVelocity
+		&& RequestedVelocity.SizeSquared() > UE_KINDA_SMALL_NUMBER;
+	if (!bOrientToVelocityDuringBraking
+		|| bHasInputAcceleration
+		|| bHasPathFollowingDirection
+		|| !IsMovingOnGround()
+		|| HasAnimRootMotion()
+		|| HasRootMotionSources())
+	{
+		return Super::ComputeOrientToMovementRotation(CurrentRotation, DeltaTime, DeltaRotation);
+	}
+
+	const FVector PlanarVelocity = FVector::VectorPlaneProject(Velocity, GetGravityDirection());
+	const float MinSpeed = FMath::Max(BrakingOrientationMinSpeed, UE_KINDA_SMALL_NUMBER);
+	if (PlanarVelocity.SizeSquared() <= FMath::Square(MinSpeed))
+	{
+		return CurrentRotation;
+	}
+
+	return PlanarVelocity.GetSafeNormal().Rotation();
+}
+
 float UIMGCharacterMovementComponent::GetMaxSpeed() const
 {
 	if (const UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner()))

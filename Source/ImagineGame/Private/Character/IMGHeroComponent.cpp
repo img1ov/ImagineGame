@@ -192,6 +192,13 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 	}
 
 	const FVector DesiredMovementIntent = WorldDirection * ScaleValue;
+	if (!ensureMsgf(!DesiredMovementIntent.ContainsNaN(),
+		TEXT("AddMovementIntent received a non-finite movement request for %s."), *GetNameSafe(Pawn)))
+	{
+		ResetMovementIntent();
+		return;
+	}
+
 	const UWorld* World = GetWorld();
 	bool bTriggeredPivot = false;
 	const FVector MovementIntent = MovementIntentProcessor.UpdateMovementIntent(
@@ -405,6 +412,10 @@ void UIMGHeroComponent::OnRegister()
 void UIMGHeroComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	if (APawn* Pawn = GetPawn<APawn>())
+	{
+		Pawn->ReceiveControllerChangedDelegate.AddUniqueDynamic(this, &ThisClass::HandlePawnControllerChanged);
+	}
 
 	BindOnActorInitStateChanged(UIMGPawnExtensionComponent::NAME_ActorFeatureName, FGameplayTag(), false);
 	ensure(TryToChangeInitState(IMGGameplayTags::InitState_Spawned));
@@ -413,10 +424,20 @@ void UIMGHeroComponent::BeginPlay()
 
 void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (APawn* Pawn = GetPawn<APawn>())
+	{
+		Pawn->ReceiveControllerChangedDelegate.RemoveDynamic(this, &ThisClass::HandlePawnControllerChanged);
+	}
+
 	ResetMovementIntent();
 	UnregisterInitStateFeature();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UIMGHeroComponent::HandlePawnControllerChanged(APawn*, AController*, AController*)
+{
+	ResetMovementIntent();
 }
 
 void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputComponent)

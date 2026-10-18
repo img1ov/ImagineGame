@@ -16,6 +16,8 @@ namespace EEndPlayReason { enum Type : int; }
 struct FLoadedMappableConfigPair;
 struct FMappableConfigPair;
 
+class AController;
+class APawn;
 class UGameFrameworkComponentManager;
 class UInputComponent;
 class UIMGCameraMode;
@@ -126,6 +128,9 @@ protected:
 	UE_API virtual void OnRegister() override;
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	UFUNCTION()
+	void HandlePawnControllerChanged(APawn* Pawn, AController* OldController, AController* NewController);
 
 	UE_API void InitializePlayerInput(UInputComponent* PlayerInputComponent);
 
