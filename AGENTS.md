@@ -24,9 +24,9 @@
 
 ### Locomotion 的职责与接口
 - `UIMGLocomotionComponent` 是本机 ASC/AttributeSet 与 CMC 之间的中间件，不承担复制、RPC 或移动预测；移动同步仍由角色/CMC 链路负责。
-- C++ 负责引用、生命周期、属性订阅和 CMC 前置 Tick；组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
+- C++ 负责引用、生命周期、属性订阅和 CMC 前置回调；`UIMGCharacterMovementComponent` 在自身 Tick 入口广播 PreMovementUpdate，`UIMGLocomotionComponent` 注册该委托且自身不可 Tick。组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
 - `UIMGLocomotionSet` 保存七个可复制移动属性。属性初始化和 Buff 由用户通过 GE 配置；组件只读取 `CurrentValue`，不代管 GE 或回写属性。
-- 组件在 GameplayReady 后绑定 ASC/Set，缓存 PawnExtension，接入 ASC 初始化/解除通知；每帧检查 Set 晚到或替换。退出/注销时清理订阅和 Tick 依赖，属性委托按句柄解绑。
+- 组件在 GameplayReady 后绑定 ASC/Set，缓存 PawnExtension，接入 ASC 初始化/解除通知；每次 CMC PreMovementUpdate 在转发蓝图前检查 Set 晚到或替换。退出/注销时清理订阅和 PreMovementUpdate 委托，属性委托按句柄解绑。
 - 蓝图入口：`OnLocomotionReady`、`OnLocomotionAttributeChanged`、`OnLocomotionUnavailable`、`UpdateLocomotionPreCMC`；通过 `GetLocomotionSet`、`GetAbilitySystemComponent`、`GetCharacterMovementComponent` 取引用，通过 `IsLocomotionReady` 查询绑定是否有效。
 - Ready 表示 ASC/Set 已绑定；Unavailable 回调时 ASC/Set 引用已清空，CMC 仍可用于清理。最终移动参数在 PreCMC 回调计算、写入；音频 Foley/OnLanded 和 ABP 接口转发不属于此组件职责。
 

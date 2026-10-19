@@ -36,8 +36,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
 	UE_API bool IsLocomotionReady() const;
 
-	UE_API virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
 protected:
 	UE_API virtual void OnRegister() override;
 	UE_API virtual void OnUnregister() override;
@@ -69,6 +67,7 @@ private:
 	void HandleAbilitySystemInitialized();
 	void HandleAbilitySystemUninitialized();
 	void HandleAttributeChanged(const FOnAttributeChangeData& ChangeData);
+	void HandlePreMovementUpdate(float DeltaTime);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UIMGAbilitySystemComponent> AbilitySystemComponent;
@@ -82,6 +81,7 @@ private:
 	TWeakObjectPtr<UGameFrameworkComponentManager> ComponentManager;
 	TWeakObjectPtr<UIMGPawnExtensionComponent> PawnExtensionComponent;
 	FDelegateHandle GameplayReadyHandle;
+	FDelegateHandle PreMovementUpdateHandle;
 	TMap<FGameplayAttribute, FDelegateHandle> AttributeChangeHandles;
 	bool bGameplayReady = false;
 	bool bRefreshingLocomotionSet = false;

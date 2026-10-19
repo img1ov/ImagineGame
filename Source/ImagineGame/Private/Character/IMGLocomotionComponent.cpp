@@ -2,6 +2,7 @@
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/IMGLocomotionSet.h"
+#include "Character/IMGCharacterMovementComponent.h"
 #include "Character/IMGPawnExtensionComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "GameFramework/Character.h"
@@ -16,9 +17,8 @@
 UIMGLocomotionComponent::UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
-	PrimaryComponentTick.TickGroup = TG_PrePhysics;
+	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 void UIMGLocomotionComponent::OnRegister()
@@ -40,11 +40,15 @@ void UIMGLocomotionComponent::OnUnregister()
 void UIMGLocomotionComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: BeginPlay. Component=[%s] Owner=[%s] TickEnabled=[%s]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()), IsComponentTickEnabled() ? TEXT("true") : TEXT("false"));
 	InitializeConnections();
 }
 
 void UIMGLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: EndPlay. Component=[%s] Owner=[%s] Reason=[%d]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()), static_cast<int32>(EndPlayReason));
 	ClearConnections();
 	Super::EndPlay(EndPlayReason);
 }
@@ -80,13 +84,15 @@ void UIMGLocomotionComponent::InitializeConnections()
 		return;
 	}
 
-	MovementComponent = Character->GetCharacterMovement();
-	if (!MovementComponent)
+	UIMGCharacterMovementComponent* IMGMovementComponent = Cast<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
+	if (!IMGMovementComponent)
 	{
+		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires IMGCharacterMovementComponent."), *GetNameSafe(GetOwner()));
 		return;
 	}
 
-	MovementComponent->AddTickPrerequisiteComponent(this);
+	MovementComponent = IMGMovementComponent;
+	PreMovementUpdateHandle = IMGMovementComponent->OnPreMovementUpdate().AddUObject(this, &ThisClass::HandlePreMovementUpdate);
 	PawnExtensionComponent = PawnExtension;
 	ComponentManager = Manager;
 	GameplayReadyHandle = Manager->RegisterAndCallForActorInitState(
@@ -98,6 +104,8 @@ void UIMGLocomotionComponent::InitializeConnections()
 	bGameplayReady = Manager->HasFeatureReachedInitState(GetOwner(), UIMGPawnExtensionComponent::NAME_ActorFeatureName, IMGGameplayTags::InitState_GameplayReady);
 
 	PawnExtension->OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Connections initialized. Component=[%s] Owner=[%s] GameplayReady=[%s]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()), bGameplayReady ? TEXT("true") : TEXT("false"));
 	// Register last: the immediate callback can run Blueprint code that tears down this component.
 	PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
 }
@@ -125,24 +133,37 @@ void UIMGLocomotionComponent::ClearConnections()
 
 	if (MovementComponent)
 	{
-		MovementComponent->RemoveTickPrerequisiteComponent(this);
+		if (UIMGCharacterMovementComponent* IMGMovementComponent = Cast<UIMGCharacterMovementComponent>(MovementComponent))
+		{
+			if (PreMovementUpdateHandle.IsValid())
+			{
+				IMGMovementComponent->OnPreMovementUpdate().Remove(PreMovementUpdateHandle);
+			}
+		}
 		MovementComponent = nullptr;
 	}
+	PreMovementUpdateHandle.Reset();
 }
 
 void UIMGLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedParams& Params)
 {
 	bGameplayReady = true;
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: GameplayReady. Component=[%s] Owner=[%s]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()));
 	RefreshLocomotionSet();
 }
 
 void UIMGLocomotionComponent::HandleAbilitySystemInitialized()
 {
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: ASC initialized. Component=[%s] Owner=[%s]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()));
 	RefreshLocomotionSet();
 }
 
 void UIMGLocomotionComponent::HandleAbilitySystemUninitialized()
 {
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: ASC uninitialized. Component=[%s] Owner=[%s]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()));
 	UnbindLocomotionSet();
 }
 
@@ -201,12 +222,16 @@ void UIMGLocomotionComponent::RefreshLocomotionSet()
 			AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Attribute).AddUObject(this, &ThisClass::HandleAttributeChanged));
 	}
 
+	UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Ready. Component=[%s] Owner=[%s] ASC=[%s] Set=[%s] Attributes=[%d]"),
+		*GetNameSafe(this), *GetNameSafe(GetOwner()), *GetNameSafe(AbilitySystemComponent), *GetNameSafe(LocomotionSet), BoundAttributes.Num());
 	OnLocomotionReady();
 }
 
 void UIMGLocomotionComponent::UnbindLocomotionSet()
 {
 	const bool bWasBound = LocomotionSet != nullptr;
+	const FString PreviousASCName = GetNameSafe(AbilitySystemComponent);
+	const FString PreviousSetName = GetNameSafe(LocomotionSet);
 	if (IsValid(AbilitySystemComponent))
 	{
 		for (const TPair<FGameplayAttribute, FDelegateHandle>& Binding : AttributeChangeHandles)
@@ -220,6 +245,8 @@ void UIMGLocomotionComponent::UnbindLocomotionSet()
 	AbilitySystemComponent = nullptr;
 	if (bWasBound)
 	{
+		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Unavailable. Component=[%s] Owner=[%s] PreviousASC=[%s] PreviousSet=[%s]"),
+			*GetNameSafe(this), *GetNameSafe(GetOwner()), *PreviousASCName, *PreviousSetName);
 		OnLocomotionUnavailable();
 	}
 }
@@ -232,9 +259,8 @@ void UIMGLocomotionComponent::HandleAttributeChanged(const FOnAttributeChangeDat
 	}
 }
 
-void UIMGLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UIMGLocomotionComponent::HandlePreMovementUpdate(float DeltaTime)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// AttributeSets can be added or replaced after ASC initialization.
 	RefreshLocomotionSet();
 
