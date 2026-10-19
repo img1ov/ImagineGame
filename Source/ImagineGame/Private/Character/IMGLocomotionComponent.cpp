@@ -1,4 +1,4 @@
-#include "Character/IMGCharacterLocomotionComponent.h"
+#include "Character/IMGLocomotionComponent.h"
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/IMGLocomotionSet.h"
@@ -11,9 +11,9 @@
 #include "IMGLogChannels.h"
 #include "Templates/UnrealTemplate.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCharacterLocomotionComponent)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(IMGLocomotionComponent)
 
-UIMGCharacterLocomotionComponent::UIMGCharacterLocomotionComponent(const FObjectInitializer& ObjectInitializer)
+UIMGLocomotionComponent::UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -21,7 +21,7 @@ UIMGCharacterLocomotionComponent::UIMGCharacterLocomotionComponent(const FObject
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
-void UIMGCharacterLocomotionComponent::OnRegister()
+void UIMGLocomotionComponent::OnRegister()
 {
 	Super::OnRegister();
 
@@ -31,25 +31,25 @@ void UIMGCharacterLocomotionComponent::OnRegister()
 	}
 }
 
-void UIMGCharacterLocomotionComponent::OnUnregister()
+void UIMGLocomotionComponent::OnUnregister()
 {
 	ClearConnections();
 	Super::OnUnregister();
 }
 
-void UIMGCharacterLocomotionComponent::BeginPlay()
+void UIMGLocomotionComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	InitializeConnections();
 }
 
-void UIMGCharacterLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void UIMGLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ClearConnections();
 	Super::EndPlay(EndPlayReason);
 }
 
-bool UIMGCharacterLocomotionComponent::IsLocomotionReady() const
+bool UIMGLocomotionComponent::IsLocomotionReady() const
 {
 	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
 	return bGameplayReady && IsValid(MovementComponent) && IsValid(AbilitySystemComponent) && IsValid(LocomotionSet)
@@ -58,7 +58,7 @@ bool UIMGCharacterLocomotionComponent::IsLocomotionReady() const
 		&& AbilitySystemComponent->GetSet<UIMGLocomotionSet>() == LocomotionSet;
 }
 
-void UIMGCharacterLocomotionComponent::InitializeConnections()
+void UIMGLocomotionComponent::InitializeConnections()
 {
 	if (MovementComponent || !IsRegistered() || !IsValid(this))
 	{
@@ -68,7 +68,7 @@ void UIMGCharacterLocomotionComponent::InitializeConnections()
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	if (!Character)
 	{
-		UE_LOG(LogIMG, Error, TEXT("CharacterLocomotionComponent on [%s] requires a Character owner."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires a Character owner."), *GetNameSafe(GetOwner()));
 		return;
 	}
 
@@ -76,7 +76,7 @@ void UIMGCharacterLocomotionComponent::InitializeConnections()
 	UGameFrameworkComponentManager* Manager = UGameFrameworkComponentManager::GetForActor(Character);
 	if (!PawnExtension || !Manager)
 	{
-		UE_LOG(LogIMG, Error, TEXT("CharacterLocomotionComponent on [%s] requires PawnExtension and GameFrameworkComponentManager."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires PawnExtension and GameFrameworkComponentManager."), *GetNameSafe(GetOwner()));
 		return;
 	}
 
@@ -102,7 +102,7 @@ void UIMGCharacterLocomotionComponent::InitializeConnections()
 	PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
 }
 
-void UIMGCharacterLocomotionComponent::ClearConnections()
+void UIMGLocomotionComponent::ClearConnections()
 {
 	if (UGameFrameworkComponentManager* Manager = ComponentManager.Get())
 	{
@@ -130,23 +130,23 @@ void UIMGCharacterLocomotionComponent::ClearConnections()
 	}
 }
 
-void UIMGCharacterLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedParams& Params)
+void UIMGLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedParams& Params)
 {
 	bGameplayReady = true;
 	RefreshLocomotionSet();
 }
 
-void UIMGCharacterLocomotionComponent::HandleAbilitySystemInitialized()
+void UIMGLocomotionComponent::HandleAbilitySystemInitialized()
 {
 	RefreshLocomotionSet();
 }
 
-void UIMGCharacterLocomotionComponent::HandleAbilitySystemUninitialized()
+void UIMGLocomotionComponent::HandleAbilitySystemUninitialized()
 {
 	UnbindLocomotionSet();
 }
 
-void UIMGCharacterLocomotionComponent::RefreshLocomotionSet()
+void UIMGLocomotionComponent::RefreshLocomotionSet()
 {
 	if (bRefreshingLocomotionSet)
 	{
@@ -204,7 +204,7 @@ void UIMGCharacterLocomotionComponent::RefreshLocomotionSet()
 	OnLocomotionReady();
 }
 
-void UIMGCharacterLocomotionComponent::UnbindLocomotionSet()
+void UIMGLocomotionComponent::UnbindLocomotionSet()
 {
 	const bool bWasBound = LocomotionSet != nullptr;
 	if (IsValid(AbilitySystemComponent))
@@ -224,7 +224,7 @@ void UIMGCharacterLocomotionComponent::UnbindLocomotionSet()
 	}
 }
 
-void UIMGCharacterLocomotionComponent::HandleAttributeChanged(const FOnAttributeChangeData& ChangeData)
+void UIMGLocomotionComponent::HandleAttributeChanged(const FOnAttributeChangeData& ChangeData)
 {
 	if (IsLocomotionReady())
 	{
@@ -232,7 +232,7 @@ void UIMGCharacterLocomotionComponent::HandleAttributeChanged(const FOnAttribute
 	}
 }
 
-void UIMGCharacterLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UIMGLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// AttributeSets can be added or replaced after ASC initialization.

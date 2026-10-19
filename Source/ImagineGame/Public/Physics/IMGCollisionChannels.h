@@ -8,6 +8,9 @@
 // Trace against Actors/Components which provide interactions.
 #define IMG_TraceChannel_Interaction					ECC_GameTraceChannel1
 
+// Project settings currently name GameTraceChannel1 "Traversable". Keep traversal call sites semantic.
+#define IMG_TraceChannel_Traversal					ECC_GameTraceChannel1
+
 // Trace used by weapons, will hit physics assets instead of capsules
 #define IMG_TraceChannel_Weapon						ECC_GameTraceChannel2
 

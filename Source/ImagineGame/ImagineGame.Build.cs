@@ -35,6 +35,7 @@ public class ImagineGame : ModuleRules
 			"GameplayTags",
 			"GameplayTasks",
 			"GameplayAbilities",
+			"MotionWarping",
 			"AIModule",
 			"ModularGameplay",
 			"ModularGameplayActors",
@@ -74,6 +75,7 @@ public class ImagineGame : ModuleRules
 			"EngineSettings",
 			"DTLSHandlerComponent",
 			"Json",
+			"AnimationWarpingRuntime",
 
 			"PlatformDLC",
 		});

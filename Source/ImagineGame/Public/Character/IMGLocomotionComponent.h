@@ -3,7 +3,7 @@
 #include "AttributeSet.h"
 #include "Components/PawnComponent.h"
 
-#include "IMGCharacterLocomotionComponent.generated.h"
+#include "IMGLocomotionComponent.generated.h"
 
 #define UE_API IMAGINEGAME_API
 
@@ -17,12 +17,12 @@ struct FOnAttributeChangeData;
 
 /** Connects GAS locomotion values to a Blueprint decision graph before character movement ticks. */
 UCLASS(MinimalAPI, Blueprintable, meta = (BlueprintSpawnableComponent))
-class UIMGCharacterLocomotionComponent : public UPawnComponent
+class UIMGLocomotionComponent : public UPawnComponent
 {
 	GENERATED_BODY()
 
 public:
-	UE_API UIMGCharacterLocomotionComponent(const FObjectInitializer& ObjectInitializer);
+	UE_API UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer);
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
 	UIMGAbilitySystemComponent* GetAbilitySystemComponent() const { return AbilitySystemComponent; }
