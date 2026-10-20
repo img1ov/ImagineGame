@@ -69,6 +69,8 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	bTraversalStarted = false;
 	bMontageCompleted = false;
 	ActiveAction = EIMGTraversalAction::None;
+	ActiveObstacleComponents.Reset();
+	PreviousObstacleTransforms.Reset();
 	LocalCandidate = FIMGTraversalCandidate();
 	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
@@ -184,16 +186,35 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 		return;
 	}
 	ActiveComponent = Component;
-	IgnoredComponent = Candidate.HitComponent;
+	ActiveObstacleComponents.Reset();
+	PreviousObstacleTransforms.Reset();
+	for (UPrimitiveComponent* ObstacleComponent : Candidate.ObstacleComponents)
+	{
+		if (IsValid(ObstacleComponent))
+		{
+			ActiveObstacleComponents.Add(ObstacleComponent);
+			PreviousObstacleTransforms.Add(ObstacleComponent->GetComponentTransform());
+		}
+	}
+	if (ActiveObstacleComponents.IsEmpty() && IsValid(Candidate.HitComponent))
+	{
+		ActiveObstacleComponents.Add(Candidate.HitComponent);
+		PreviousObstacleTransforms.Add(Candidate.HitComponent->GetComponentTransform());
+	}
 	ActiveBackFloorComponent = Candidate.BackFloorComponent;
-	PreviousTargetTransform = Candidate.HitComponent->GetComponentTransform();
 	PreviousBackFloorTransform = IsValid(Candidate.BackFloorComponent)
 		? Candidate.BackFloorComponent->GetComponentTransform() : FTransform::Identity;
 	PreviousTargetCheckTime = GetWorld()->GetTimeSeconds();
 	bTraversalStarted = true;
 	ActiveAction = Selection.Action;
 	Component->BeginTraversal(Candidate, Selection.Action);
-	Character->GetCapsuleComponent()->IgnoreComponentWhenMoving(Candidate.HitComponent.Get(), true);
+	for (const TWeakObjectPtr<UPrimitiveComponent>& ObstacleComponent : ActiveObstacleComponents)
+	{
+		if (ObstacleComponent.IsValid())
+		{
+			Character->GetCapsuleComponent()->IgnoreComponentWhenMoving(ObstacleComponent.Get(), true);
+		}
+	}
 	Character->GetIMGMovementComponent()->SetMovementMode(MOVE_Flying);
 	GetWorld()->GetTimerManager().SetTimer(TargetCheckTimer, this, &ThisClass::CheckActiveTarget, 0.05f, true);
 	UAbilityTask_PlayMontageAndWait* MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
@@ -212,12 +233,27 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimationSelection& Selection,
 	const FIMGTraversalCandidate& Candidate, bool bRemoteRequest) const
 {
+	const UIMGTraversalComponent* Traversal = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
+	const UWorld* World = GetWorld();
+	const float CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
+	const bool bCandidateFresh = Traversal && World && CandidateAge >= 0.f
+		&& CandidateAge <= Traversal->GetQuerySettings().MaxCandidateAge;
+#if ENABLE_DRAW_DEBUG
+	if (!bCandidateFresh)
+	{
+		if (const AIMGCharacter* Character = GetIMGCharacterFromActorInfo())
+		{
+			IMGTraversalDebug::String(Character->GetWorld(), Character->GetActorLocation() + FVector::UpVector * 160.f,
+				FString::Printf(TEXT("Traversal Validate: stale candidate %.3fs"), CandidateAge), FColor::Red, 1);
+		}
+	}
+#endif
 	const bool bAllowedRemoteSelection = !bRemoteRequest || AllowedMontages.ContainsByPredicate(
 		[&Selection](const FIMGTraversalAllowedMontage& Allowed)
 		{
 			return Allowed.Action == Selection.Action && Allowed.Montage == Selection.Montage;
 		});
-	return Candidate.bHasFrontLedge && IsValid(Candidate.HitComponent)
+	return bCandidateFresh && Candidate.bHasFrontLedge && IsValid(Candidate.HitComponent)
 		&& Candidate.Supports(Selection.Action) && IsValid(Selection.Montage)
 		&& (Selection.Action != EIMGTraversalAction::Hurdle || IsValid(Candidate.BackFloorComponent))
 		&& FMath::IsFinite(Selection.StartTime) && Selection.StartTime >= 0.f
@@ -236,7 +272,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		return false;
 	}
-	auto GetWindowEndTime = [Montage = Selection.Montage.Get()](FName TargetName, float& OutEndTime)
+	auto GetWindowTimes = [Montage = Selection.Montage.Get()](FName TargetName, float& OutStartTime, float& OutEndTime)
 	{
 		TArray<FMotionWarpingWindowData> Windows;
 		UMotionWarpingUtilities::GetMotionWarpingWindowsForWarpTargetFromAnimation(Montage, TargetName, Windows);
@@ -244,20 +280,27 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			return false;
 		}
+		OutStartTime = Windows[0].StartTime;
 		OutEndTime = Windows[0].EndTime;
-		return true;
+		return OutEndTime > OutStartTime;
 	};
+	float FrontLedgeWindowStart = 0.f;
 	float FrontLedgeWindowEnd = 0.f;
-	if (!GetWindowEndTime(TEXT("FrontLedge"), FrontLedgeWindowEnd))
+	if (!GetWindowTimes(TEXT("FrontLedge"), FrontLedgeWindowStart, FrontLedgeWindowEnd)
+		|| Selection.StartTime >= FrontLedgeWindowEnd)
 	{
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: FrontLedge requires exactly one warp window"), FColor::Red);
 #endif
 		return false;
 	}
+	float BackLedgeWindowStart = 0.f;
 	float BackLedgeWindowEnd = 0.f;
 	if ((Selection.Action == EIMGTraversalAction::Hurdle || Selection.Action == EIMGTraversalAction::Vault)
-		&& (!Candidate.bHasBackLedge || !GetWindowEndTime(TEXT("BackLedge"), BackLedgeWindowEnd)))
+		&& (!Candidate.bHasBackLedge
+			|| !IsValid(Candidate.BackLedgeComponent)
+			|| !GetWindowTimes(TEXT("BackLedge"), BackLedgeWindowStart, BackLedgeWindowEnd)
+			|| Selection.StartTime >= BackLedgeWindowEnd))
 	{
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: missing BackLedge or warp window"), FColor::Red);
@@ -266,6 +309,15 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	}
 	if (Selection.Action != EIMGTraversalAction::Hurdle)
 	{
+#if ENABLE_DRAW_DEBUG
+		if (AIMGCharacter* Character = GetIMGCharacterFromActorInfo(); Character && IMGTraversalDebug::IsEnabled(3))
+		{
+			IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
+				FString::Printf(TEXT("Warp Front %.2f..%.2f  Back %.2f..%.2f  Start %.2f"),
+					FrontLedgeWindowStart, FrontLedgeWindowEnd, BackLedgeWindowStart, BackLedgeWindowEnd,
+					Selection.StartTime), FColor::Yellow, 3);
+		}
+#endif
 		return true;
 	}
 	if (!Candidate.bHasBackFloor)
@@ -275,8 +327,10 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		return false;
 	}
+	float BackFloorWindowStart = 0.f;
 	float BackFloorWindowEnd = 0.f;
-	if (!GetWindowEndTime(TEXT("BackFloor"), BackFloorWindowEnd))
+	if (!GetWindowTimes(TEXT("BackFloor"), BackFloorWindowStart, BackFloorWindowEnd)
+		|| Selection.StartTime >= BackFloorWindowEnd)
 	{
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: BackFloor requires exactly one warp window"), FColor::Red);
@@ -335,10 +389,15 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bFloorHit ? FloorHit.ImpactPoint : TraceEnd,
 		bWalkableFloor ? FColor::Green : FColor::Red, 3, 2.f);
 #endif
-	if (!bWalkableFloor)
+	UPrimitiveComponent* SelectedFloorComponent = FloorHit.GetComponent();
+	const bool bUsableFloorComponent = IsValid(SelectedFloorComponent)
+		&& (!SelectedFloorComponent->IsSimulatingPhysics() || Settings.bAllowSimulatingPhysics)
+		&& SelectedFloorComponent->GetComponentVelocity().Size() <= Settings.MaxMovingSpeed
+		&& SelectedFloorComponent->GetPhysicsAngularVelocityInDegrees().Size() <= Settings.MaxAngularSpeedDegrees;
+	if (!bWalkableFloor || !bUsableFloorComponent)
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(Character, TEXT("Traversal Validate: adjusted landing has no walkable floor"), FColor::Red);
+		DrawAbilityMessage(Character, TEXT("Traversal Validate: adjusted landing floor is unusable"), FColor::Red);
 #endif
 		return false;
 	}
@@ -356,9 +415,39 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		return false;
 	}
+	FCollisionQueryParams PathParams(SCENE_QUERY_STAT(IMGTraversalSelectedLandingPath), false, Character);
+	for (const UPrimitiveComponent* ObstacleComponent : Candidate.ObstacleComponents)
+	{
+		if (IsValid(ObstacleComponent))
+		{
+			PathParams.AddIgnoredComponent(ObstacleComponent);
+		}
+	}
+	FHitResult PathHit;
+	const FVector BackLedgeCenter = Candidate.BackLedge.GetLocation() + FVector::UpVector * (HalfHeight + 3.f);
+	const bool bLandingPathBlocked = Character->GetWorld()->SweepSingleByChannel(PathHit,
+		BackLedgeCenter, LandingCenter, FQuat::Identity, Capsule->GetCollisionObjectType(),
+		FCollisionShape::MakeCapsule(Radius, HalfHeight), PathParams, Responses);
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Line(Character->GetWorld(), BackLedgeCenter,
+		bLandingPathBlocked ? PathHit.Location : LandingCenter,
+		bLandingPathBlocked ? FColor::Red : FColor::Green, 3, 2.f);
+	IMGTraversalDebug::String(Character->GetWorld(), LandingCenter + FVector::UpVector * 12.f,
+		FString::Printf(TEXT("Warp windows F %.2f..%.2f B %.2f..%.2f L %.2f..%.2f  Curve %.1f -> %.1f"),
+			FrontLedgeWindowStart, FrontLedgeWindowEnd, BackLedgeWindowStart, BackLedgeWindowEnd,
+			BackFloorWindowStart, BackFloorWindowEnd, BackLedgeDistance, BackFloorDistance),
+		bLandingPathBlocked ? FColor::Red : FColor::Green, 3);
+#endif
+	if (bLandingPathBlocked)
+	{
+#if ENABLE_DRAW_DEBUG
+		DrawAbilityMessage(Character, TEXT("Traversal Validate: adjusted landing path blocked"), FColor::Red);
+#endif
+		return false;
+	}
 	LandingPoint.Z = FloorHit.ImpactPoint.Z;
 	Candidate.BackFloor.SetLocation(LandingPoint);
-	Candidate.BackFloorComponent = FloorHit.GetComponent();
+	Candidate.BackFloorComponent = SelectedFloorComponent;
 	Candidate.DropHeight = Candidate.FrontLedge.GetLocation().Z - LandingPoint.Z;
 	Candidate.BackLedgeHeight = Candidate.BackLedge.GetLocation().Z - LandingPoint.Z;
 	Candidate.LocalBackFloor = Candidate.BackFloorComponent
@@ -369,19 +458,28 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 
 void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 {
-	UPrimitiveComponent* Target = IgnoredComponent.Get();
 	UIMGTraversalComponent* Component = ActiveComponent.Get();
 	const UWorld* World = GetWorld();
-	if (!IsValid(Target) || !Component || !World)
+	const AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
+	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
+	if (Health && Health->IsDeadOrDying())
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: target or component lost"), FColor::Red);
+		DrawAbilityMessage(Character, TEXT("Traversal Abort: character died"), FColor::Red);
+#endif
+		K2_EndAbility();
+		return;
+	}
+	if (!Component || !World || ActiveObstacleComponents.IsEmpty()
+		|| ActiveObstacleComponents.Num() != PreviousObstacleTransforms.Num())
+	{
+#if ENABLE_DRAW_DEBUG
+		DrawAbilityMessage(GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle set or component lost"), FColor::Red);
 #endif
 		K2_EndAbility();
 		return;
 	}
 	const FIMGTraversalQuery& Settings = Component->GetQuerySettings();
-	const FTransform Current = Target->GetComponentTransform();
 	const float DeltaTime = FMath::Max(World->GetTimeSeconds() - PreviousTargetCheckTime, KINDA_SMALL_NUMBER);
 	auto IsMovingTooFast = [&Settings, DeltaTime](const UPrimitiveComponent& Component,
 		const FTransform& CurrentTransform, const FTransform& PreviousTransform)
@@ -392,13 +490,37 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		return (Component.IsSimulatingPhysics() && !Settings.bAllowSimulatingPhysics)
 			|| Speed > Settings.MaxMovingSpeed || AngularSpeed > Settings.MaxAngularSpeedDegrees;
 	};
-	if (IsMovingTooFast(*Target, Current, PreviousTargetTransform))
+	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
 	{
+		UPrimitiveComponent* Target = ActiveObstacleComponents[Index].Get();
+		if (!IsValid(Target))
+		{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle moved too fast"), FColor::Red);
+			DrawAbilityMessage(GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle component lost"), FColor::Red);
 #endif
-		K2_EndAbility();
-		return;
+			K2_EndAbility();
+			return;
+		}
+		const FTransform Current = Target->GetComponentTransform();
+		if (IsMovingTooFast(*Target, Current, PreviousObstacleTransforms[Index]))
+		{
+#if ENABLE_DRAW_DEBUG
+			DrawAbilityMessage(GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle moved too fast"), FColor::Red);
+			if (IMGTraversalDebug::IsEnabled(3))
+			{
+				const float Speed = FVector::Dist(Current.GetLocation(), PreviousObstacleTransforms[Index].GetLocation()) / DeltaTime;
+				const float AngularSpeed = FMath::RadiansToDegrees(Current.GetRotation().AngularDistance(
+					PreviousObstacleTransforms[Index].GetRotation())) / DeltaTime;
+				IMGTraversalDebug::String(World, Target->GetComponentLocation() + FVector::UpVector * 18.f,
+					FString::Printf(TEXT("Abort %s: V %.0f/%.0f  W %.0f/%.0f"), *Target->GetName(),
+						Speed, Settings.MaxMovingSpeed, AngularSpeed, Settings.MaxAngularSpeedDegrees),
+					FColor::Red, 3);
+			}
+#endif
+			K2_EndAbility();
+			return;
+		}
+		PreviousObstacleTransforms[Index] = Current;
 	}
 	UPrimitiveComponent* BackFloorComponent = ActiveBackFloorComponent.Get();
 	if (ActiveAction == EIMGTraversalAction::Hurdle && !IsValid(BackFloorComponent))
@@ -409,7 +531,12 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		K2_EndAbility();
 		return;
 	}
-	if (BackFloorComponent && BackFloorComponent != Target)
+	const bool bBackFloorAlreadyTracked = ActiveObstacleComponents.ContainsByPredicate(
+		[BackFloorComponent](const TWeakObjectPtr<UPrimitiveComponent>& Entry)
+		{
+			return Entry.Get() == BackFloorComponent;
+		});
+	if (BackFloorComponent && !bBackFloorAlreadyTracked)
 	{
 		const FTransform CurrentBackFloor = BackFloorComponent->GetComponentTransform();
 		if (IsMovingTooFast(*BackFloorComponent, CurrentBackFloor, PreviousBackFloorTransform))
@@ -422,7 +549,6 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		}
 		PreviousBackFloorTransform = CurrentBackFloor;
 	}
-	PreviousTargetTransform = Current;
 	PreviousTargetCheckTime = World->GetTimeSeconds();
 }
 
@@ -462,9 +588,12 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		{
 			if (UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
 			{
-				if (UPrimitiveComponent* Ignored = IgnoredComponent.Get())
+				for (const TWeakObjectPtr<UPrimitiveComponent>& Ignored : ActiveObstacleComponents)
 				{
-					Capsule->IgnoreComponentWhenMoving(Ignored, false);
+					if (Ignored.IsValid())
+					{
+						Capsule->IgnoreComponentWhenMoving(Ignored.Get(), false);
+					}
 				}
 			}
 			const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
@@ -475,8 +604,7 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 				{
 					FFindFloorResult Floor;
 					Movement->FindFloor(Character->GetActorLocation(), Floor, false);
-					Movement->SetMovementMode(Floor.IsWalkableFloor() && ActiveAction != EIMGTraversalAction::Vault
-						? MOVE_Walking : MOVE_Falling);
+					Movement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
 				}
 			}
 		}
@@ -487,7 +615,8 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 	bLocalRequest = false;
 	ActiveAction = EIMGTraversalAction::None;
 	ActiveComponent.Reset();
-	IgnoredComponent.Reset();
+	ActiveObstacleComponents.Reset();
+	PreviousObstacleTransforms.Reset();
 	ActiveBackFloorComponent.Reset();
 	LocalCandidate = FIMGTraversalCandidate();
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);

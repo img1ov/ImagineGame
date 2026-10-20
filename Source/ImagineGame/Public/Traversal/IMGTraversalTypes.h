@@ -46,44 +46,52 @@ struct FIMGTraversalQuery
 	UPROPERTY(BlueprintReadWrite)
 	FVector Direction = FVector::ForwardVector;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ForwardDistance = 75.f;
 
 	/** Grounded forward probes grow toward this distance as forward speed approaches ForwardDistanceAtMaxSpeed. */
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxForwardDistance = 350.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ForwardDistanceAtMaxSpeed = 500.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MinHeight = 35.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxHeight = 220.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxDepth = 300.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	/** Forward free space measured from the front ledge; mirrors the reference detector's clearance probe. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxHorizontalClearance = 300.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxDrop = 180.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MinWidth = 70.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxMovingSpeed = 500.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxAngularSpeedDegrees = 85.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	/** Bounds delayed Blueprint/network use of a geometric snapshot. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxCandidateAge = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxHurdleHeight = 110.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxVaultHeight = 160.f;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bAllowSimulatingPhysics = false;
 };
 
@@ -99,6 +107,17 @@ struct FIMGTraversalCandidate
 
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UPrimitiveComponent> HitComponent = nullptr;
+
+	/** Component that owns the front ledge anchor. HitComponent remains its Blueprint-compatible alias. */
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UPrimitiveComponent> FrontLedgeComponent = nullptr;
+
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UPrimitiveComponent> BackLedgeComponent = nullptr;
+
+	/** Every component that contributed obstacle geometry and must be tracked/ignored during execution. */
+	UPROPERTY(BlueprintReadOnly)
+	TArray<TObjectPtr<UPrimitiveComponent>> ObstacleComponents;
 
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UPrimitiveComponent> BackFloorComponent = nullptr;
@@ -135,6 +154,10 @@ struct FIMGTraversalCandidate
 
 	UPROPERTY(BlueprintReadOnly)
 	float ObstacleDepth = 0.f;
+
+	/** Free distance after the front ledge before another obstacle is encountered. */
+	UPROPERTY(BlueprintReadOnly)
+	float HorizontalClearance = 0.f;
 
 	UPROPERTY(BlueprintReadOnly)
 	float DropHeight = 0.f;
@@ -227,6 +250,15 @@ struct FIMGTraversalRepState
 
 	UPROPERTY()
 	TObjectPtr<UPrimitiveComponent> HitComponent = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UPrimitiveComponent> FrontLedgeComponent = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UPrimitiveComponent> BackLedgeComponent = nullptr;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UPrimitiveComponent>> ObstacleComponents;
 
 	UPROPERTY()
 	TObjectPtr<UPrimitiveComponent> BackFloorComponent = nullptr;

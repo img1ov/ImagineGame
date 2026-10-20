@@ -37,6 +37,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Detection")
 	FIMGTraversalQuery QuerySettings;
 
+	/** Matches the existing GASP FrontLedge warp contract without contaminating geometric measurements. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Warping")
+	float FrontLedgeVerticalOffset = 0.5f;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 

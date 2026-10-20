@@ -68,6 +68,9 @@ void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
 	ActiveState.Action = Action;
 	ActiveState.HitComponent = Candidate.HitComponent;
+	ActiveState.FrontLedgeComponent = Candidate.FrontLedgeComponent;
+	ActiveState.BackLedgeComponent = Candidate.BackLedgeComponent;
+	ActiveState.ObstacleComponents = Candidate.ObstacleComponents;
 	ActiveState.BackFloorComponent = Candidate.BackFloorComponent;
 	ActiveState.FrontLedge = Candidate.FrontLedge;
 	ActiveState.BackLedge = Candidate.BackLedge;
@@ -78,12 +81,15 @@ void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	ActiveState.bHasBackLedge = Candidate.bHasBackLedge;
 	ActiveState.bHasBackFloor = Candidate.bHasBackFloor;
 	ActiveState.bActive = true;
-	if (UPrimitiveComponent* TargetComponent = Candidate.HitComponent.Get())
+	for (UPrimitiveComponent* ObstacleComponent : ActiveState.ObstacleComponents)
 	{
-		AddTickPrerequisiteComponent(TargetComponent);
+		if (IsValid(ObstacleComponent))
+		{
+			AddTickPrerequisiteComponent(ObstacleComponent);
+		}
 	}
 	if (UPrimitiveComponent* BackFloorComponent = Candidate.BackFloorComponent.Get();
-		BackFloorComponent && BackFloorComponent != Candidate.HitComponent.Get())
+		BackFloorComponent && !ActiveState.ObstacleComponents.Contains(BackFloorComponent))
 	{
 		AddTickPrerequisiteComponent(BackFloorComponent);
 	}
@@ -103,12 +109,15 @@ void UIMGTraversalComponent::EndTraversal()
 		return;
 	}
 	const uint16 NextSequence = ReplicatedState.Sequence + 1;
-	if (UPrimitiveComponent* TargetComponent = ActiveState.HitComponent.Get())
+	for (UPrimitiveComponent* ObstacleComponent : ActiveState.ObstacleComponents)
 	{
-		RemoveTickPrerequisiteComponent(TargetComponent);
+		if (IsValid(ObstacleComponent))
+		{
+			RemoveTickPrerequisiteComponent(ObstacleComponent);
+		}
 	}
 	if (UPrimitiveComponent* BackFloorComponent = ActiveState.BackFloorComponent.Get();
-		BackFloorComponent && BackFloorComponent != ActiveState.HitComponent.Get())
+		BackFloorComponent && !ActiveState.ObstacleComponents.Contains(BackFloorComponent))
 	{
 		RemoveTickPrerequisiteComponent(BackFloorComponent);
 	}
@@ -125,12 +134,15 @@ void UIMGTraversalComponent::EndTraversal()
 
 void UIMGTraversalComponent::OnRep_TraversalState()
 {
-	if (UPrimitiveComponent* PreviousTarget = ActiveState.HitComponent.Get())
+	for (UPrimitiveComponent* PreviousTarget : ActiveState.ObstacleComponents)
 	{
-		RemoveTickPrerequisiteComponent(PreviousTarget);
+		if (IsValid(PreviousTarget))
+		{
+			RemoveTickPrerequisiteComponent(PreviousTarget);
+		}
 	}
 	if (UPrimitiveComponent* PreviousBackFloor = ActiveState.BackFloorComponent.Get();
-		PreviousBackFloor && PreviousBackFloor != ActiveState.HitComponent.Get())
+		PreviousBackFloor && !ActiveState.ObstacleComponents.Contains(PreviousBackFloor))
 	{
 		RemoveTickPrerequisiteComponent(PreviousBackFloor);
 	}
@@ -138,12 +150,15 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 	ActiveState = ReplicatedState;
 	if (ActiveState.bActive)
 	{
-		if (UPrimitiveComponent* TargetComponent = ActiveState.HitComponent.Get())
+		for (UPrimitiveComponent* TargetComponent : ActiveState.ObstacleComponents)
 		{
-			AddTickPrerequisiteComponent(TargetComponent);
+			if (IsValid(TargetComponent))
+			{
+				AddTickPrerequisiteComponent(TargetComponent);
+			}
 		}
 		if (UPrimitiveComponent* BackFloorComponent = ActiveState.BackFloorComponent.Get();
-			BackFloorComponent && BackFloorComponent != ActiveState.HitComponent.Get())
+			BackFloorComponent && !ActiveState.ObstacleComponents.Contains(BackFloorComponent))
 		{
 			AddTickPrerequisiteComponent(BackFloorComponent);
 		}
@@ -154,16 +169,19 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 
 void UIMGTraversalComponent::RefreshWarpTargets()
 {
-	UPrimitiveComponent* HitComponent = ActiveState.HitComponent.Get();
 	UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
 	if (!Warping)
 	{
 		return;
 	}
-	const bool bUseLocalTargets = IsValid(HitComponent);
-	const FTransform ComponentWorld = bUseLocalTargets ? HitComponent->GetComponentTransform() : FTransform::Identity;
-	const FTransform FrontLedge = bUseLocalTargets
-		? ActiveState.LocalFrontLedge * ComponentWorld : ActiveState.FrontLedge;
+	UPrimitiveComponent* FrontComponent = ActiveState.FrontLedgeComponent.Get();
+	if (!IsValid(FrontComponent))
+	{
+		FrontComponent = ActiveState.HitComponent.Get();
+	}
+	FTransform FrontLedge = IsValid(FrontComponent)
+		? ActiveState.LocalFrontLedge * FrontComponent->GetComponentTransform() : ActiveState.FrontLedge;
+	FrontLedge.AddToTranslation(FVector::UpVector * FrontLedgeVerticalOffset);
 	Warping->AddOrUpdateWarpTargetFromTransform(FrontLedgeName, FrontLedge);
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::Point(GetWorld(), FrontLedge.GetLocation(), FColor::Yellow, 1, 16.f, 0.f);
@@ -173,8 +191,13 @@ void UIMGTraversalComponent::RefreshWarpTargets()
 	if (ActiveState.bHasBackLedge
 		&& (ActiveState.Action == EIMGTraversalAction::Hurdle || ActiveState.Action == EIMGTraversalAction::Vault))
 	{
-		const FTransform BackLedge = bUseLocalTargets
-			? ActiveState.LocalBackLedge * ComponentWorld : ActiveState.BackLedge;
+		UPrimitiveComponent* BackComponent = ActiveState.BackLedgeComponent.Get();
+		if (!IsValid(BackComponent))
+		{
+			BackComponent = ActiveState.HitComponent.Get();
+		}
+		const FTransform BackLedge = IsValid(BackComponent)
+			? ActiveState.LocalBackLedge * BackComponent->GetComponentTransform() : ActiveState.BackLedge;
 		Warping->AddOrUpdateWarpTargetFromTransform(BackLedgeName, BackLedge);
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::Point(GetWorld(), BackLedge.GetLocation(), FColor::Orange, 1, 16.f, 0.f);
@@ -199,9 +222,26 @@ void UIMGTraversalComponent::RefreshWarpTargets()
 	if (GetOwner() && IMGTraversalDebug::IsEnabled(1))
 	{
 		IMGTraversalDebug::String(GetWorld(), GetOwner()->GetActorLocation() + FVector::UpVector * 120.f,
-			FString::Printf(TEXT("Traversal Active: %s"),
-				*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(ActiveState.Action))),
+			FString::Printf(TEXT("Traversal Active: %s  Parts %d"),
+				*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(ActiveState.Action)),
+				ActiveState.ObstacleComponents.Num()),
 			FColor::White, 1, 0.f);
+		if (IMGTraversalDebug::IsEnabled(3))
+		{
+			for (const UPrimitiveComponent* ObstacleComponent : ActiveState.ObstacleComponents)
+			{
+				if (!IsValid(ObstacleComponent))
+				{
+					continue;
+				}
+				const FVector Location = ObstacleComponent->GetComponentLocation();
+				IMGTraversalDebug::Point(GetWorld(), Location, FColor::Purple, 3, 9.f, 0.f);
+				IMGTraversalDebug::String(GetWorld(), Location + FVector::UpVector * 10.f,
+					FString::Printf(TEXT("%s  V %.0f  W %.0f"), *ObstacleComponent->GetName(),
+						ObstacleComponent->GetComponentVelocity().Size(),
+						ObstacleComponent->GetPhysicsAngularVelocityInDegrees().Size()), FColor::Purple, 3, 0.f);
+			}
+		}
 	}
 #endif
 }

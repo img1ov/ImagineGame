@@ -33,16 +33,16 @@
 ### Traversal 的职责与接口
 - Traversal 位于 `ImagineGame/Traversal`，当前是 GASP 单蒙太奇实现。角色蓝图按需装配 `UIMGTraversalComponent` 与 `UMotionWarpingComponent`；`AIMGCharacter` 不持有或创建它们，输入也不属于 Traversal，依赖保持 Traversal 单向指向 Character。
 - `IMGTraversalTypes.h` 保存检测请求、候选、蓝图选择结果、远端白名单和代理快照；`FIMGTraversalDetector` 是无状态同步几何核心；`UIMGTraversalComponent` 只持配置、动态 Warp 目标和复制快照；`UIMGGameplayAbility_Traversal` 拥有检测到蒙太奇退出的生命周期；`FIMGTraversalTargetData` 只传客户端动画选择和检测方向。
-- 检测使用 `IMG_TraceChannel_Traversal`（当前与配置中的 `ECC_GameTraceChannel1/Traversable` 对应），地面角色按前向速度把探测距离从 75 cm 插值到 350 cm，空中保持 75 cm。核心依次处理三高度候选、墙面朝向、左右宽度、顶部可站立、最多 12 次深度采样与边缘细化、顶部胶囊/路径、后边缘、落地点和落点胶囊空间；候选数和采样数均有上限。
-- `FIMGTraversalCandidate` 的 RecommendedAction、Front/Back Ledge、Back Floor、高度、深度、落差、BackLedgeHeight、DistanceToLedge、MovementMode 和 Speed 与旧 CHT 语义对齐；RecommendedAction 只是几何默认值，最终 Action、Montage、StartTime、PlayRate 由蓝图 `SelectTraversalAnimation` 决定，Gait 与 PoseHistory 继续由动画蓝图补入。
+- 检测使用 `IMG_TraceChannel_Traversal`（当前与配置中的 `ECC_GameTraceChannel1/Traversable` 对应），地面角色按前向速度把探测距离从 75 cm 插值到 350 cm，空中保持 75 cm。核心按 Min/MaxHeight 自适应生成最多 12 层前向球扫并聚合同墙纵向命中，再处理墙面朝向、世界空间顶部球扫、中/左右三点宽度、最多 12 次深度采样与边缘细化、顶部胶囊/接近路径、两层小球水平净空、后边缘、落地点和落点胶囊空间；候选评分同时考虑距离和朝向。深度采样会区分真正后边缘与上升障碍；水平净空不再使用完整角色胶囊扫遍平台：35 cm 内受阻才否决候选，远处障碍只参与 Vault/Hurdle 可行性。
+- `FIMGTraversalCandidate` 的 RecommendedAction、Front/Back Ledge、Back Floor、高度、深度、水平净空、落差、BackLedgeHeight、DistanceToLedge、MovementMode 和 Speed 与旧 CHT 语义对齐；DistanceToLedge 是 FrontLedge 到 Mesh 世界位置的三维距离。Candidate 还保存前/后边缘各自的承载组件和参与构成障碍的组件集合，用于复合静态网格、动态跟随和执行期碰撞忽略。RecommendedAction 只是几何默认值，最终 Action、Montage、StartTime、PlayRate 由蓝图 `SelectTraversalAnimation` 决定，Gait 与 PoseHistory 继续由动画蓝图补入。
 - GA 为 `LocalPredicted + Exclusive_Replaceable`。本地玩家预测检测并提交紧凑 TargetData；远端服务器不接受客户端几何，按请求方向重检，并校验 Action 可行性、数值范围及 `AllowedMontages` 中的 Action/Montage 对；服务端 AI直接走同一检测和蓝图筛选。模拟代理只消费服务端组件快照与 GAS 蒙太奇复制，不独立重检。
-- 执行前必须存在与动作对应的唯一 Warp Window：所有动作需要 `FrontLedge`，Vault/Hurdle 还需要 `BackLedge`，Hurdle 还需要 `BackFloor` 与 `Distance_From_Ledge` 曲线。Hurdle 用窗口末端曲线差重算落点，并重新验证地面和胶囊空间；缺少这些动画合同就拒绝执行。
-- 执行阶段由 GA 设置 Flying、忽略命中障碍、启动蒙太奇并在完成、取消、中断、死亡或承载物失效时对称恢复。非 Vault 只有脚下仍有可走地面才恢复 Walking，否则进入 Falling；不在 BlendOut 提前清理。
-- 动态障碍和落地承载物分别保存组件局部 Warp Transform；组件 Tick 排在承载物之后、CMC 之前。执行期每 0.05 秒检查组件存活、物理许可、线速度与角速度，超限就中止；当前阈值默认 500 cm/s、85 deg/s。
-- Traversal Debug Draw 由 `IMG.Traversal.DebugDraw` 控制：0 关闭，1 显示最终候选、失败和执行中的 Warp Target，2 追加三层搜索、候选命中与逐候选失败原因，3 追加顶部/宽度/深度/路径/落点和胶囊验证；`IMG.Traversal.DebugDuration` 控制检测图形保留秒数。所有调用受 `ENABLE_DRAW_DEBUG` 保护，不进入 Shipping。
+- 执行前必须存在与动作对应的唯一 Warp Window，且 StartTime 必须早于所需窗口末端：所有动作需要 `FrontLedge`，Vault/Hurdle 还需要 `BackLedge`，Hurdle 还需要 `BackFloor` 与 `Distance_From_Ledge` 曲线。FrontLedge Warp 保留旧蓝图的 0.5 cm 上移和 `-FrontLedgeNormal` 朝向；Hurdle 用窗口末端曲线差重算落点，并重新验证承载物、地面、落点胶囊和后边缘到落点的整段胶囊路径；缺少动画合同就拒绝执行。
+- 执行阶段由 GA 设置 Flying、忽略全部障碍组成组件、启动蒙太奇并在完成、取消、中断、死亡或承载物失效时对称恢复。退出时任何动作均按角色脚下是否仍有可走地面恢复 Walking/Falling；不在 BlendOut 提前清理。
+- 前/后边缘和落地承载物分别保存各自组件局部 Warp Transform；组件 Tick 排在全部承载物之后、CMC 之前。执行期每 0.05 秒检查全部组件存活、物理许可、线速度与角速度，超限就中止；当前阈值默认 500 cm/s、85 deg/s。检测快照默认只允许使用 0.25 秒。
+- Traversal Debug Draw 由 `IMG.Traversal.DebugDraw` 控制：0 关闭，1 显示最终候选、失败、动作指标和执行中的 Warp Target，2 追加自适应搜索层、候选评分与逐候选失败原因，3 追加顶部/宽度/深度/边缘细化/路径/落点/胶囊、Warp 窗口与曲线值、动态组件速度和中止指标；`IMG.Traversal.DebugDuration` 控制检测图形保留秒数。所有调用受 `ENABLE_DRAW_DEBUG` 保护，不进入 Shipping。
 - 旧蓝图职责映射为：Traversal 检测图 → `FIMGTraversalDetector`，Traversal Result/Chooser 输入 → `FIMGTraversalCandidate`，CHT/PoseMatch → `SelectTraversalAnimation`，三个 Set Warp Target → `UIMGTraversalComponent`，Ignore/Flying/PlayMontage/恢复 → GA。蓝图只需转换 Candidate、补 Gait/PoseHistory 并返回选择结果。
 - GTA 职责映射为：`CClimbDetector/CClimbHandHoldDetected` 的同步几何合同 → Detector/Candidate；`CTaskJumpVault` 的一次动作分流 → 蓝图选择结果；`CTaskVault` 的当前单动作执行、动态 physical 跟随和 CleanUp 子集 → GA；owner 的 Queriable/clone 状态 → Component 代理快照。Component 不等价于 GTA 的完整 Task，也不应吸收输入决策或核心检测。
-- 当前未移植 GTA 的异步探测/跨帧缓存、完整多阶段 Task FSM、跨多个碰撞组件拼接同一障碍、IK/武器/布娃娃/水体/失败记忆，以及攀爬悬挂、Shimmy、梯子等持续行为。前三项应按实际性能和复杂障碍需求扩展 Detector/GA；表现与异常系统通过独立协作者或生命周期 Hook 接入；持续行为拆成多个 GA，由上层选择/组合能力协调。
+- 当前未移植 GTA 的异步探测/跨帧缓存、完整多阶段 Task FSM、IK/武器/布娃娃/水体/失败记忆，以及攀爬悬挂、Shimmy、梯子等持续行为。异步和多阶段流程应按实际性能与复杂动作需求扩展 Detector/GA；表现与异常系统通过独立协作者或生命周期 Hook 接入；持续行为拆成多个 GA，由上层选择/组合能力协调。
 - 接入要求：角色蓝图装配 Traversal 与 MotionWarping 组件、AbilitySet 授予蓝图 GA、蓝图实现 `SelectTraversalAnimation`，并为网络玩家配置全部合法 Action/Montage 对。专用服务器 AI若没有可靠 PoseHistory，筛选图必须提供不依赖 PoseMatch 的后备分支。当前已完成源码/API/差异静态检查，未替代资产装配和实机网络验证。
 
 ## 装备、背包与射击

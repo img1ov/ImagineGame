@@ -62,9 +62,9 @@ private:
 	FTimerHandle TargetCheckTimer;
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
-	TWeakObjectPtr<UPrimitiveComponent> IgnoredComponent;
+	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
 	TWeakObjectPtr<UPrimitiveComponent> ActiveBackFloorComponent;
-	FTransform PreviousTargetTransform;
+	TArray<FTransform> PreviousObstacleTransforms;
 	FTransform PreviousBackFloorTransform;
 	float PreviousTargetCheckTime = 0.f;
 	bool bLocalRequest = false;
