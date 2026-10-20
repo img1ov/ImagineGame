@@ -24,9 +24,9 @@
 
 ### Locomotion 的职责与接口
 - `UIMGLocomotionComponent` 是本机 ASC/AttributeSet 与 CMC 之间的中间件，不承担复制、RPC 或移动预测；移动同步仍由角色/CMC 链路负责。
-- C++ 负责引用、生命周期、属性订阅和 CMC 前置回调；`UIMGCharacterMovementComponent` 在自身 Tick 入口广播 PreMovementUpdate，`UIMGLocomotionComponent` 注册该委托且自身不可 Tick。组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
+- C++ 负责引用、生命周期、属性订阅和 CMC 前置 Tick 排序；Locomotion 连接建立后把自身注册为 CMC 的 Tick prerequisite，并在自身 Tick 中调用 `UpdateLocomotionPreCMC`，未连接及退出时关闭 Tick。CMC 不提供 Locomotion 专用委托或额外 Tick 逻辑。组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
 - `UIMGLocomotionSet` 是可选的七项可复制移动属性来源。ASC 中存在该 Set 时组件才注册属性委托；没有 Set 时组件仍会 Ready 并执行 PreCMC，`GetLocomotionSet` 返回空。属性初始化和 Buff 由用户通过 GE 配置；组件只读取 `CurrentValue`，不创建 Set、不代管 GE 或回写属性。
-- Locomotion 是 PawnExtension InitState 的订阅者，不是独立 InitState feature：BeginPlay 只在取得 PawnExtension 后通过其 `RegisterAndCallForInitStateChange` 订阅 GameplayReady，必须立即回调；CMC PreMovement 与 ASC 生命周期均在 GameplayReady 回调内才注册。EndPlay 与 OnUnregister 都幂等清理全部委托和缓存，已 BeginPlay 的组件重新 OnRegister 时会重新建立订阅。GameplayReady 后绑定 ASC，并在每次 ASC 初始化时检查一次可选 Set；PreMovement 只转发蓝图计算，不轮询生命周期。
+- Locomotion 是 PawnExtension InitState 的订阅者，不是独立 InitState feature：BeginPlay 只在取得 PawnExtension 后通过其 `RegisterAndCallForInitStateChange` 订阅 GameplayReady，必须立即回调；CMC Tick prerequisite 与 ASC 生命周期均在 GameplayReady 回调内才注册。EndPlay 与 OnUnregister 都幂等关闭 Tick、移除 prerequisite 并清理全部委托和缓存，已 BeginPlay 的组件重新 OnRegister 时会重新建立订阅。GameplayReady 后绑定 ASC，并在每次 ASC 初始化时检查一次可选 Set；Locomotion Tick 只转发蓝图计算，不轮询生命周期。
 - 蓝图入口：`OnLocomotionReady`、`OnLocomotionAttributeChanged`、`OnLocomotionUnavailable`、`UpdateLocomotionPreCMC`；通过 `GetIMGCharacter`、`GetLocomotionSet`、`GetIMGAbilitySystemComponent`、`GetIMGCharacterMovementComponent` 取引用，通过 `IsLocomotionReady` 查询绑定是否有效。项目专用对象 Getter 使用 `GetIMG...` 并返回具体 IMG 类型，避免蓝图自行 Cast 或与引擎通用节点同名。
 - Ready 表示 CMC 与当前 Pawn 的 ASC 已绑定，LocomotionSet 可为空；Unavailable 回调时 ASC/Set 引用已清空，CMC 仍可用于清理。UE 5.8 ASC 没有公开 SpawnedAttributes 变更委托，因此组件不自动追踪 ASC 初始化后的 Set 动态增删；初始化时缺少 Set 会输出一次 Warning。最终移动参数在 PreCMC 回调计算、写入；音频 Foley/OnLanded 和 ABP 接口转发不属于此组件职责。
 

@@ -73,12 +73,6 @@ UIMGCharacterMovementComponent::UIMGCharacterMovementComponent(const FObjectInit
 	MaxWalkSpeedCrouched = 250.0f;
 }
 
-void UIMGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	PreMovementUpdateDelegate.Broadcast(DeltaTime);
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-}
-
 bool FIMGStanceStateMachine::TransitionTo(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance, bool bClientSimulation)
 {
 	AIMGCharacter* Character = Cast<AIMGCharacter>(Movement.CharacterOwner.Get());

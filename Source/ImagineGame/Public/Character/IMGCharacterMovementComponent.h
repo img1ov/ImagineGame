@@ -23,8 +23,6 @@ enum class EIMGStance : uint8
 
 class UIMGCharacterMovementComponent;
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FIMGCharacterMovementPreUpdateDelegate, float /* DeltaTime */);
-
 /**
  * Lightweight native stance state machine.
  *
@@ -89,9 +87,6 @@ class UIMGCharacterMovementComponent : public UCharacterMovementComponent
 public:
 	
 	UE_API UIMGCharacterMovementComponent(const FObjectInitializer& ObjectInitializer);
-	UE_API virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-	FIMGCharacterMovementPreUpdateDelegate& OnPreMovementUpdate() { return PreMovementUpdateDelegate; }
 	
 	UE_API virtual bool CanAttemptJump() const override;
 	UE_API virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
@@ -149,7 +144,6 @@ public:
 	void SetStrafeEnabled(const bool bEnable);
 
 protected:
-	FIMGCharacterMovementPreUpdateDelegate PreMovementUpdateDelegate;
 	FIMGStanceStateMachine StanceMachine;
 	bool CanEnterStance(EIMGStance NewStance) const;
 	bool ApplyStanceTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation);

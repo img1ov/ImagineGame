@@ -15,8 +15,9 @@
 UIMGLocomotionComponent::UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
 void UIMGLocomotionComponent::OnRegister()
@@ -51,6 +52,16 @@ void UIMGLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ClearConnections();
 	Super::EndPlay(EndPlayReason);
+}
+
+void UIMGLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (IsLocomotionReady())
+	{
+		UpdateLocomotionPreCMC(DeltaTime);
+	}
 }
 
 bool UIMGLocomotionComponent::IsLocomotionReady() const
@@ -103,7 +114,7 @@ void UIMGLocomotionComponent::RegisterForGameplayReady()
 
 void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 {
-	if (PreMovementUpdateHandle.IsValid())
+	if (MovementComponent)
 	{
 		RefreshAbilitySystemConnection();
 		return;
@@ -125,7 +136,8 @@ void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 	}
 
 	MovementComponent = IMGMovementComponent;
-	PreMovementUpdateHandle = IMGMovementComponent->OnPreMovementUpdate().AddUObject(this, &ThisClass::HandlePreMovementUpdate);
+	IMGMovementComponent->AddTickPrerequisiteComponent(this);
+	SetComponentTickEnabled(true);
 	PawnExtension->OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
 	// Register last: the immediate callback can run Blueprint code that tears down this component.
 	PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
@@ -133,14 +145,11 @@ void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 
 void UIMGLocomotionComponent::ClearConnections()
 {
+	SetComponentTickEnabled(false);
 	if (MovementComponent)
 	{
-		if (PreMovementUpdateHandle.IsValid())
-		{
-			MovementComponent->OnPreMovementUpdate().Remove(PreMovementUpdateHandle);
-		}
+		MovementComponent->RemoveTickPrerequisiteComponent(this);
 	}
-	PreMovementUpdateHandle.Reset();
 
 	if (UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get())
 	{
@@ -301,13 +310,5 @@ void UIMGLocomotionComponent::HandleAttributeChanged(const FOnAttributeChangeDat
 	if (IsLocomotionReady())
 	{
 		OnLocomotionAttributeChanged(ChangeData.Attribute, ChangeData.OldValue, ChangeData.NewValue);
-	}
-}
-
-void UIMGLocomotionComponent::HandlePreMovementUpdate(float DeltaTime)
-{
-	if (IsLocomotionReady())
-	{
-		UpdateLocomotionPreCMC(DeltaTime);
 	}
 }
