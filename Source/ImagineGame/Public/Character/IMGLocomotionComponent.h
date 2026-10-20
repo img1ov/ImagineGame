@@ -1,15 +1,16 @@
 #pragma once
 
 #include "AttributeSet.h"
+#include "Components/GameFrameworkComponentDelegates.h"
 #include "Components/PawnComponent.h"
 
 #include "IMGLocomotionComponent.generated.h"
 
 #define UE_API IMAGINEGAME_API
 
-class UCharacterMovementComponent;
-class UGameFrameworkComponentManager;
+class AIMGCharacter;
 class UIMGAbilitySystemComponent;
+class UIMGCharacterMovementComponent;
 class UIMGLocomotionSet;
 class UIMGPawnExtensionComponent;
 struct FActorInitStateChangedParams;
@@ -24,14 +25,17 @@ class UIMGLocomotionComponent : public UPawnComponent
 public:
 	UE_API UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer);
 
-	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
-	UIMGAbilitySystemComponent* GetAbilitySystemComponent() const { return AbilitySystemComponent; }
+	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion", meta = (DisplayName = "Get IMG Character"))
+	UE_API AIMGCharacter* GetIMGCharacter() const;
+
+	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion", meta = (DisplayName = "Get IMG Ability System Component"))
+	UIMGAbilitySystemComponent* GetIMGAbilitySystemComponent() const { return AbilitySystemComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
 	const UIMGLocomotionSet* GetLocomotionSet() const { return LocomotionSet; }
 
-	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
-	UCharacterMovementComponent* GetCharacterMovementComponent() const { return MovementComponent; }
+	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion", meta = (DisplayName = "Get IMG Character Movement Component"))
+	UIMGCharacterMovementComponent* GetIMGCharacterMovementComponent() const { return MovementComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Locomotion")
 	UE_API bool IsLocomotionReady() const;
@@ -42,11 +46,11 @@ protected:
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	/** Called after binding the current ASC/LocomotionSet. Read attributes' CurrentValue here. */
+	/** Called after binding the current ASC and CMC. The optional LocomotionSet may be null. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Locomotion", meta = (DisplayName = "On Locomotion Ready"))
 	void OnLocomotionReady();
 
-	/** Called after the current pairing is removed. The CMC remains accessible for cleanup. */
+	/** Called after the current ASC pairing is removed. The CMC remains accessible for cleanup. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Locomotion", meta = (DisplayName = "On Locomotion Unavailable"))
 	void OnLocomotionUnavailable();
 
@@ -59,10 +63,14 @@ protected:
 	void UpdateLocomotionPreCMC(float DeltaTime);
 
 private:
-	void InitializeConnections();
+	void RegisterForGameplayReady();
+	void InitializeGameplayReadyConnections();
 	void ClearConnections();
+	void RefreshAbilitySystemConnection();
+	void ClearAbilitySystemConnection();
 	void RefreshLocomotionSet();
 	void UnbindLocomotionSet();
+	UFUNCTION()
 	void HandleGameplayReady(const FActorInitStateChangedParams& Params);
 	void HandleAbilitySystemInitialized();
 	void HandleAbilitySystemUninitialized();
@@ -76,15 +84,13 @@ private:
 	TObjectPtr<const UIMGLocomotionSet> LocomotionSet;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UCharacterMovementComponent> MovementComponent;
+	TObjectPtr<UIMGCharacterMovementComponent> MovementComponent;
 
-	TWeakObjectPtr<UGameFrameworkComponentManager> ComponentManager;
 	TWeakObjectPtr<UIMGPawnExtensionComponent> PawnExtensionComponent;
-	FDelegateHandle GameplayReadyHandle;
+	FActorInitStateChangedBPDelegate GameplayReadyDelegate;
 	FDelegateHandle PreMovementUpdateHandle;
 	TMap<FGameplayAttribute, FDelegateHandle> AttributeChangeHandles;
-	bool bGameplayReady = false;
-	bool bRefreshingLocomotionSet = false;
+	bool bRefreshingConnections = false;
 };
 
 #undef UE_API

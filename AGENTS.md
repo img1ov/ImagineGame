@@ -25,10 +25,10 @@
 ### Locomotion 的职责与接口
 - `UIMGLocomotionComponent` 是本机 ASC/AttributeSet 与 CMC 之间的中间件，不承担复制、RPC 或移动预测；移动同步仍由角色/CMC 链路负责。
 - C++ 负责引用、生命周期、属性订阅和 CMC 前置回调；`UIMGCharacterMovementComponent` 在自身 Tick 入口广播 PreMovementUpdate，`UIMGLocomotionComponent` 注册该委托且自身不可 Tick。组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
-- `UIMGLocomotionSet` 保存七个可复制移动属性。属性初始化和 Buff 由用户通过 GE 配置；组件只读取 `CurrentValue`，不代管 GE 或回写属性。
-- 组件在 GameplayReady 后绑定 ASC/Set，缓存 PawnExtension，接入 ASC 初始化/解除通知；每次 CMC PreMovementUpdate 在转发蓝图前检查 Set 晚到或替换。退出/注销时清理订阅和 PreMovementUpdate 委托，属性委托按句柄解绑。
-- 蓝图入口：`OnLocomotionReady`、`OnLocomotionAttributeChanged`、`OnLocomotionUnavailable`、`UpdateLocomotionPreCMC`；通过 `GetLocomotionSet`、`GetAbilitySystemComponent`、`GetCharacterMovementComponent` 取引用，通过 `IsLocomotionReady` 查询绑定是否有效。
-- Ready 表示 ASC/Set 已绑定；Unavailable 回调时 ASC/Set 引用已清空，CMC 仍可用于清理。最终移动参数在 PreCMC 回调计算、写入；音频 Foley/OnLanded 和 ABP 接口转发不属于此组件职责。
+- `UIMGLocomotionSet` 是可选的七项可复制移动属性来源。ASC 中存在该 Set 时组件才注册属性委托；没有 Set 时组件仍会 Ready 并执行 PreCMC，`GetLocomotionSet` 返回空。属性初始化和 Buff 由用户通过 GE 配置；组件只读取 `CurrentValue`，不创建 Set、不代管 GE 或回写属性。
+- Locomotion 是 PawnExtension InitState 的订阅者，不是独立 InitState feature：BeginPlay 只在取得 PawnExtension 后通过其 `RegisterAndCallForInitStateChange` 订阅 GameplayReady，必须立即回调；CMC PreMovement 与 ASC 生命周期均在 GameplayReady 回调内才注册。EndPlay 与 OnUnregister 都幂等清理全部委托和缓存，已 BeginPlay 的组件重新 OnRegister 时会重新建立订阅。GameplayReady 后绑定 ASC，并在每次 ASC 初始化时检查一次可选 Set；PreMovement 只转发蓝图计算，不轮询生命周期。
+- 蓝图入口：`OnLocomotionReady`、`OnLocomotionAttributeChanged`、`OnLocomotionUnavailable`、`UpdateLocomotionPreCMC`；通过 `GetIMGCharacter`、`GetLocomotionSet`、`GetIMGAbilitySystemComponent`、`GetIMGCharacterMovementComponent` 取引用，通过 `IsLocomotionReady` 查询绑定是否有效。项目专用对象 Getter 使用 `GetIMG...` 并返回具体 IMG 类型，避免蓝图自行 Cast 或与引擎通用节点同名。
+- Ready 表示 CMC 与当前 Pawn 的 ASC 已绑定，LocomotionSet 可为空；Unavailable 回调时 ASC/Set 引用已清空，CMC 仍可用于清理。UE 5.8 ASC 没有公开 SpawnedAttributes 变更委托，因此组件不自动追踪 ASC 初始化后的 Set 动态增删；初始化时缺少 Set 会输出一次 Warning。最终移动参数在 PreCMC 回调计算、写入；音频 Foley/OnLanded 和 ABP 接口转发不属于此组件职责。
 
 ### Traversal 的职责与接口
 - Traversal 位于 `ImagineGame/Traversal`，当前是 GASP 单蒙太奇实现。角色蓝图按需装配 `UIMGTraversalComponent` 与 `UMotionWarpingComponent`；`AIMGCharacter` 不持有或创建它们，输入也不属于 Traversal，依赖保持 Traversal 单向指向 Character。
@@ -39,6 +39,7 @@
 - 执行前必须存在与动作对应的唯一 Warp Window：所有动作需要 `FrontLedge`，Vault/Hurdle 还需要 `BackLedge`，Hurdle 还需要 `BackFloor` 与 `Distance_From_Ledge` 曲线。Hurdle 用窗口末端曲线差重算落点，并重新验证地面和胶囊空间；缺少这些动画合同就拒绝执行。
 - 执行阶段由 GA 设置 Flying、忽略命中障碍、启动蒙太奇并在完成、取消、中断、死亡或承载物失效时对称恢复。非 Vault 只有脚下仍有可走地面才恢复 Walking，否则进入 Falling；不在 BlendOut 提前清理。
 - 动态障碍和落地承载物分别保存组件局部 Warp Transform；组件 Tick 排在承载物之后、CMC 之前。执行期每 0.05 秒检查组件存活、物理许可、线速度与角速度，超限就中止；当前阈值默认 500 cm/s、85 deg/s。
+- Traversal Debug Draw 由 `IMG.Traversal.DebugDraw` 控制：0 关闭，1 显示最终候选、失败和执行中的 Warp Target，2 追加三层搜索、候选命中与逐候选失败原因，3 追加顶部/宽度/深度/路径/落点和胶囊验证；`IMG.Traversal.DebugDuration` 控制检测图形保留秒数。所有调用受 `ENABLE_DRAW_DEBUG` 保护，不进入 Shipping。
 - 旧蓝图职责映射为：Traversal 检测图 → `FIMGTraversalDetector`，Traversal Result/Chooser 输入 → `FIMGTraversalCandidate`，CHT/PoseMatch → `SelectTraversalAnimation`，三个 Set Warp Target → `UIMGTraversalComponent`，Ignore/Flying/PlayMontage/恢复 → GA。蓝图只需转换 Candidate、补 Gait/PoseHistory 并返回选择结果。
 - GTA 职责映射为：`CClimbDetector/CClimbHandHoldDetected` 的同步几何合同 → Detector/Candidate；`CTaskJumpVault` 的一次动作分流 → 蓝图选择结果；`CTaskVault` 的当前单动作执行、动态 physical 跟随和 CleanUp 子集 → GA；owner 的 Queriable/clone 状态 → Component 代理快照。Component 不等价于 GTA 的完整 Task，也不应吸收输入决策或核心检测。
 - 当前未移植 GTA 的异步探测/跨帧缓存、完整多阶段 Task FSM、跨多个碰撞组件拼接同一障碍、IK/武器/布娃娃/水体/失败记忆，以及攀爬悬挂、Shimmy、梯子等持续行为。前三项应按实际性能和复杂障碍需求扩展 Detector/GA；表现与异常系统通过独立协作者或生命周期 Hook 接入；持续行为拆成多个 GA，由上层选择/组合能力协调。

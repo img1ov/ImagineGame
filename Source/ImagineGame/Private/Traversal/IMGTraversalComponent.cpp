@@ -6,6 +6,10 @@
 #include "Net/UnrealNetwork.h"
 #include "Traversal/IMGTraversalDetector.h"
 
+#if ENABLE_DRAW_DEBUG
+#include "IMGTraversalDebug.h"
+#endif
+
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTraversalComponent)
 
 namespace
@@ -158,22 +162,48 @@ void UIMGTraversalComponent::RefreshWarpTargets()
 	}
 	const bool bUseLocalTargets = IsValid(HitComponent);
 	const FTransform ComponentWorld = bUseLocalTargets ? HitComponent->GetComponentTransform() : FTransform::Identity;
-	Warping->AddOrUpdateWarpTargetFromTransform(FrontLedgeName,
-		bUseLocalTargets ? ActiveState.LocalFrontLedge * ComponentWorld : ActiveState.FrontLedge);
+	const FTransform FrontLedge = bUseLocalTargets
+		? ActiveState.LocalFrontLedge * ComponentWorld : ActiveState.FrontLedge;
+	Warping->AddOrUpdateWarpTargetFromTransform(FrontLedgeName, FrontLedge);
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Point(GetWorld(), FrontLedge.GetLocation(), FColor::Yellow, 1, 16.f, 0.f);
+	IMGTraversalDebug::Arrow(GetWorld(), FrontLedge.GetLocation(),
+		FrontLedge.GetLocation() + FrontLedge.GetUnitAxis(EAxis::X) * 45.f, FColor::Yellow, 1, 0.f);
+#endif
 	if (ActiveState.bHasBackLedge
 		&& (ActiveState.Action == EIMGTraversalAction::Hurdle || ActiveState.Action == EIMGTraversalAction::Vault))
 	{
-		Warping->AddOrUpdateWarpTargetFromTransform(BackLedgeName,
-			bUseLocalTargets ? ActiveState.LocalBackLedge * ComponentWorld : ActiveState.BackLedge);
+		const FTransform BackLedge = bUseLocalTargets
+			? ActiveState.LocalBackLedge * ComponentWorld : ActiveState.BackLedge;
+		Warping->AddOrUpdateWarpTargetFromTransform(BackLedgeName, BackLedge);
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Point(GetWorld(), BackLedge.GetLocation(), FColor::Orange, 1, 16.f, 0.f);
+		IMGTraversalDebug::Arrow(GetWorld(), BackLedge.GetLocation(),
+			BackLedge.GetLocation() + BackLedge.GetUnitAxis(EAxis::X) * 45.f, FColor::Orange, 1, 0.f);
+#endif
 	}
 	if (ActiveState.bHasBackFloor && ActiveState.Action == EIMGTraversalAction::Hurdle)
 	{
 		UPrimitiveComponent* BackFloorComponent = ActiveState.BackFloorComponent.Get();
-		Warping->AddOrUpdateWarpTargetFromTransform(BackFloorName,
-			IsValid(BackFloorComponent)
-				? ActiveState.LocalBackFloor * BackFloorComponent->GetComponentTransform()
-				: ActiveState.BackFloor);
+		const FTransform BackFloor = IsValid(BackFloorComponent)
+			? ActiveState.LocalBackFloor * BackFloorComponent->GetComponentTransform()
+			: ActiveState.BackFloor;
+		Warping->AddOrUpdateWarpTargetFromTransform(BackFloorName, BackFloor);
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Point(GetWorld(), BackFloor.GetLocation(), FColor::Green, 1, 16.f, 0.f);
+		IMGTraversalDebug::Arrow(GetWorld(), BackFloor.GetLocation(),
+			BackFloor.GetLocation() + BackFloor.GetUnitAxis(EAxis::X) * 45.f, FColor::Green, 1, 0.f);
+#endif
 	}
+#if ENABLE_DRAW_DEBUG
+	if (GetOwner() && IMGTraversalDebug::IsEnabled(1))
+	{
+		IMGTraversalDebug::String(GetWorld(), GetOwner()->GetActorLocation() + FVector::UpVector * 120.f,
+			FString::Printf(TEXT("Traversal Active: %s"),
+				*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(ActiveState.Action))),
+			FColor::White, 1, 0.f);
+	}
+#endif
 }
 
 void UIMGTraversalComponent::RemoveWarpTargets()

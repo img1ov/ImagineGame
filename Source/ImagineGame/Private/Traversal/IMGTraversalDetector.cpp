@@ -8,19 +8,86 @@
 #include "Math/RotationMatrix.h"
 #include "Physics/IMGCollisionChannels.h"
 
+#if ENABLE_DRAW_DEBUG
+#include "IMGTraversalDebug.h"
+#endif
+
 namespace
 {
 constexpr int32 MaxCandidateHits = 12;
 constexpr int32 MaxDepthSamples = 12;
+
+#if ENABLE_DRAW_DEBUG
+FString GetFailureName(EIMGTraversalFailure Failure)
+{
+	return StaticEnum<EIMGTraversalFailure>()->GetNameStringByValue(static_cast<int64>(Failure));
+}
+
+FString GetActionName(EIMGTraversalAction Action)
+{
+	return StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Action));
+}
+
+void DrawFailure(const AIMGCharacter& Character, EIMGTraversalFailure Failure, const FVector& Location, int32 Level = 1)
+{
+	if (!IMGTraversalDebug::IsEnabled(Level))
+	{
+		return;
+	}
+	IMGTraversalDebug::Point(Character.GetWorld(), Location, FColor::Red, Level, 14.f);
+	IMGTraversalDebug::String(Character.GetWorld(), Location + FVector::UpVector * 16.f,
+		FString::Printf(TEXT("Traversal: %s"), *GetFailureName(Failure)), FColor::Red, Level);
+}
+
+void DrawCandidateResult(const AIMGCharacter& Character, const FIMGTraversalCandidate& Candidate)
+{
+	if (!IMGTraversalDebug::IsEnabled(1))
+	{
+		return;
+	}
+	const UWorld* World = Character.GetWorld();
+	const FVector Front = Candidate.FrontLedge.GetLocation();
+	IMGTraversalDebug::Point(World, Front, FColor::Yellow, 1, 18.f);
+	IMGTraversalDebug::Arrow(World, Front, Front + Candidate.FrontLedgeNormal * 45.f, FColor::Yellow, 1);
+	if (Candidate.bHasBackLedge)
+	{
+		const FVector Back = Candidate.BackLedge.GetLocation();
+		IMGTraversalDebug::Point(World, Back, FColor::Orange, 1, 18.f);
+		IMGTraversalDebug::Arrow(World, Back, Back + Candidate.BackLedgeNormal * 45.f, FColor::Orange, 1);
+		IMGTraversalDebug::Line(World, Front, Back, FColor::Orange, 1, 2.f);
+	}
+	if (Candidate.bHasBackFloor)
+	{
+		IMGTraversalDebug::Point(World, Candidate.BackFloor.GetLocation(), FColor::Green, 1, 18.f);
+	}
+	const FString Feasible = FString::Printf(TEXT("%s%s%s"),
+		Candidate.bCanMantle ? TEXT("M") : TEXT("-"),
+		Candidate.bCanVault ? TEXT("V") : TEXT("-"),
+		Candidate.bCanHurdle ? TEXT("H") : TEXT("-"));
+	IMGTraversalDebug::String(World, Front + FVector::UpVector * 28.f,
+		FString::Printf(TEXT("Traversal: %s  H %.0f  D %.0f  Drop %.0f  [%s]"),
+			*GetActionName(Candidate.RecommendedAction), Candidate.ObstacleHeight,
+			Candidate.ObstacleDepth, Candidate.DropHeight, *Feasible), FColor::Green, 1);
+}
+#endif
 
 bool TraceTop(UPrimitiveComponent& Component, const FVector& Point, float StartZ, float EndZ,
 	const FCollisionQueryParams& Params, FHitResult& OutHit)
 {
 	const FVector Start(Point.X, Point.Y, StartZ);
 	const FVector End(Point.X, Point.Y, EndZ);
-	return Component.LineTraceComponent(OutHit, Start, End, IMG_TraceChannel_Traversal, Params,
+	const bool bHit = Component.LineTraceComponent(OutHit, Start, End, IMG_TraceChannel_Traversal, Params,
 		FCollisionResponseParams::DefaultResponseParam, FCollisionObjectQueryParams::DefaultObjectQueryParam)
 		&& OutHit.bBlockingHit;
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Line(Component.GetWorld(), Start, bHit ? OutHit.ImpactPoint : End,
+		bHit ? FColor::Cyan : FColor::Red, 3);
+	if (bHit)
+	{
+		IMGTraversalDebug::Point(Component.GetWorld(), OutHit.ImpactPoint, FColor::Cyan, 3, 7.f);
+	}
+#endif
+	return bHit;
 }
 
 bool HasCapsuleRoom(const UWorld& World, const UCapsuleComponent& Capsule, const AActor& Character,
@@ -28,8 +95,13 @@ bool HasCapsuleRoom(const UWorld& World, const UCapsuleComponent& Capsule, const
 {
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalRoom), false, &Character);
 	const FCollisionResponseParams Responses(Capsule.GetCollisionResponseToChannels());
-	return !World.OverlapBlockingTestByChannel(Center, FQuat::Identity, Capsule.GetCollisionObjectType(),
+	const bool bHasRoom = !World.OverlapBlockingTestByChannel(Center, FQuat::Identity, Capsule.GetCollisionObjectType(),
 		FCollisionShape::MakeCapsule(Radius, HalfHeight), Params, Responses);
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Capsule(&World, Center, HalfHeight, Radius,
+		bHasRoom ? FColor::Green : FColor::Red, 3);
+#endif
+	return bHasRoom;
 }
 
 bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, const FVector& Forward,
@@ -51,6 +123,11 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		Failure = EIMGTraversalFailure::InvalidSurface;
 		return false;
 	}
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Point(World, Face.ImpactPoint, FColor::Yellow, 2, 11.f);
+	IMGTraversalDebug::Arrow(World, Face.ImpactPoint, Face.ImpactPoint + Face.ImpactNormal * 40.f,
+		FColor::Yellow, 2);
+#endif
 	if ((Component->IsSimulatingPhysics() && !Query.bAllowSimulatingPhysics)
 		|| Component->GetComponentVelocity().Size() > Query.MaxMovingSpeed
 		|| Component->GetPhysicsAngularVelocityInDegrees().Size() > Query.MaxAngularSpeedDegrees)
@@ -77,6 +154,8 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	}
 
 	const float SideOffset = FMath::Max(Query.MinWidth * 0.5f, Radius * 0.7f);
+	FVector SideTopPoints[2];
+	int32 SidePointIndex = 0;
 	for (const float Side : {-1.f, 1.f})
 	{
 		FHitResult SideTop;
@@ -88,7 +167,11 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			Failure = EIMGTraversalFailure::InsufficientWidth;
 			return false;
 		}
+		SideTopPoints[SidePointIndex++] = SideTop.ImpactPoint;
 	}
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Line(World, SideTopPoints[0], SideTopPoints[1], FColor::Blue, 3, 2.f);
+#endif
 
 	const FVector FrontPoint = CenterTop.ImpactPoint;
 	const FRotator Facing = FRotationMatrix::MakeFromXZ(Forward, Up).Rotator();
@@ -149,14 +232,25 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	Out.bHasBackLedge = bFoundEdge;
 	Out.BackLedge = FTransform(Facing, LastTopPoint);
 	Out.BackLedgeNormal = Forward;
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Line(World, FrontPoint, LastTopPoint, FColor::Orange, 3, 2.f);
+	IMGTraversalDebug::Point(World, LastTopPoint, bFoundEdge ? FColor::Orange : FColor::Silver, 3, 10.f);
+#endif
 	if (Out.bHasBackLedge)
 	{
 		FHitResult BackFace;
 		const FVector BackFaceHeight = LastTopPoint - Up * FMath::Min(25.f, Height * 0.25f);
-		if (Component->LineTraceComponent(BackFace, BackFaceHeight + Forward * (Step + 5.f),
-			BackFaceHeight - Forward * (Step + 5.f), IMG_TraceChannel_Traversal, Params,
+		const FVector BackFaceStart = BackFaceHeight + Forward * (Step + 5.f);
+		const FVector BackFaceEnd = BackFaceHeight - Forward * (Step + 5.f);
+		const bool bBackFaceHit = Component->LineTraceComponent(BackFace, BackFaceStart,
+			BackFaceEnd, IMG_TraceChannel_Traversal, Params,
 			FCollisionResponseParams::DefaultResponseParam, FCollisionObjectQueryParams::DefaultObjectQueryParam)
-			&& BackFace.bBlockingHit)
+			&& BackFace.bBlockingHit;
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Line(World, BackFaceStart, bBackFaceHit ? BackFace.ImpactPoint : BackFaceEnd,
+			bBackFaceHit ? FColor::Orange : FColor::Red, 3, 1.5f);
+#endif
+		if (bBackFaceHit)
 		{
 			Out.BackLedgeNormal = BackFace.ImpactNormal;
 		}
@@ -173,9 +267,17 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		FHitResult PathHit;
 		FCollisionQueryParams PathParams(SCENE_QUERY_STAT(IMGTraversalTopPath), false, Character);
 		const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
-		if (World->SweepSingleByChannel(PathHit, TopCenter, LastTopPoint + Up * (HalfHeight + 3.f),
+		const FVector PathEnd = LastTopPoint + Up * (HalfHeight + 3.f);
+		const bool bBlocked = World->SweepSingleByChannel(PathHit, TopCenter, PathEnd,
 			FQuat::Identity, Capsule->GetCollisionObjectType(), FCollisionShape::MakeCapsule(Radius, HalfHeight),
-			PathParams, Responses))
+			PathParams, Responses);
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Line(World, TopCenter, bBlocked ? PathHit.Location : PathEnd,
+			bBlocked ? FColor::Red : FColor::Green, 3, 2.f);
+		IMGTraversalDebug::Capsule(World, PathEnd, HalfHeight, Radius,
+			bBlocked ? FColor::Red : FColor::Green, 3);
+#endif
+		if (bBlocked)
 		{
 			Failure = EIMGTraversalFailure::BlockedPath;
 			return false;
@@ -187,9 +289,21 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		const FVector FloorProbe = LastTopPoint + Forward * (Step + Radius);
 		FHitResult FloorHit;
 		FCollisionQueryParams FloorParams(SCENE_QUERY_STAT(IMGTraversalFloor), false, Character);
-		if (World->LineTraceSingleByChannel(FloorHit, FloorProbe + Up * 10.f,
-			FloorProbe - Up * Query.MaxDrop, IMG_TraceChannel_Traversal, FloorParams)
-			&& Movement->IsWalkable(FloorHit))
+		const FVector FloorTraceStart = FloorProbe + Up * 10.f;
+		const FVector FloorTraceEnd = FloorProbe - Up * Query.MaxDrop;
+		const bool bFloorHit = World->LineTraceSingleByChannel(FloorHit, FloorTraceStart,
+			FloorTraceEnd, IMG_TraceChannel_Traversal, FloorParams);
+		const bool bWalkableFloor = bFloorHit && Movement->IsWalkable(FloorHit);
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Line(World, FloorTraceStart, bFloorHit ? FloorHit.ImpactPoint : FloorTraceEnd,
+			bWalkableFloor ? FColor::Green : FColor::Red, 3, 2.f);
+		if (bFloorHit)
+		{
+			IMGTraversalDebug::Point(World, FloorHit.ImpactPoint,
+				bWalkableFloor ? FColor::Green : FColor::Red, 3, 9.f);
+		}
+#endif
+		if (bWalkableFloor)
 		{
 			Out.DropHeight = FrontPoint.Z - FloorHit.ImpactPoint.Z;
 			Out.BackLedgeHeight = LastTopPoint.Z - FloorHit.ImpactPoint.Z;
@@ -243,6 +357,9 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		|| !(Movement->IsMovingOnGround() || Movement->IsFalling()))
 	{
 		OutFailure = EIMGTraversalFailure::InvalidMovement;
+#if ENABLE_DRAW_DEBUG
+		DrawFailure(*Character, OutFailure, Character->GetActorLocation() + FVector::UpVector * 50.f);
+#endif
 		return false;
 	}
 	const FVector Forward = FVector(Query.Direction.X, Query.Direction.Y, 0.f).GetSafeNormal();
@@ -252,6 +369,9 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		|| Query.MaxHeight <= Query.MinHeight || Query.MinWidth <= 0.f)
 	{
 		OutFailure = EIMGTraversalFailure::InvalidMovement;
+#if ENABLE_DRAW_DEBUG
+		DrawFailure(*Character, OutFailure, Character->GetActorLocation() + FVector::UpVector * 50.f);
+#endif
 		return false;
 	}
 
@@ -271,8 +391,15 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	{
 		TArray<FHitResult> ProbeHits;
 		const FVector Start = Origin + FVector::UpVector * HeightOffset;
-		Character->GetWorld()->SweepMultiByChannel(ProbeHits, Start, Start + Forward * TraceForwardDistance,
+		const FVector End = Start + Forward * TraceForwardDistance;
+		Character->GetWorld()->SweepMultiByChannel(ProbeHits, Start, End,
 			FQuat::Identity, IMG_TraceChannel_Traversal, FCollisionShape::MakeSphere(Radius * 0.65f), Params);
+#if ENABLE_DRAW_DEBUG
+		const FColor SearchColor = ProbeHits.IsEmpty() ? FColor::Silver : FColor::Cyan;
+		IMGTraversalDebug::Line(Character->GetWorld(), Start, End, SearchColor, 2, 1.5f);
+		IMGTraversalDebug::Sphere(Character->GetWorld(), Start, Radius * 0.65f, SearchColor, 2);
+		IMGTraversalDebug::Sphere(Character->GetWorld(), End, Radius * 0.65f, SearchColor, 2);
+#endif
 		for (const FHitResult& Hit : ProbeHits)
 		{
 			if (!Hit.bBlockingHit || !Hit.GetComponent())
@@ -304,14 +431,23 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 			break;
 		}
 		FIMGTraversalCandidate Candidate;
-		EIMGTraversalFailure Failure;
+		EIMGTraversalFailure Failure = EIMGTraversalFailure::InvalidSurface;
 		if (MakeCandidate(Query, Hit, Forward, Candidate, Failure))
 		{
 			OutCandidate = Candidate;
 			OutFailure = EIMGTraversalFailure::None;
+#if ENABLE_DRAW_DEBUG
+			DrawCandidateResult(*Character, OutCandidate);
+#endif
 			return true;
 		}
 		OutFailure = Failure;
+#if ENABLE_DRAW_DEBUG
+		DrawFailure(*Character, Failure, Hit.ImpactPoint, 2);
+#endif
 	}
+#if ENABLE_DRAW_DEBUG
+	DrawFailure(*Character, OutFailure, Origin + Forward * TraceForwardDistance + FVector::UpVector * 30.f);
+#endif
 	return false;
 }
