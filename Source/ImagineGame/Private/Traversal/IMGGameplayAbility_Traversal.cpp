@@ -248,11 +248,19 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 		}
 	}
 #endif
-	const bool bAllowedRemoteSelection = !bRemoteRequest || AllowedMontages.ContainsByPredicate(
+	const bool bMatchesRemoteWhitelist = AllowedMontages.ContainsByPredicate(
 		[&Selection](const FIMGTraversalAllowedMontage& Allowed)
 		{
 			return Allowed.Action == Selection.Action && Allowed.Montage == Selection.Montage;
 		});
+	const bool bAllowedRemoteSelection = !bRemoteRequest || AllowedMontages.IsEmpty() || bMatchesRemoteWhitelist;
+#if ENABLE_DRAW_DEBUG
+	if (bRemoteRequest && !bAllowedRemoteSelection)
+	{
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			TEXT("Traversal Validate: remote montage is not in AllowedMontages"), FColor::Red);
+	}
+#endif
 	return bCandidateFresh && Candidate.bHasFrontLedge && IsValid(Candidate.HitComponent)
 		&& Candidate.Supports(Selection.Action) && IsValid(Selection.Montage)
 		&& (Selection.Action != EIMGTraversalAction::Hurdle || IsValid(Candidate.BackFloorComponent))

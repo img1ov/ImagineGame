@@ -31,7 +31,10 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
 	FIMGTraversalAnimationSelection SelectTraversalAnimation(const FIMGTraversalCandidate& Candidate) const;
 
-	/** Action/montage pairs that a remote client's CHT may choose. Required for networked player traversal. */
+	/**
+	 * Optional remote-client security whitelist. An empty array accepts any montage that passes the native
+	 * geometry, action, timing and Motion Warping contract checks; a non-empty array enforces exact pairs.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 

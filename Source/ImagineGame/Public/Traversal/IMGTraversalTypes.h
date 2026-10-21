@@ -31,7 +31,8 @@ enum class EIMGTraversalFailure : uint8
 	BlockedPath,
 	NoSupportedAction,
 	MovingTarget,
-	StaleCandidate
+	StaleCandidate,
+	OutOfReach
 };
 
 /** A single, bounded synchronous geometry request. The detector owns no live state. */
@@ -46,21 +47,44 @@ struct FIMGTraversalQuery
 	UPROPERTY(BlueprintReadWrite)
 	FVector Direction = FVector::ForwardVector;
 
+	/** GTA reference reach for a standing/manual action; exposed to animation selection, not used as the hard search gate. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float ForwardDistance = 75.f;
+	float ForwardDistance = 150.f;
 
-	/** Grounded forward probes grow toward this distance as forward speed approaches ForwardDistanceAtMaxSpeed. */
+	/** Standing reach for ledges at or below the reference 80 cm step-up height. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxForwardDistance = 350.f;
+	float StepUpForwardDistance = 100.f;
+
+	/** Maximum running action reach. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxForwardDistance = 200.f;
+
+	/** Running reach starts here once forward speed crosses RunningSpeedThreshold. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float RunningForwardDistance = 180.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float ForwardDistanceAtMaxSpeed = 500.f;
+	float RunningSpeedThreshold = 350.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinHeight = 35.f;
+	float ForwardDistanceAtMaxSpeed = 600.f;
+
+	/** Broad-phase probe length; matches the reference manual detector's 2.5 m search. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float SearchDistance = 250.f;
+
+	/**
+	 * Maximum planar distance from the character origin to a returned front ledge.
+	 * Keep this independent from GTA's action reaches so Motion Matching may select a montage's ReachLedge approach segment.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxAnimationReachDistance = 250.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxHeight = 220.f;
+	float MinHeight = 32.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxHeight = 300.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxDepth = 300.f;
@@ -69,11 +93,23 @@ struct FIMGTraversalQuery
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxHorizontalClearance = 300.f;
 
+	/** A blocker this close behind the ledge invalidates every supported traversal. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinHorizontalClearance = 35.f;
+
+	/** Downward depth probes measure the first drop even when it is not a valid landing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DepthProbeLength = 500.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxDrop = 180.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinWidth = 70.f;
+	float MinWidth = 60.f;
+
+	/** Manual-facing threshold; 0.3 is the reference manual traversal value. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinFacingDot = 0.3f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxMovingSpeed = 500.f;
@@ -89,7 +125,7 @@ struct FIMGTraversalQuery
 	float MaxHurdleHeight = 110.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxVaultHeight = 160.f;
+	float MaxVaultHeight = 300.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bAllowSimulatingPhysics = false;
@@ -159,6 +195,10 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	float HorizontalClearance = 0.f;
 
+	/** Free vertical space above the ledge measured by the dedicated clearance probe. */
+	UPROPERTY(BlueprintReadOnly)
+	float VerticalClearance = 0.f;
+
 	UPROPERTY(BlueprintReadOnly)
 	float DropHeight = 0.f;
 
@@ -168,6 +208,10 @@ struct FIMGTraversalCandidate
 
 	UPROPERTY(BlueprintReadOnly)
 	float DistanceToLedge = 0.f;
+
+	/** GTA-style initiation reach for this speed/height. This is chooser data, not a detector rejection threshold. */
+	UPROPERTY(BlueprintReadOnly)
+	float ReferenceReachDistance = 0.f;
 
 	UPROPERTY(BlueprintReadOnly)
 	float DetectionTime = 0.f;
