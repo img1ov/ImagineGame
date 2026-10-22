@@ -36,7 +36,7 @@
 - 旧蓝图映射：检测图 → Detector，Traversal Result/Chooser 输入 → Candidate，CHT/PoseMatch → `SelectTraversalAnimation`，Set Warp Target → Component，Ignore/Flying/PlayMontage/恢复 → GA。蓝图只转换 Candidate、补 Gait/PoseHistory 并返回选择结果；专用服务器筛选必须有不依赖 PoseHistory 的后备分支。
 
 ### Traversal：检测合同
-- 使用 `IMG_TraceChannel_Traversal`（当前配置为 `ECC_GameTraceChannel1/Traversable`）。默认广域搜索和 `MaxAnimationReachDistance` 均为 250 cm；前者是 broad phase，后者是返回候选的绝对动画覆盖上限。动画发起距离由 CHT 基于 `DistanceToLedge`、`Speed`、`ObstacleHeight` 等事实输入配置，Detector 不生成参考 Reach，也不重复维护站立/跑步距离阈值。
+- Traversal 查询通道由 `FIMGTraversalDetectorSettings::TraceChannel` 配置，默认使用 `IMG_TraceChannel_Traversal`（当前为 `ECC_GameTraceChannel1/Traversable`）；Detector 与 GA 落点复核必须消费同一设置，不得各自硬编码。默认广域搜索和 `MaxAnimationReachDistance` 均为 250 cm；前者是 broad phase，后者是返回候选的绝对动画覆盖上限。动画发起距离由 CHT 基于 `DistanceToLedge`、`Speed`、`ObstacleHeight` 等事实输入配置，Detector 不生成参考 Reach，也不重复维护站立/跑步距离阈值。
 - 前向搜索最多 6 层，球半径 21.5 cm、层距 43 cm；命中先按距离平方 5:朝向 1 评分，再以 9 cm 平面距离、45 度朝向和 86 cm 垂直连续性组织为边缘组；组分数取成员最佳值，后续边缘计算使用组内平均法线。顶部为半径 10 cm 的中/左右三点探测；角色到手点使用半角色半径小球扫，不用完整角色胶囊。
 - 地面角色会用 CMC 当前地面法线从脚底上移 25 cm 投影 1000 cm 接近坡线；法线 Z 高于 0.55，且边缘低于坡线或到坡线距离小于 13.5 cm 时视为可直接行走并拒绝 Traversal。深度检测为 5 组半径 27.5 cm、间距 55 cm、向下 500 cm 的球扫，20 cm 高差终止并区分后边缘和升高障碍；后边缘做 4 次二分精化。水平净空为两层半径 22.5 cm、首层后退 25 cm、前探 300 cm，35 cm 内受阻拒绝；垂直净空使用单组半径 17.5 cm，落点保留完整角色胶囊复核。
 - Candidate 保留 RecommendedAction、Front/Back Ledge、Back Floor、高度、深度、落差、BackLedgeHeight、DistanceToLedge、MovementMode、Speed 和净空；还记录边缘组垂直跨度、中层接近净空及高位开放接近事实，但不据此硬拒绝。DistanceToLedge 是 FrontLedge 到 Mesh 世界位置的三维距离。前后边缘承载组件及全部障碍组成组件也必须保留，供动态跟随、碰撞忽略和执行期检查使用。

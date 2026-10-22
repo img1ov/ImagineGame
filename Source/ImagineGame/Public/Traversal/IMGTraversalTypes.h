@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
+#include "Physics/IMGCollisionChannels.h"
 #include "IMGTraversalTypes.generated.h"
 
 class AIMGCharacter;
@@ -40,6 +41,10 @@ USTRUCT(BlueprintType)
 struct FIMGTraversalDetectorSettings
 {
 	GENERATED_BODY()
+
+	/** Trace channel used for traversal surfaces and traversal-specific clearance probes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	TEnumAsByte<ECollisionChannel> TraceChannel = IMG_TraceChannel_Traversal;
 
 	/** Speed used only by geometry exit conditions that require a running traversal. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

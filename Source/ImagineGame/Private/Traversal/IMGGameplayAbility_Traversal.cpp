@@ -12,7 +12,6 @@
 #include "Components/PrimitiveComponent.h"
 #include "Engine/World.h"
 #include "MotionWarpingComponent.h"
-#include "Physics/IMGCollisionChannels.h"
 #include "Traversal/IMGTraversalComponent.h"
 #include "Traversal/IMGTraversalTargetData.h"
 
@@ -498,7 +497,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	const FVector TraceEnd(LandingPoint.X, LandingPoint.Y,
 		Candidate.BackFloor.GetLocation().Z - FMath::Max(Settings.MaxDrop, HalfHeight));
 	const bool bFloorHit = Character->GetWorld()->LineTraceSingleByChannel(FloorHit, TraceStart, TraceEnd,
-		IMG_TraceChannel_Traversal, FloorParams, Responses);
+		Settings.TraceChannel, FloorParams, Responses);
 	const bool bWalkableFloor = bFloorHit && Character->GetIMGMovementComponent()->IsWalkable(FloorHit);
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bFloorHit ? FloorHit.ImpactPoint : TraceEnd,

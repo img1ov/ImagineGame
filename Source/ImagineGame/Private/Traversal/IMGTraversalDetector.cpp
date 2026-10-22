@@ -7,7 +7,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "Math/RotationMatrix.h"
-#include "Physics/IMGCollisionChannels.h"
 
 #if ENABLE_DRAW_DEBUG
 #include "IMGTraversalDebug.h"
@@ -168,12 +167,12 @@ bool IsVaultExitSupported(const FIMGTraversalCandidate& Candidate, bool bRunning
 }
 
 bool TraceTop(UWorld& World, const FVector& Point, float StartZ, float EndZ, float ProbeRadius,
-	const FCollisionQueryParams& Params, FHitResult& OutHit)
+	ECollisionChannel TraceChannel, const FCollisionQueryParams& Params, FHitResult& OutHit)
 {
 	const FVector Start(Point.X, Point.Y, StartZ);
 	const FVector End(Point.X, Point.Y, EndZ);
 	const bool bHit = World.SweepSingleByChannel(OutHit, Start, End, FQuat::Identity,
-		IMG_TraceChannel_Traversal, FCollisionShape::MakeSphere(ProbeRadius), Params)
+		TraceChannel, FCollisionShape::MakeSphere(ProbeRadius), Params)
 		&& OutHit.bBlockingHit && !OutHit.bStartPenetrating;
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::Line(&World, Start, bHit ? OutHit.ImpactPoint : End,
@@ -232,7 +231,8 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	const FVector ProbeOrigin = Face.ImpactPoint + SurfaceForward * (TopProbeRadius + 2.f);
 	FHitResult CenterTop;
 	if (!TraceTop(*World, ProbeOrigin, Face.ImpactPoint.Z + TopProbeStartOffset,
-		Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength, TopProbeRadius, Params, CenterTop))
+		Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength, TopProbeRadius,
+		Settings.TraceChannel, Params, CenterTop))
 	{
 		Failure = EIMGTraversalFailure::NoFrontLedge;
 #if ENABLE_DRAW_DEBUG
@@ -278,7 +278,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		if (!TraceTop(*World, ProbeOrigin + Right * SideOffset * Side,
 			Face.ImpactPoint.Z + TopProbeStartOffset,
 			Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength,
-			TopProbeRadius, Params, SideTop)
+			TopProbeRadius, Settings.TraceChannel, Params, SideTop)
 			|| !Movement->IsWalkable(SideTop)
 			|| FMath::Abs(SideTop.ImpactPoint.Z - CenterTop.ImpactPoint.Z) > TopHeightTolerance)
 		{
@@ -361,7 +361,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		const FVector ProbeEnd = ProbeStart - Up * Settings.DepthProbeLength;
 		FHitResult DepthHit;
 		const bool bDepthHit = World->SweepSingleByChannel(DepthHit, ProbeStart, ProbeEnd,
-			FQuat::Identity, IMG_TraceChannel_Traversal,
+			FQuat::Identity, Settings.TraceChannel,
 			FCollisionShape::MakeSphere(DepthProbeRadius), Params)
 			&& DepthHit.bBlockingHit && !DepthHit.bStartPenetrating && Movement->IsWalkable(DepthHit);
 #if ENABLE_DRAW_DEBUG
@@ -414,7 +414,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			const FVector Probe = FMath::Lerp(ValidPoint, InvalidPoint, 0.5f);
 			FHitResult RefineHit;
 			if (TraceTop(*World, Probe, FrontPoint.Z + 30.f, FrontPoint.Z - 30.f,
-				TopProbeRadius, Params, RefineHit)
+				TopProbeRadius, Settings.TraceChannel, Params, RefineHit)
 				&& Movement->IsWalkable(RefineHit)
 				&& FMath::Abs(RefineHit.ImpactPoint.Z - FrontPoint.Z) <= DepthHeightTolerance)
 			{
@@ -450,7 +450,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		const FVector BackFaceStart = BackFaceHeight + SurfaceForward * (DepthProbeSpacing + 5.f);
 		const FVector BackFaceEnd = BackFaceHeight - SurfaceForward * (DepthProbeSpacing + 5.f);
 		const bool bBackFaceHit = World->LineTraceSingleByChannel(BackFace, BackFaceStart,
-			BackFaceEnd, IMG_TraceChannel_Traversal, Params) && BackFace.bBlockingHit;
+			BackFaceEnd, Settings.TraceChannel, Params) && BackFace.bBlockingHit;
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::Line(World, BackFaceStart, bBackFaceHit ? BackFace.ImpactPoint : BackFaceEnd,
 			bBackFaceHit ? FColor::Orange : FColor::Red, 3, 1.5f);
@@ -473,7 +473,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	const FVector ApproachEnd = FrontPoint + Up * HandholdPathVerticalOffset
 		+ FlatFaceNormal * HandholdPathNormalOffset;
 	const bool bApproachBlocked = World->SweepSingleByChannel(ApproachPathHit, ApproachStart, ApproachEnd,
-		FQuat::Identity, IMG_TraceChannel_Traversal,
+		FQuat::Identity, Settings.TraceChannel,
 		FCollisionShape::MakeSphere(ApproachRadius), ApproachParams)
 		&& ApproachPathHit.bBlockingHit;
 #if ENABLE_DRAW_DEBUG
@@ -505,7 +505,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	FCollisionQueryParams VerticalClearanceParams(SCENE_QUERY_STAT(IMGTraversalVerticalClearance), false, Character);
 	const bool bVerticalClearanceHit = World->SweepSingleByChannel(VerticalClearanceHit,
 		VerticalClearanceStart, VerticalClearanceEnd, FQuat::Identity,
-		IMG_TraceChannel_Traversal, FCollisionShape::MakeSphere(VerticalClearanceRadius),
+		Settings.TraceChannel, FCollisionShape::MakeSphere(VerticalClearanceRadius),
 		VerticalClearanceParams) && VerticalClearanceHit.bBlockingHit;
 	Out.VerticalClearance = bVerticalClearanceHit
 		? (VerticalClearanceHit.bStartPenetrating ? 0.f
@@ -551,7 +551,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		FHitResult ClearanceHit;
 		FCollisionQueryParams ClearanceParams(SCENE_QUERY_STAT(IMGTraversalHorizontalClearance), false, Character);
 		const bool bClearanceHit = World->SweepSingleByChannel(ClearanceHit, ClearanceStart, ClearanceEnd,
-			FQuat::Identity, IMG_TraceChannel_Traversal,
+			FQuat::Identity, Settings.TraceChannel,
 			FCollisionShape::MakeSphere(HorizontalClearanceRadius), ClearanceParams);
 		const bool bClearanceBlocked = bClearanceHit && ClearanceHit.bBlockingHit;
 		if (bClearanceBlocked)
@@ -716,7 +716,7 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 			SearchBaseZ + SearchProbeRadius + SearchProbeSeparation * LayerIndex);
 		const FVector End = Start + Forward * Settings.SearchDistance;
 		Character->GetWorld()->SweepMultiByChannel(ProbeHits, Start, End,
-			FQuat::Identity, IMG_TraceChannel_Traversal,
+			FQuat::Identity, Settings.TraceChannel,
 			FCollisionShape::MakeSphere(SearchProbeRadius), Params);
 		for (const FHitResult& Hit : ProbeHits)
 		{
