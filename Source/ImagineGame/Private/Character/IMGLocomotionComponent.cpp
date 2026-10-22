@@ -16,7 +16,7 @@ UIMGLocomotionComponent::UIMGLocomotionComponent(const FObjectInitializer& Objec
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 

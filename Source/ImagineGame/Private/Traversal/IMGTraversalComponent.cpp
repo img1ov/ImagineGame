@@ -1,7 +1,10 @@
 #include "Traversal/IMGTraversalComponent.h"
 
+#include "AbilitySystem/IMGAbilitySystemComponent.h"
+#include "Animation/AnimMontage.h"
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
+#include "Character/IMGPawnExtensionComponent.h"
 #include "MotionWarpingComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Traversal/IMGTraversalDetector.h"
@@ -61,12 +64,23 @@ void UIMGTraversalComponent::BeginPlay()
 			Movement->AddTickPrerequisiteComponent(this);
 		}
 	}
+	if (UIMGPawnExtensionComponent* PawnExtension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
+	{
+		PawnExtension->OnAbilitySystemUninitialized_Register(
+			FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
+		PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(
+			FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
+	}
 }
 
-void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate, EIMGTraversalAction Action)
+void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
+	const FIMGTraversalAnimationSelection& Selection)
 {
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
-	ActiveState.Action = Action;
+	ActiveState.Action = Selection.Action;
+	ActiveState.Montage = Selection.Montage;
+	ActiveState.MontagePlayInstanceId = 0;
+	ActiveState.MontageStartTime = Selection.StartTime;
 	ActiveState.HitComponent = Candidate.HitComponent;
 	ActiveState.FrontLedgeComponent = Candidate.FrontLedgeComponent;
 	ActiveState.BackLedgeComponent = Candidate.BackLedgeComponent;
@@ -93,13 +107,21 @@ void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	{
 		AddTickPrerequisiteComponent(BackFloorComponent);
 	}
-	if (GetOwner() && GetOwner()->HasAuthority())
-	{
-		ReplicatedState = ActiveState;
-		GetOwner()->ForceNetUpdate();
-	}
 	RefreshWarpTargets();
 	SetComponentTickEnabled(true);
+}
+
+bool UIMGTraversalComponent::PublishTraversalState(const uint8 MontagePlayInstanceId)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !ActiveState.bActive || !IsValid(ActiveState.Montage))
+	{
+		return false;
+	}
+
+	ActiveState.MontagePlayInstanceId = MontagePlayInstanceId;
+	ReplicatedState = ActiveState;
+	GetOwner()->ForceNetUpdate();
+	return true;
 }
 
 void UIMGTraversalComponent::EndTraversal()
@@ -129,6 +151,10 @@ void UIMGTraversalComponent::EndTraversal()
 	{
 		ReplicatedState = ActiveState;
 		GetOwner()->ForceNetUpdate();
+	}
+	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
+	{
+		ASC->RetryReplicatedMontage();
 	}
 }
 
@@ -165,6 +191,83 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 		RefreshWarpTargets();
 	}
 	SetComponentTickEnabled(ActiveState.bActive);
+	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
+	{
+		ASC->RetryReplicatedMontage();
+	}
+}
+
+void UIMGTraversalComponent::HandleAbilitySystemInitialized()
+{
+	HandleAbilitySystemUninitialized();
+	if (!GetOwner() || GetOwner()->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		return;
+	}
+	const UIMGPawnExtensionComponent* PawnExtension =
+		UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner());
+	UIMGAbilitySystemComponent* ASC = PawnExtension ? PawnExtension->GetIMGAbilitySystemComponent() : nullptr;
+	if (!ASC)
+	{
+		return;
+	}
+
+	BoundAbilitySystemComponent = ASC;
+	ASC->SetReplicatedMontageReadyDelegate(FIMGReplicatedMontageReadyDelegate::CreateUObject(
+		this, &ThisClass::IsReplicatedMontageReady));
+	ASC->RetryReplicatedMontage();
+}
+
+void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
+{
+	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
+	{
+		ASC->ClearReplicatedMontageReadyDelegate(this);
+	}
+	BoundAbilitySystemComponent.Reset();
+}
+
+bool UIMGTraversalComponent::IsReplicatedMontageReady(
+	const UAnimMontage* Montage, const uint8 MontagePlayInstanceId, const bool bIsStopped,
+	float& OutLogicalStartTime) const
+{
+	OutLogicalStartTime = -1.f;
+	if (!Montage || bIsStopped)
+	{
+		return true;
+	}
+
+	const bool bMatchesTraversalState = ActiveState.bActive && ActiveState.Montage == Montage
+		&& ActiveState.MontagePlayInstanceId == MontagePlayInstanceId;
+	if (!bMatchesTraversalState)
+	{
+		TArray<FMotionWarpingWindowData> FrontLedgeWindows;
+		UMotionWarpingUtilities::GetMotionWarpingWindowsForWarpTargetFromAnimation(
+			Montage, FrontLedgeName, FrontLedgeWindows);
+		return FrontLedgeWindows.IsEmpty();
+	}
+
+	const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
+	if (!Warping || !Warping->FindWarpTarget(FrontLedgeName))
+	{
+		return false;
+	}
+
+	const bool bNeedsBackLedge = ActiveState.Action == EIMGTraversalAction::Vault
+		|| ActiveState.Action == EIMGTraversalAction::Hurdle;
+	if (bNeedsBackLedge && !Warping->FindWarpTarget(BackLedgeName))
+	{
+		return false;
+	}
+
+	if (ActiveState.Action == EIMGTraversalAction::Hurdle
+		&& !Warping->FindWarpTarget(BackFloorName))
+	{
+		return false;
+	}
+
+	OutLogicalStartTime = ActiveState.MontageStartTime;
+	return true;
 }
 
 void UIMGTraversalComponent::RefreshWarpTargets()
@@ -267,6 +370,11 @@ void UIMGTraversalComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void UIMGTraversalComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UIMGPawnExtensionComponent* PawnExtension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
+	{
+		PawnExtension->UnregisterAbilitySystemDelegates(this);
+	}
+	HandleAbilitySystemUninitialized();
 	if (const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner()))
 	{
 		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())

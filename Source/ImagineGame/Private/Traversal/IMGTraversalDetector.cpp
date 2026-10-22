@@ -41,11 +41,6 @@ FString GetFailureName(EIMGTraversalFailure Failure)
 	return StaticEnum<EIMGTraversalFailure>()->GetNameStringByValue(static_cast<int64>(Failure));
 }
 
-FString GetActionName(EIMGTraversalAction Action)
-{
-	return StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Action));
-}
-
 void DrawFailure(const AIMGCharacter& Character, EIMGTraversalFailure Failure, const FVector& Location, int32 Level = 1)
 {
 	if (!IMGTraversalDebug::IsEnabled(Level))
@@ -57,39 +52,6 @@ void DrawFailure(const AIMGCharacter& Character, EIMGTraversalFailure Failure, c
 		FString::Printf(TEXT("Traversal: %s"), *GetFailureName(Failure)), FColor::Red, Level);
 }
 
-void DrawCandidateResult(const AIMGCharacter& Character, const FIMGTraversalCandidate& Candidate)
-{
-	if (!IMGTraversalDebug::IsEnabled(1))
-	{
-		return;
-	}
-	const UWorld* World = Character.GetWorld();
-	const FVector Front = Candidate.FrontLedge.GetLocation();
-	IMGTraversalDebug::Point(World, Front, FColor::Yellow, 1, 18.f);
-	IMGTraversalDebug::Arrow(World, Front, Front + Candidate.FrontLedgeNormal * 45.f, FColor::Magenta, 1);
-	IMGTraversalDebug::Arrow(World, Front, Front + Candidate.FrontLedge.GetUnitAxis(EAxis::X) * 45.f, FColor::Yellow, 1);
-	if (Candidate.bHasBackLedge)
-	{
-		const FVector Back = Candidate.BackLedge.GetLocation();
-		IMGTraversalDebug::Point(World, Back, FColor::Orange, 1, 18.f);
-		IMGTraversalDebug::Arrow(World, Back, Back + Candidate.BackLedgeNormal * 45.f, FColor::Orange, 1);
-		IMGTraversalDebug::Line(World, Front, Back, FColor::Orange, 1, 2.f);
-	}
-	if (Candidate.bHasBackFloor)
-	{
-		IMGTraversalDebug::Point(World, Candidate.BackFloor.GetLocation(), FColor::Green, 1, 18.f);
-	}
-	const FString Feasible = FString::Printf(TEXT("%s%s%s"),
-		Candidate.bCanMantle ? TEXT("M") : TEXT("-"),
-		Candidate.bCanVault ? TEXT("V") : TEXT("-"),
-		Candidate.bCanHurdle ? TEXT("H") : TEXT("-"));
-	IMGTraversalDebug::String(World, Front + FVector::UpVector * 28.f,
-		FString::Printf(TEXT("Traversal: %s  H %.0f  D %.0f  HClear %.0f  VClear %.0f  Drop %.0f  Dist %.0f  GTAReach %.0f  [%s]  Parts %d"),
-			*GetActionName(Candidate.RecommendedAction), Candidate.ObstacleHeight,
-			Candidate.ObstacleDepth, Candidate.HorizontalClearance, Candidate.VerticalClearance, Candidate.DropHeight,
-			Candidate.DistanceToLedge, Candidate.ReferenceReachDistance, *Feasible,
-			Candidate.ObstacleComponents.Num()), FColor::Green, 1);
-}
 #endif
 
 bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversalQuery& Query)
@@ -363,7 +325,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	IMGTraversalDebug::Sphere(World, FirstDepthProbeStart, DepthProbeRadius,
 		FColor::Cyan, 3);
 	IMGTraversalDebug::String(World, FirstDepthProbeStart,
-		FString::Printf(TEXT("Depth 1/%d  0cm"), DepthSamples), FColor::Cyan, 3);
+		FString::Printf(TEXT("D1/%d 0"), DepthSamples), FColor::Cyan, 3);
 #endif
 	for (int32 Index = 1; Index < DepthSamples; ++Index)
 	{
@@ -381,7 +343,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		IMGTraversalDebug::Sphere(World, ProbeStart, DepthProbeRadius,
 			bDepthHit ? FColor::Cyan : FColor::Red, 3);
 		IMGTraversalDebug::String(World, ProbeStart,
-			FString::Printf(TEXT("Depth %d/%d  %.0fcm"), Index + 1, DepthSamples,
+			FString::Printf(TEXT("D%d/%d %.0f"), Index + 1, DepthSamples,
 				DepthProbeSpacing * Index), bDepthHit ? FColor::Cyan : FColor::Red, 3);
 #endif
 		if (!bDepthHit || FMath::Abs(DepthHit.ImpactPoint.Z - LastTopPoint.Z) > DepthHeightTolerance)
@@ -646,6 +608,9 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversalCandidate& OutCandidate,
 	EIMGTraversalFailure& OutFailure)
 {
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::DiscardTraversalSnapshot();
+#endif
 	OutCandidate = FIMGTraversalCandidate();
 	OutFailure = EIMGTraversalFailure::None;
 	AIMGCharacter* Character = Query.Character.Get();
@@ -691,10 +656,11 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	const FVector Origin = Character->GetActorLocation();
 	const float ForwardSpeed = FMath::Max(0.f, FVector::DotProduct(Movement->Velocity, Forward));
 #if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::BeginTraversalSnapshot(Character->GetWorld());
 	if (IMGTraversalDebug::IsEnabled(2))
 	{
 		IMGTraversalDebug::String(Character->GetWorld(), Origin + FVector::UpVector * (HalfHeight + 35.f),
-			FString::Printf(TEXT("Traversal Search: %.0fcm  MMReach %.0fcm  GTA %.0f/%.0f..%.0fcm  Height %.0f..%.0f  Speed %.0f  %s"),
+			FString::Printf(TEXT("Search %.0f | Anim %.0f | Ref %.0f/%.0f..%.0f | H %.0f..%.0f | Speed %.0f | %s"),
 				Query.SearchDistance, Query.MaxAnimationReachDistance, Query.StepUpForwardDistance, Query.ForwardDistance,
 				Query.MaxForwardDistance, Query.MinHeight, Query.MaxHeight, Movement->Velocity.Size2D(),
 				Movement->IsFalling() ? TEXT("Air") : TEXT("Ground")), FColor::White, 2);
@@ -708,6 +674,10 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	const float HighestProbeZ = FootZ + Query.MaxHeight + 25.f;
 	const int32 ProbeLayerCount = FMath::Clamp(FMath::RoundToInt(
 		(HighestProbeZ - SearchBaseZ) / SearchProbeSeparation), 1, MaxForwardProbeLayers);
+#if ENABLE_DRAW_DEBUG
+	// The broad search layers stay live-only; the successful snapshot starts with the search summary.
+	IMGTraversalDebug::SetTraversalSnapshotCaptureEnabled(false);
+#endif
 	for (int32 LayerIndex = 0; LayerIndex < ProbeLayerCount; ++LayerIndex)
 	{
 		TArray<FHitResult> ProbeHits;
@@ -723,7 +693,7 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		IMGTraversalDebug::Sphere(Character->GetWorld(), Start, SearchProbeRadius, SearchColor, 2);
 		IMGTraversalDebug::Sphere(Character->GetWorld(), End, SearchProbeRadius, SearchColor, 2);
 		IMGTraversalDebug::String(Character->GetWorld(), End + FVector::UpVector * 5.f,
-			FString::Printf(TEXT("Probe %d/%d  Z %.0f  Hits %d"), LayerIndex + 1, ProbeLayerCount,
+			FString::Printf(TEXT("P%d/%d Z%.0f H%d"), LayerIndex + 1, ProbeLayerCount,
 				Start.Z - FootZ, ProbeHits.Num()), SearchColor, 2);
 #endif
 		for (const FHitResult& Hit : ProbeHits)
@@ -749,6 +719,9 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 			}
 		}
 	}
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::SetTraversalSnapshotCaptureEnabled(true);
+#endif
 	Hits.Sort([&Origin, &Forward](const FHitResult& A, const FHitResult& B)
 	{
 		return GetCandidateScore(Origin, Forward, A) < GetCandidateScore(Origin, Forward, B);
@@ -764,8 +737,9 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		FIMGTraversalCandidate Candidate;
 		EIMGTraversalFailure Failure = EIMGTraversalFailure::InvalidSurface;
 #if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::BeginTraversalCandidateSnapshot();
 		IMGTraversalDebug::String(Character->GetWorld(), Hit.ImpactPoint + FVector::UpVector * 20.f,
-			FString::Printf(TEXT("Candidate %d/%d  Score %.2f  D %.0f  Facing %.2f"), Tested,
+			FString::Printf(TEXT("C%d/%d Score %.2f D%.0f Face %.2f"), Tested,
 				FMath::Min(Hits.Num(), MaxCandidateHits), GetCandidateScore(Origin, Forward, Hit),
 				FVector::Dist2D(Origin, Hit.ImpactPoint),
 				-FVector::DotProduct(Hit.ImpactNormal.GetSafeNormal2D(), Forward)), FColor::Yellow, 2);
@@ -779,9 +753,10 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 				OutFailure = EIMGTraversalFailure::OutOfReach;
 #if ENABLE_DRAW_DEBUG
 				IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-					FString::Printf(TEXT("OutOfReach: %.0f > MM %.0fcm (GTA %.0f)"), CandidateDistance,
+					FString::Printf(TEXT("OutOfReach: %.0f > Anim %.0f (Ref %.0f)"), CandidateDistance,
 						Query.MaxAnimationReachDistance, Candidate.ReferenceReachDistance),
 					FColor::Red, 2);
+				IMGTraversalDebug::RollbackTraversalCandidateSnapshot();
 #endif
 				continue;
 			}
@@ -789,23 +764,22 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 			if (CandidateDistance > Candidate.ReferenceReachDistance && IMGTraversalDebug::IsEnabled(2))
 			{
 				IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-					FString::Printf(TEXT("ReachLedge approach: %.0fcm (GTA initiation %.0fcm)"),
+					FString::Printf(TEXT("Approach %.0f (Ref %.0f)"),
 						CandidateDistance, Candidate.ReferenceReachDistance), FColor::Yellow, 2);
 			}
 #endif
 			OutCandidate = Candidate;
 			OutFailure = EIMGTraversalFailure::None;
-#if ENABLE_DRAW_DEBUG
-			DrawCandidateResult(*Character, OutCandidate);
-#endif
 			return true;
 		}
 		OutFailure = Failure;
 #if ENABLE_DRAW_DEBUG
 		DrawFailure(*Character, Failure, Hit.ImpactPoint, 2);
+		IMGTraversalDebug::RollbackTraversalCandidateSnapshot();
 #endif
 	}
 #if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::DiscardTraversalSnapshot();
 	DrawFailure(*Character, OutFailure, Origin + Forward * Query.SearchDistance + FVector::UpVector * 30.f);
 #endif
 	return false;

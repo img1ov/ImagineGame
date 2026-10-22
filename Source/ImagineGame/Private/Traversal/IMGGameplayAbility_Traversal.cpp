@@ -1,5 +1,6 @@
 #include "Traversal/IMGGameplayAbility_Traversal.h"
 
+#include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "AnimationWarpingLibrary.h"
@@ -20,6 +21,11 @@
 #endif
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_Traversal)
+
+namespace
+{
+const FName HurdleDistanceFromLedgeCurveName(TEXT("Distance_From_Ledge"));
+}
 
 #if ENABLE_DRAW_DEBUG
 namespace
@@ -68,6 +74,8 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	bLocalRequest = false;
 	bTraversalStarted = false;
 	bMontageCompleted = false;
+	bTargetDataSent = false;
+	bTargetDataCancellationSent = false;
 	ActiveAction = EIMGTraversalAction::None;
 	ActiveObstacleComponents.Reset();
 	PreviousObstacleTransforms.Reset();
@@ -76,14 +84,20 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	if (!ASC || !Component)
 	{
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
 	}
 	if (ActorInfo->IsNetAuthority())
 	{
 		TargetDataDelegateHandle = ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
 			.AddUObject(this, &ThisClass::OnTargetDataReady);
+		TargetDataCancelledDelegateHandle = ASC->AbilityTargetDataCancelledDelegate(
+			Handle, ActivationInfo.GetActivationPredictionKey()).AddUObject(this, &ThisClass::OnTargetDataCancelled);
 		ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, ActivationInfo.GetActivationPredictionKey());
+		if (!IsActive())
+		{
+			return;
+		}
 	}
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	const bool bServerControlledAI = ActorInfo->IsNetAuthority() && Character
@@ -97,7 +111,13 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	EIMGTraversalFailure Failure;
 	if (!Component->Detect(LocalCandidate, Failure, FVector::ZeroVector))
 	{
-		K2_EndAbility();
+		CancelPendingTargetData();
+		return;
+	}
+	PreSelectTraversalAnimation(LocalCandidate);
+	if (!IsActive())
+	{
+		CancelPendingTargetData();
 		return;
 	}
 	const FIMGTraversalAnimationSelection Selection = SelectTraversalAnimation(LocalCandidate);
@@ -106,7 +126,7 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(Character, TEXT("Traversal GA: animation selection rejected"), FColor::Red);
 #endif
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
 	}
 	auto* Request = new FIMGTraversalTargetData();
@@ -118,6 +138,40 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	FGameplayAbilityTargetDataHandle Data;
 	Data.Add(Request);
 	OnTargetDataReady(Data, FGameplayTag());
+}
+
+void UIMGGameplayAbility_Traversal::CancelPendingTargetData()
+{
+	if (!bTargetDataSent && !bTargetDataCancellationSent && CurrentActorInfo
+		&& CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
+	{
+		if (UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get())
+		{
+			FScopedPredictionWindow PredictionWindow(ASC, true);
+			ASC->ServerSetReplicatedTargetDataCancelled(CurrentSpecHandle,
+				CurrentActivationInfo.GetActivationPredictionKey(), ASC->ScopedPredictionKey);
+			bTargetDataCancellationSent = true;
+		}
+	}
+	if (IsActive())
+	{
+		K2_EndAbility();
+	}
+}
+
+void UIMGGameplayAbility_Traversal::OnTargetDataCancelled()
+{
+	if (!CurrentActorInfo || !CurrentActorInfo->AbilitySystemComponent.IsValid())
+	{
+		return;
+	}
+	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
+	ASC->ConsumeClientReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
+	// Only release the server instance while it is waiting; active traversal remains authority-owned.
+	if (IsActive() && !bTraversalStarted)
+	{
+		K2_EndAbility();
+	}
 }
 
 void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag)
@@ -135,7 +189,7 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	if (!Request || !Component || !Character)
 	{
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
 	}
 	FIMGTraversalCandidate Candidate;
@@ -146,7 +200,7 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 		if (FVector::DotProduct(FVector(Request->Direction).GetSafeNormal2D(), Character->GetActorForwardVector()) < 0.25f
 			|| !Component->Detect(Candidate, Failure, Request->Direction))
 		{
-			K2_EndAbility();
+			CancelPendingTargetData();
 			return;
 		}
 	}
@@ -164,25 +218,20 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(Character, TEXT("Traversal GA: selection or server allow-list rejected"), FColor::Red);
 #endif
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
 	}
 	if (!PrepareWarpTargets(Candidate, Selection))
 	{
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
-	}
-	if (CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
-	{
-		ASC->CallServerSetReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey(),
-			Data, ApplicationTag, ASC->ScopedPredictionKey);
 	}
 	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
 	{
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(Character, TEXT("Traversal GA: CommitAbility failed"), FColor::Red);
 #endif
-		K2_EndAbility();
+		CancelPendingTargetData();
 		return;
 	}
 	ActiveComponent = Component;
@@ -207,7 +256,7 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 	PreviousTargetCheckTime = GetWorld()->GetTimeSeconds();
 	bTraversalStarted = true;
 	ActiveAction = Selection.Action;
-	Component->BeginTraversal(Candidate, Selection.Action);
+	Component->BeginTraversal(Candidate, Selection);
 	for (const TWeakObjectPtr<UPrimitiveComponent>& ObstacleComponent : ActiveObstacleComponents)
 	{
 		if (ObstacleComponent.IsValid())
@@ -223,9 +272,37 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(const FGameplayAbilityTarg
 	MontageTask->OnInterrupted.AddDynamic(this, &ThisClass::OnMontageInterrupted);
 	MontageTask->OnCancelled.AddDynamic(this, &ThisClass::OnMontageInterrupted);
 	MontageTask->ReadyForActivation();
-	if (IsActive())
+	if (!IsActive())
 	{
-		OnTraversalStarted(Candidate, Selection.Action);
+		CancelPendingTargetData();
+		return;
+	}
+	if (CurrentActorInfo->IsNetAuthority())
+	{
+		uint8 MontagePlayInstanceId = 0;
+		UIMGAbilitySystemComponent* IMGASC = Cast<UIMGAbilitySystemComponent>(ASC);
+		if (!IMGASC
+			|| !IMGASC->GetActiveReplicatedMontagePlayInstanceId(Selection.Montage, MontagePlayInstanceId)
+			|| !Component->PublishTraversalState(MontagePlayInstanceId))
+		{
+			K2_EndAbility();
+			return;
+		}
+	}
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::SuccessfulTraversal(Character->GetWorld(), Candidate, Selection);
+#endif
+	OnTraversalStarted(Candidate, Selection.Action);
+	if (!IsActive())
+	{
+		CancelPendingTargetData();
+		return;
+	}
+	if (CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
+	{
+		bTargetDataSent = true;
+		ASC->CallServerSetReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey(),
+			Data, ApplicationTag, ASC->ScopedPredictionKey);
 	}
 	ASC->ConsumeClientReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
 }
@@ -235,8 +312,8 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 {
 	const UIMGTraversalComponent* Traversal = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	const UWorld* World = GetWorld();
-	const float CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
-	const bool bCandidateFresh = Traversal && World && CandidateAge >= 0.f
+	const double CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
+	const bool bCandidateFresh = Traversal && World && CandidateAge >= 0.0
 		&& CandidateAge <= Traversal->GetQuerySettings().MaxCandidateAge;
 #if ENABLE_DRAW_DEBUG
 	if (!bCandidateFresh)
@@ -276,14 +353,18 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	if (!IsValid(Selection.Montage) || !IsValid(Candidate.HitComponent))
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: missing montage or hit component"), FColor::Red);
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			*FString::Printf(TEXT("Traversal Validate: Montage %s  Hit %s"),
+				*GetNameSafe(Selection.Montage.Get()), *GetNameSafe(Candidate.HitComponent.Get())), FColor::Red);
 #endif
 		return false;
 	}
-	auto GetWindowTimes = [Montage = Selection.Montage.Get()](FName TargetName, float& OutStartTime, float& OutEndTime)
+	auto GetWindowTimes = [Montage = Selection.Montage.Get()](FName TargetName, float& OutStartTime,
+		float& OutEndTime, int32& OutWindowCount)
 	{
 		TArray<FMotionWarpingWindowData> Windows;
 		UMotionWarpingUtilities::GetMotionWarpingWindowsForWarpTargetFromAnimation(Montage, TargetName, Windows);
+		OutWindowCount = Windows.Num();
 		if (Windows.Num() != 1)
 		{
 			return false;
@@ -294,24 +375,41 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	};
 	float FrontLedgeWindowStart = 0.f;
 	float FrontLedgeWindowEnd = 0.f;
-	if (!GetWindowTimes(TEXT("FrontLedge"), FrontLedgeWindowStart, FrontLedgeWindowEnd)
+	int32 FrontLedgeWindowCount = 0;
+	if (!GetWindowTimes(TEXT("FrontLedge"), FrontLedgeWindowStart, FrontLedgeWindowEnd, FrontLedgeWindowCount)
 		|| Selection.StartTime >= FrontLedgeWindowEnd)
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: FrontLedge requires exactly one warp window"), FColor::Red);
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			*FString::Printf(TEXT("FrontLedge FAIL: %s  Windows %d  Start %.2f  Range %.2f..%.2f"),
+				*GetNameSafe(Selection.Montage.Get()), FrontLedgeWindowCount, Selection.StartTime,
+				FrontLedgeWindowStart, FrontLedgeWindowEnd), FColor::Red);
 #endif
 		return false;
 	}
 	float BackLedgeWindowStart = 0.f;
 	float BackLedgeWindowEnd = 0.f;
-	if ((Selection.Action == EIMGTraversalAction::Hurdle || Selection.Action == EIMGTraversalAction::Vault)
+	int32 BackLedgeWindowCount = 0;
+	const bool bUsesBackLedge = Selection.Action == EIMGTraversalAction::Hurdle
+		|| Selection.Action == EIMGTraversalAction::Vault;
+	const bool bRequiresBackLedgeWindow = Selection.Action == EIMGTraversalAction::Hurdle;
+	const bool bBackLedgeWindowValid = bUsesBackLedge && GetWindowTimes(
+		TEXT("BackLedge"), BackLedgeWindowStart, BackLedgeWindowEnd, BackLedgeWindowCount);
+	// GASP Vault montages can be FrontLedge-only; an authored optional BackLedge window must still be valid.
+	const bool bBackLedgeWindowInvalid = bRequiresBackLedgeWindow
+		? (!bBackLedgeWindowValid || Selection.StartTime >= BackLedgeWindowEnd)
+		: (BackLedgeWindowCount > 0 && (!bBackLedgeWindowValid || Selection.StartTime >= BackLedgeWindowEnd));
+	if (bUsesBackLedge
 		&& (!Candidate.bHasBackLedge
 			|| !IsValid(Candidate.BackLedgeComponent)
-			|| !GetWindowTimes(TEXT("BackLedge"), BackLedgeWindowStart, BackLedgeWindowEnd)
-			|| Selection.StartTime >= BackLedgeWindowEnd))
+			|| bBackLedgeWindowInvalid))
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: missing BackLedge or warp window"), FColor::Red);
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			*FString::Printf(TEXT("BackLedge FAIL: %s  Geo %d  Comp %d  Windows %d  PoseStart %.2f  Window %.2f..%.2f"),
+				*GetNameSafe(Selection.Montage.Get()), Candidate.bHasBackLedge,
+				IsValid(Candidate.BackLedgeComponent), BackLedgeWindowCount,
+				Selection.StartTime, BackLedgeWindowStart, BackLedgeWindowEnd), FColor::Red);
 #endif
 		return false;
 	}
@@ -321,7 +419,8 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		if (AIMGCharacter* Character = GetIMGCharacterFromActorInfo(); Character && IMGTraversalDebug::IsEnabled(3))
 		{
 			IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-				FString::Printf(TEXT("Warp Front %.2f..%.2f  Back %.2f..%.2f  Start %.2f"),
+				FString::Printf(TEXT("%s  Warp Front %.2f..%.2f  Back %.2f..%.2f  Start %.2f"),
+					*GetNameSafe(Selection.Montage.Get()),
 					FrontLedgeWindowStart, FrontLedgeWindowEnd, BackLedgeWindowStart, BackLedgeWindowEnd,
 					Selection.StartTime), FColor::Yellow, 3);
 		}
@@ -337,23 +436,29 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	}
 	float BackFloorWindowStart = 0.f;
 	float BackFloorWindowEnd = 0.f;
-	if (!GetWindowTimes(TEXT("BackFloor"), BackFloorWindowStart, BackFloorWindowEnd)
+	int32 BackFloorWindowCount = 0;
+	if (!GetWindowTimes(TEXT("BackFloor"), BackFloorWindowStart, BackFloorWindowEnd, BackFloorWindowCount)
 		|| Selection.StartTime >= BackFloorWindowEnd)
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: BackFloor requires exactly one warp window"), FColor::Red);
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			*FString::Printf(TEXT("BackFloor FAIL: %s  Windows %d  Start %.2f  Range %.2f..%.2f"),
+				*GetNameSafe(Selection.Montage.Get()), BackFloorWindowCount, Selection.StartTime,
+				BackFloorWindowStart, BackFloorWindowEnd), FColor::Red);
 #endif
 		return false;
 	}
 	float BackLedgeDistance = 0.f;
 	float BackFloorDistance = 0.f;
 	if (!UAnimationWarpingLibrary::GetCurveValueFromAnimation(
-		Selection.Montage, DistanceFromLedgeCurveName, BackLedgeWindowEnd, BackLedgeDistance)
+		Selection.Montage, HurdleDistanceFromLedgeCurveName, BackLedgeWindowEnd, BackLedgeDistance)
 		|| !UAnimationWarpingLibrary::GetCurveValueFromAnimation(
-			Selection.Montage, DistanceFromLedgeCurveName, BackFloorWindowEnd, BackFloorDistance))
+			Selection.Montage, HurdleDistanceFromLedgeCurveName, BackFloorWindowEnd, BackFloorDistance))
 	{
 #if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(), TEXT("Traversal Validate: Distance_From_Ledge curve is missing"), FColor::Red);
+		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
+			*FString::Printf(TEXT("Curve FAIL: %s  Missing %s"),
+				*GetNameSafe(Selection.Montage.Get()), *HurdleDistanceFromLedgeCurveName.ToString()), FColor::Red);
 #endif
 		return false;
 	}
@@ -568,24 +673,44 @@ void UIMGGameplayAbility_Traversal::OnMontageCompleted()
 
 void UIMGGameplayAbility_Traversal::OnMontageInterrupted()
 {
-	K2_EndAbility();
+	if (!bTargetDataSent)
+	{
+		CancelPendingTargetData();
+	}
+	else
+	{
+		K2_EndAbility();
+	}
 }
 
 void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	bool bReplicateEndAbility, bool bWasCancelled)
 {
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::DiscardTraversalSnapshot();
+#endif
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(TargetCheckTimer);
 	}
-	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid() && TargetDataDelegateHandle.IsValid())
+	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
 		UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-		ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey()).Remove(TargetDataDelegateHandle);
+		if (TargetDataDelegateHandle.IsValid())
+		{
+			ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
+				.Remove(TargetDataDelegateHandle);
+		}
+		if (TargetDataCancelledDelegateHandle.IsValid())
+		{
+			ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
+				.Remove(TargetDataCancelledDelegateHandle);
+		}
 		ASC->ConsumeClientReplicatedTargetData(Handle, ActivationInfo.GetActivationPredictionKey());
-		TargetDataDelegateHandle.Reset();
 	}
+	TargetDataDelegateHandle.Reset();
+	TargetDataCancelledDelegateHandle.Reset();
 	if (bTraversalStarted)
 	{
 		if (UIMGTraversalComponent* Component = ActiveComponent.Get())

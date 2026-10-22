@@ -10,6 +10,7 @@
 #define UE_API IMAGINEGAME_API
 
 class AActor;
+class UAnimMontage;
 class UGameplayAbility;
 class UIMGAbilityTagRelationshipMapping;
 class UObject;
@@ -17,6 +18,10 @@ struct FFrame;
 struct FGameplayAbilityTargetDataHandle;
 
 UE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_AbilityInputBlocked);
+
+DECLARE_DELEGATE_RetVal_FourParams(bool, FIMGReplicatedMontageReadyDelegate,
+	const UAnimMontage* /* Montage */, uint8 /* PlayInstanceId */, bool /* bIsStopped */,
+	float& /* OutLogicalStartTime */);
 
 /**
  * UIMGAbilitySystemComponent
@@ -35,6 +40,14 @@ public:
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UE_API virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
+	UE_API virtual float PlayMontageSimulated(
+		UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None) override;
+
+	/** Allows an avatar-side system to defer simulated montage playback until its replicated prerequisites are ready. */
+	UE_API void SetReplicatedMontageReadyDelegate(FIMGReplicatedMontageReadyDelegate Delegate);
+	UE_API void ClearReplicatedMontageReadyDelegate(const UObject* Listener);
+	UE_API void RetryReplicatedMontage();
+	UE_API bool GetActiveReplicatedMontagePlayInstanceId(const UAnimMontage* Montage, uint8& OutPlayInstanceId) const;
 
 	typedef TFunctionRef<bool(const UIMGGameplayAbility* IMGAbility, FGameplayAbilitySpecHandle Handle)> TShouldCancelAbilityFunc;
 	UE_API void CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, bool bReplicateCancelAbility);
@@ -111,6 +124,7 @@ protected:
 	UE_API virtual void NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason) override;
 	UE_API virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled) override;
 	UE_API virtual void HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bCanBeCanceled) override;
+	UE_API virtual bool IsReadyForReplicatedMontage() override;
 
 	UFUNCTION(Client, Unreliable)
 	UE_API void ClientNotifyAbilityFailed(const UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason);
@@ -138,6 +152,10 @@ protected:
 
 	// Number of abilities running in each activation group.
 	int32 ActivationGroupCounts[(uint8)EIMGAbilityActivationGroup::MAX];
+
+	FIMGReplicatedMontageReadyDelegate ReplicatedMontageReadyDelegate;
+	float ReadyReplicatedMontageLogicalStartTime = -1.f;
+	bool bDeferringReplicatedMontageForActorInfoInitialization = false;
 };
 
 #undef UE_API

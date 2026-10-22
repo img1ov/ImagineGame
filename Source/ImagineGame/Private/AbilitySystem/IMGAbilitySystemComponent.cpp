@@ -4,6 +4,7 @@
 
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "TimerManager.h"
 #include "AbilitySystem/IMGGlobalAbilitySystem.h"
 #include "System/IMGAssetManager.h"
 #include "System/IMGGameData.h"
@@ -13,6 +14,7 @@
 #include "AbilitySystem/Abilities/IMGGameplayAbility.h"
 #include "Abilities/GameplayAbility.h"
 #include "Abilities/GameplayAbilityRepAnimMontage.h"
+#include "Animation/AnimMontage.h"
 #include "Animation/IMGAnimInstance.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGAbilitySystemComponent)
@@ -23,7 +25,7 @@ UIMGAbilitySystemComponent::UIMGAbilitySystemComponent(const FObjectInitializer&
 	: Super(ObjectInitializer)
 {
 	FMemory::Memset(ActivationGroupCounts, 0, sizeof(ActivationGroupCounts));
-	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::CurrentSectionId);
+	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::Position);
 }
 
 UIMGAbilitySystemComponent::~UIMGAbilitySystemComponent() = default;
@@ -35,9 +37,22 @@ void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	check(InOwnerActor);
 
 	const bool bHasNewPawnAvatar = Cast<APawn>(InAvatarActor) && (InAvatarActor != ActorInfo->AvatarActor);
+	const bool bShouldDeferReplicatedMontage = InAvatarActor
+		&& InAvatarActor->GetLocalRole() == ROLE_SimulatedProxy;
 
-	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
-	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::CurrentSectionId);
+	{
+		TGuardValue<bool> DeferReplicatedMontage(
+			bDeferringReplicatedMontageForActorInfoInitialization, bShouldDeferReplicatedMontage);
+		Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
+	}
+	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::Position);
+	if (bShouldDeferReplicatedMontage && bPendingMontageRep)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::RetryReplicatedMontage);
+		}
+	}
 
 	if (bHasNewPawnAvatar)
 	{
@@ -73,6 +88,108 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		TryActivateAbilitiesOnSpawn();
 	}
+}
+
+void UIMGAbilitySystemComponent::SetReplicatedMontageReadyDelegate(FIMGReplicatedMontageReadyDelegate Delegate)
+{
+	if (!ensureMsgf(!ReplicatedMontageReadyDelegate.IsBound()
+		|| ReplicatedMontageReadyDelegate.GetUObject() == Delegate.GetUObject(),
+		TEXT("Only one avatar-side replicated montage prerequisite is supported per ASC.")))
+	{
+		return;
+	}
+	ReplicatedMontageReadyDelegate = MoveTemp(Delegate);
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+}
+
+void UIMGAbilitySystemComponent::ClearReplicatedMontageReadyDelegate(const UObject* Listener)
+{
+	if (ReplicatedMontageReadyDelegate.IsBoundToObject(Listener))
+	{
+		ReplicatedMontageReadyDelegate.Unbind();
+		ReadyReplicatedMontageLogicalStartTime = -1.f;
+	}
+}
+
+void UIMGAbilitySystemComponent::RetryReplicatedMontage()
+{
+	if (bPendingMontageRep && !IsOwnerActorAuthoritative()
+		&& AbilityActorInfo.IsValid() && !AbilityActorInfo->IsLocallyControlled())
+	{
+		OnRep_ReplicatedAnimMontage();
+	}
+}
+
+bool UIMGAbilitySystemComponent::GetActiveReplicatedMontagePlayInstanceId(
+	const UAnimMontage* Montage, uint8& OutPlayInstanceId) const
+{
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	if (!Montage || RepMontage.IsStopped != 0 || RepMontage.GetAnimMontage() != Montage)
+	{
+		return false;
+	}
+
+	OutPlayInstanceId = RepMontage.PlayInstanceId;
+	return true;
+}
+
+bool UIMGAbilitySystemComponent::IsReadyForReplicatedMontage()
+{
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	if (!Super::IsReadyForReplicatedMontage())
+	{
+		return false;
+	}
+	if (bDeferringReplicatedMontageForActorInfoInitialization)
+	{
+		return false;
+	}
+	if (IsOwnerActorAuthoritative() || !AbilityActorInfo.IsValid() || AbilityActorInfo->IsLocallyControlled())
+	{
+		return true;
+	}
+
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	return !ReplicatedMontageReadyDelegate.IsBound()
+		|| ReplicatedMontageReadyDelegate.Execute(
+			RepMontage.GetAnimMontage(), RepMontage.PlayInstanceId, RepMontage.IsStopped != 0,
+			ReadyReplicatedMontageLogicalStartTime);
+}
+
+float UIMGAbilitySystemComponent::PlayMontageSimulated(
+	UAnimMontage* Montage, const float InPlayRate, const FName StartSectionName)
+{
+	const float LogicalStartTime = ReadyReplicatedMontageLogicalStartTime;
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	if (!FMath::IsFinite(LogicalStartTime) || LogicalStartTime < 0.f)
+	{
+		return Super::PlayMontageSimulated(Montage, InPlayRate, StartSectionName);
+	}
+
+	UAnimInstance* AnimInstance = AbilityActorInfo.IsValid() ? AbilityActorInfo->GetAnimInstance() : nullptr;
+	if (!AnimInstance || !Montage)
+	{
+		return -1.f;
+	}
+
+	float PresentationStartTime = LogicalStartTime;
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	if (RepMontage.GetAnimMontage() == Montage && RepMontage.IsStopped == 0
+		&& !RepMontage.SkipPositionCorrection && FMath::IsFinite(RepMontage.Position)
+		&& RepMontage.Position >= LogicalStartTime)
+	{
+		// Stay just inside GAS's native correction tolerance so simulated proxies can blend naturally.
+		constexpr float MaxPresentationLag = 0.075f;
+		PresentationStartTime = FMath::Max(LogicalStartTime, RepMontage.Position - MaxPresentationLag);
+	}
+
+	const float Duration = AnimInstance->Montage_Play(Montage, InPlayRate,
+		EMontagePlayReturnType::MontageLength, PresentationStartTime);
+	if (Duration > 0.f)
+	{
+		LocalAnimMontageInfo.AnimMontage = Montage;
+	}
+	return Duration;
 }
 
 void UIMGAbilitySystemComponent::CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, const bool bReplicateCancelAbility)
@@ -665,6 +782,9 @@ void UIMGAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& 
 
 void UIMGAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ReplicatedMontageReadyDelegate.Unbind();
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	bDeferringReplicatedMontageForActorInfoInitialization = false;
 	if (UIMGGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UIMGGlobalAbilitySystem>(GetWorld()))
 	{
 		GlobalAbilitySystem->UnregisterASC(this);

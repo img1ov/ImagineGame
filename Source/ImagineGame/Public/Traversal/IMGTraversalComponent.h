@@ -6,6 +6,8 @@
 #include "IMGTraversalComponent.generated.h"
 
 class UMotionWarpingComponent;
+class UAnimMontage;
+class UIMGAbilitySystemComponent;
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -26,7 +28,8 @@ public:
 	UMotionWarpingComponent* GetMotionWarpingComponent() const;
 
 	const FIMGTraversalQuery& GetQuerySettings() const { return QuerySettings; }
-	void BeginTraversal(const FIMGTraversalCandidate& Candidate, EIMGTraversalAction Action);
+	void BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection);
+	bool PublishTraversalState(uint8 MontagePlayInstanceId);
 	void EndTraversal();
 	bool IsTraversalActive() const { return ActiveState.bActive; }
 
@@ -50,9 +53,15 @@ private:
 
 	void RefreshWarpTargets();
 	void RemoveWarpTargets();
+	void HandleAbilitySystemInitialized();
+	void HandleAbilitySystemUninitialized();
+	bool IsReplicatedMontageReady(const UAnimMontage* Montage, uint8 MontagePlayInstanceId, bool bIsStopped,
+		float& OutLogicalStartTime) const;
 
 	UPROPERTY(ReplicatedUsing = OnRep_TraversalState)
 	FIMGTraversalRepState ReplicatedState;
 
 	FIMGTraversalRepState ActiveState;
+
+	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundAbilitySystemComponent;
 };

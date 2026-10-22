@@ -31,15 +31,16 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
 	FIMGTraversalAnimationSelection SelectTraversalAnimation(const FIMGTraversalCandidate& Candidate) const;
 
+	/** Local geometry is ready; use this hook to forward notifications before CHT/PoseMatch selection. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
+	void PreSelectTraversalAnimation(const FIMGTraversalCandidate& Candidate);
+
 	/**
 	 * Optional remote-client security whitelist. An empty array accepts any montage that passes the native
 	 * geometry, action, timing and Motion Warping contract checks; a non-empty array enforces exact pairs.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
-
-	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Animation")
-	FName DistanceFromLedgeCurveName = TEXT("Distance_From_Ledge");
 
 	/** Optional graph hook for extra transition effects; core cleanup must remain native. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
@@ -50,6 +51,8 @@ protected:
 
 private:
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag);
+	void OnTargetDataCancelled();
+	void CancelPendingTargetData();
 	bool IsSelectionValid(const FIMGTraversalAnimationSelection& Selection, const FIMGTraversalCandidate& Candidate,
 		bool bRemoteRequest) const;
 	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection) const;
@@ -62,6 +65,7 @@ private:
 	void OnMontageInterrupted();
 
 	FDelegateHandle TargetDataDelegateHandle;
+	FDelegateHandle TargetDataCancelledDelegateHandle;
 	FTimerHandle TargetCheckTimer;
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
@@ -73,5 +77,8 @@ private:
 	bool bLocalRequest = false;
 	bool bTraversalStarted = false;
 	bool bMontageCompleted = false;
+	// These persist through EndAbility until the next activation because montage startup can end synchronously.
+	bool bTargetDataSent = false;
+	bool bTargetDataCancellationSent = false;
 	EIMGTraversalAction ActiveAction = EIMGTraversalAction::None;
 };

@@ -214,7 +214,7 @@ struct FIMGTraversalCandidate
 	float ReferenceReachDistance = 0.f;
 
 	UPROPERTY(BlueprintReadOnly)
-	float DetectionTime = 0.f;
+	double DetectionTime = 0.0;
 
 	UPROPERTY(BlueprintReadOnly)
 	float Speed = 0.f;
@@ -291,6 +291,15 @@ struct FIMGTraversalRepState
 
 	UPROPERTY()
 	EIMGTraversalAction Action = EIMGTraversalAction::None;
+
+	UPROPERTY()
+	TObjectPtr<UAnimMontage> Montage = nullptr;
+
+	UPROPERTY()
+	uint8 MontagePlayInstanceId = 0;
+
+	UPROPERTY()
+	float MontageStartTime = 0.f;
 
 	UPROPERTY()
 	TObjectPtr<UPrimitiveComponent> HitComponent = nullptr;
