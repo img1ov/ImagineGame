@@ -32,19 +32,19 @@
 
 ### Traversal：架构与接入
 - Traversal 位于 `ImagineGame/Traversal`，当前为 GASP 单蒙太奇实现。角色蓝图按需装配 `UIMGTraversalComponent` 与 `UMotionWarpingComponent`，AbilitySet 授予蓝图 GA；`AIMGCharacter` 不创建这些组件，输入决策也不属于 Traversal，依赖保持 Traversal 单向指向 Character。
-- 职责固定为：`IMGTraversalTypes.h` 放请求、候选、选择结果、远端白名单和代理快照；`FIMGTraversalDetector` 是无状态同步几何真值源；`UIMGTraversalComponent` 持配置、动态 Warp Target 和代理快照；`UIMGGameplayAbility_Traversal` 管检测至蒙太奇退出；`FIMGTraversalTargetData` 只传客户端动画选择和检测方向。
+- 职责固定为：`IMGTraversalTypes.h` 放设置、请求、候选、选择结果、远端白名单和代理快照；`FIMGTraversalDetector` 是无状态同步几何真值源；`UIMGTraversalComponent` 持久保存 `FIMGTraversalDetectorSettings`、动态 Warp Target 和代理快照，每次检测把设置快照放入只含角色、方向和设置的 `FIMGTraversalQuery`；`UIMGGameplayAbility_Traversal` 管检测至蒙太奇退出；`FIMGTraversalTargetData` 只传客户端动画选择和检测方向。
 - 旧蓝图映射：检测图 → Detector，Traversal Result/Chooser 输入 → Candidate，CHT/PoseMatch → `SelectTraversalAnimation`，Set Warp Target → Component，Ignore/Flying/PlayMontage/恢复 → GA。蓝图只转换 Candidate、补 Gait/PoseHistory 并返回选择结果；专用服务器筛选必须有不依赖 PoseHistory 的后备分支。
 
 ### Traversal：检测合同
-- 使用 `IMG_TraceChannel_Traversal`（当前配置为 `ECC_GameTraceChannel1/Traversable`）。默认广域搜索和 `MaxAnimationReachDistance` 均为 250 cm；80 cm 以下 StepUp 100 cm、普通攀越 150 cm、低障碍奔跑 180–200 cm 仅形成 `ReferenceReachDistance`，用于筛选和调试，不截断 GASP 的 ReachLedge 前置段。
-- 前向搜索最多 6 层，球半径 21.5 cm、层距 43 cm，聚合同墙命中后按距离平方 5:朝向 1 评分。顶部为半径 10 cm 的中/左右三点探测；角色到手点使用半角色半径小球扫，不用完整角色胶囊。
-- 深度检测为 5 组半径 27.5 cm、间距 55 cm、向下 500 cm 的球扫，20 cm 高差终止并区分后边缘和升高障碍；水平净空为两层半径 22.5 cm、首层后退 25 cm、前探 300 cm，35 cm 内受阻拒绝；垂直净空使用单组半径 17.5 cm。后边缘还需精细化，落点保留完整角色胶囊复核。
-- Candidate 保留 RecommendedAction、Front/Back Ledge、Back Floor、高度、深度、落差、BackLedgeHeight、DistanceToLedge、MovementMode、Speed、净空和参考距离；DistanceToLedge 是 FrontLedge 到 Mesh 世界位置的三维距离。前后边缘承载组件及全部障碍组成组件也必须保留，供动态跟随、碰撞忽略和执行期检查使用。
+- 使用 `IMG_TraceChannel_Traversal`（当前配置为 `ECC_GameTraceChannel1/Traversable`）。默认广域搜索和 `MaxAnimationReachDistance` 均为 250 cm；前者是 broad phase，后者是返回候选的绝对动画覆盖上限。动画发起距离由 CHT 基于 `DistanceToLedge`、`Speed`、`ObstacleHeight` 等事实输入配置，Detector 不生成参考 Reach，也不重复维护站立/跑步距离阈值。
+- 前向搜索最多 6 层，球半径 21.5 cm、层距 43 cm；命中先按距离平方 5:朝向 1 评分，再以 9 cm 平面距离、45 度朝向和 86 cm 垂直连续性组织为边缘组；组分数取成员最佳值，后续边缘计算使用组内平均法线。顶部为半径 10 cm 的中/左右三点探测；角色到手点使用半角色半径小球扫，不用完整角色胶囊。
+- 地面角色会用 CMC 当前地面法线从脚底上移 25 cm 投影 1000 cm 接近坡线；法线 Z 高于 0.55，且边缘低于坡线或到坡线距离小于 13.5 cm 时视为可直接行走并拒绝 Traversal。深度检测为 5 组半径 27.5 cm、间距 55 cm、向下 500 cm 的球扫，20 cm 高差终止并区分后边缘和升高障碍；后边缘做 4 次二分精化。水平净空为两层半径 22.5 cm、首层后退 25 cm、前探 300 cm，35 cm 内受阻拒绝；垂直净空使用单组半径 17.5 cm，落点保留完整角色胶囊复核。
+- Candidate 保留 RecommendedAction、Front/Back Ledge、Back Floor、高度、深度、落差、BackLedgeHeight、DistanceToLedge、MovementMode、Speed 和净空；还记录边缘组垂直跨度、中层接近净空及高位开放接近事实，但不据此硬拒绝。DistanceToLedge 是 FrontLedge 到 Mesh 世界位置的三维距离。前后边缘承载组件及全部障碍组成组件也必须保留，供动态跟随、碰撞忽略和执行期检查使用。
 - RecommendedAction 只给出站立/低翻/默认/浅落/宽翻/滑越的几何默认值，最终 Action 由动画筛选决定。同步实现已覆盖 GTA 人形 Traversal 的主要探针与 Vault 出口条件，但不等于完整 `CClimbDetector` 语义。
 
 ### Traversal：动画与执行合同
 - 检测成功后 GA 先调用 `PreSelectTraversalAnimation` 准备或转发输入，再由 `SelectTraversalAnimation` 返回 Action、Montage、StartTime、PlayRate。不要把 CHT 距离配置重复硬编码进 C++。
-- 动画执行前校验唯一 Warp Window，且 StartTime 必须早于所需窗口末端：所有动作需要 `FrontLedge`；Vault 允许仅有 FrontLedge，但存在可选 `BackLedge` 时仍校验其唯一性和时间；Hurdle 必须有 `BackLedge`、`BackFloor` 和 `Distance_From_Ledge` 曲线。
+- 动画执行前校验唯一 Warp Window，且 StartTime 必须早于所需窗口末端：所有动作需要 `FrontLedge`；Vault 允许仅有 FrontLedge；Hurdle 必须有 `BackFloor` 和 `Distance_From_Ledge` 曲线。两者都允许可选 `BackLedge`，存在时仍校验其唯一性和时间；Hurdle 的曲线落点计算以实际存在的 `BackLedge` 或 `FrontLedge` 窗口为锚点。
 - FrontLedge Warp 使用 0.5 cm 上移和 `-FrontLedgeNormal` 朝向。Hurdle 用窗口末端曲线差重算落点，并复核承载物、地面、落点胶囊及后边缘到落点的整段胶囊路径。位移只来自蒙太奇 Root Motion、PoseSearch StartTime 和 UE MotionWarping，不移植 GTA Task 的位置/速率补偿。
 - GA 在执行期设置 Flying、忽略全部障碍组成组件并播放蒙太奇；完成、取消、中断、死亡或承载物失效时对称恢复。不要在 BlendOut 提前清理；退出时依据脚下可走地面恢复 Walking/Falling。
 - 前/后边缘和落地组件分别保存局部 Warp Transform；Component Tick 排在承载物之后、CMC 之前。每 0.05 秒检查组件存活、物理许可及速度，默认上限为 500 cm/s 和 85 deg/s；Candidate 默认时效 0.25 秒。
@@ -64,7 +64,8 @@
 - 参考根目录：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`。几何、异步结果和手点查 `task/Movement/Climbing/ClimbDetector.*`、`ClimbHandHold.*`；发起与缓存消费查 `task/Default/TaskPlayer.cpp::{DoJumpCheck,CanJumpOrVault,GetClimbDetectorParam}`；Jump/Vault 分流查 `task/Movement/Jumping/TaskJump.*::CTaskJumpVault`；执行、动态载体、清理和 clone 状态查 `task/Movement/Climbing/TaskVault.*`，再沿 `task/System/TaskFsmClone.*`、`Peds/QueriableInterface.cpp`、`network/Objects/Entities/NetObjPed.cpp` 追网络链。不要只复制探针常量。
 - 映射边界：`CClimbDetector/CClimbHandHoldDetected` → Detector/Candidate；`CTaskJumpVault` 动作分流 → 蓝图选择结果；`CTaskVault` 单次动作与 CleanUp 子集 → GA；Queriable/clone 状态 → Component 代理快照。Component 不是完整 GTA Task，不能吸收输入决策或核心检测。
 - V2 性能项优先采用“异步广域搜索、同步精查”：仅本地持续 AutoVault 预取前向候选，GA 消费缓存后仍同步完成手点、顶部、深度、净空和最终动作判定；手动触发、AI 和服务端可信重检保持同步。异步缓存至少携带请求序号、提交帧/时间、角色位姿、MovementMode、方向和候选组件局部 Transform；检测不连续、独立短时效超时、位姿/模式变化、组件失效或移动超限即丢弃，动态命中需同步重提。不要复用网络 Candidate 的 0.25 秒时效。
-- AutoVault、失败面抑制、楼梯退出延迟和动态物体稳定等待属于输入/AI 意图层或独立决策协作者，不进入 Detector。Surface Policy 也应可插拔，以 Traversal 通道、组件 Tag/接口或数据资产表达材质、门、小物体、Pawn/布娃娃、坡面、拱顶、Volume 和动态类型许可，禁止硬编码 GTA 实体类型。
+- AutoVault、失败面抑制、楼梯退出延迟和动态物体稳定等待属于输入/AI 意图层或独立决策协作者，不进入 Detector。待做的 Surface Policy 应以 Traversal 通道、组件 Tag/接口或数据资产表达材质、楼梯、门、小物体、Pawn/布娃娃、拱顶、Volume 和动态类型许可，消费 Detector 已记录的边缘跨度与中层开放净空；在请求尚未区分 AutoVault/手动模式前，不用楼梯或高位开放接近事实硬拒绝候选，禁止硬编码 GTA 实体类型。
+- 检测后续顺序：先增加不污染几何结果的请求来源（AutoVault/手动/AI）与 Surface Policy，再补失败面短期抑制和楼梯退出延迟；之后做异步 broad phase。组合网格、连续台阶、拱顶、窄边和斜面回归必须覆盖这些策略启用前后的差异。
 - 移动承载物后续优先验证 CMC BasedMovement，再比较 Traversal 相对 carrier；禁止直接 Attach 绕过移动预测。需覆盖 Root Motion、MotionWarping、网络平滑、平台旋转、动态 Bone、carrier 切换，以及取消/死亡/失效/纠正时幂等 detach。载体异常至少映射为 detach + 取消或跌落。
 - 单蒙太奇阶段优先补动画资产校验、已有碰撞忽略状态的保存恢复、网络/缓存诊断，以及静态组合网格、斜面/台阶/拱顶、窄边、移动平台、延迟/丢包、Dedicated Server 和 AI 测试。不要预先复制完整 Task FSM；手腿 IK、武器、布娃娃、水体、失败记忆、悬挂、Shimmy、梯子等按明确需求拆到独立协作者或多个 GA。
 

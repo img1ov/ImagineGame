@@ -34,6 +34,15 @@ constexpr float HorizontalClearanceBackOffset = 25.f;
 constexpr float VerticalClearanceRadius = 17.5f;
 constexpr float HandholdPathVerticalOffset = 20.f;
 constexpr float HandholdPathNormalOffset = 33.5f;
+constexpr float EdgePlanarTolerance = 9.f;
+constexpr float EdgeHeadingToleranceDot = 0.70710678f;
+constexpr float EdgeVerticalContinuity = SearchProbeSeparation * 2.f;
+constexpr float WalkableSlopeMinNormalZ = 0.55f;
+constexpr float WalkableSlopeBaseOffset = 25.f;
+constexpr float WalkableSlopeDistanceTolerance = 13.5f;
+constexpr float WalkableSlopeProjectionLength = 1000.f;
+constexpr float HighOpenApproachMinHeight = 180.f;
+constexpr float HighOpenApproachMinClearance = 125.f;
 
 #if ENABLE_DRAW_DEBUG
 FString GetFailureName(EIMGTraversalFailure Failure)
@@ -54,18 +63,18 @@ void DrawFailure(const AIMGCharacter& Character, EIMGTraversalFailure Failure, c
 
 #endif
 
-bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversalQuery& Query)
+bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings)
 {
 	return IsValid(Component)
-		&& (!Component->IsSimulatingPhysics() || Query.bAllowSimulatingPhysics)
-		&& Component->GetComponentVelocity().Size() <= Query.MaxMovingSpeed
-		&& Component->GetPhysicsAngularVelocityInDegrees().Size() <= Query.MaxAngularSpeedDegrees;
+		&& (!Component->IsSimulatingPhysics() || Settings.bAllowSimulatingPhysics)
+		&& Component->GetComponentVelocity().Size() <= Settings.MaxMovingSpeed
+		&& Component->GetPhysicsAngularVelocityInDegrees().Size() <= Settings.MaxAngularSpeedDegrees;
 }
 
 bool AddObstacleComponent(FIMGTraversalCandidate& Candidate, UPrimitiveComponent* Component,
-	const FIMGTraversalQuery& Query)
+	const FIMGTraversalDetectorSettings& Settings)
 {
-	if (!IsComponentUsable(Component, Query))
+	if (!IsComponentUsable(Component, Settings))
 	{
 		return false;
 	}
@@ -82,20 +91,36 @@ float GetCandidateScore(const FVector& Origin, const FVector& Forward, const FHi
 	return DistanceScore + (1.f - Facing) * 0.5f;
 }
 
-float GetActionReach(const FIMGTraversalQuery& Query, float ForwardSpeed, float ObstacleHeight)
+bool IsReachableAlongGroundSlope(UIMGCharacterMovementComponent& Movement, const FVector& FootLocation,
+	const FVector& LedgeLocation, const FVector& SurfaceForward)
 {
-	if (ObstacleHeight > 80.f)
+	if (!Movement.IsMovingOnGround())
 	{
-		return Query.ForwardDistance;
+		return false;
 	}
-	if (ForwardSpeed < Query.RunningSpeedThreshold)
+	const FHitResult& GroundHit = Movement.GetGroundInfo().GroundHitResult;
+	const FVector GroundNormal = GroundHit.ImpactNormal.GetSafeNormal();
+	if (!GroundHit.bBlockingHit || GroundNormal.Z <= WalkableSlopeMinNormalZ
+		|| GroundNormal.Equals(FVector::UpVector, KINDA_SMALL_NUMBER))
 	{
-		return Query.StepUpForwardDistance;
+		return false;
 	}
-	const float Alpha = FMath::GetRangePct(
-		Query.RunningSpeedThreshold, Query.ForwardDistanceAtMaxSpeed, ForwardSpeed);
-	return FMath::Lerp(Query.RunningForwardDistance, Query.MaxForwardDistance,
-		FMath::Clamp(Alpha, 0.f, 1.f));
+	const FVector SlopeDirection = FVector::VectorPlaneProject(SurfaceForward, GroundNormal).GetSafeNormal();
+	if (SlopeDirection.Z <= 0.f)
+	{
+		return false;
+	}
+	const FVector ProjectionStart = FootLocation + FVector::UpVector * WalkableSlopeBaseOffset;
+	const FVector ProjectionEnd = ProjectionStart + SlopeDirection * WalkableSlopeProjectionLength;
+	const FVector ClosestPoint = FMath::ClosestPointOnSegment(LedgeLocation, ProjectionStart, ProjectionEnd);
+	const FVector Separation = LedgeLocation - ClosestPoint;
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::Line(Movement.GetWorld(), ProjectionStart, ProjectionEnd, FColor::Silver, 3, 1.f);
+	IMGTraversalDebug::Line(Movement.GetWorld(), ClosestPoint, LedgeLocation,
+		Separation.Z < 0.f || Separation.Size() < WalkableSlopeDistanceTolerance
+			? FColor::Red : FColor::Green, 3, 1.f);
+#endif
+	return Separation.Z < 0.f || Separation.Size() < WalkableSlopeDistanceTolerance;
 }
 
 bool IsVaultExitSupported(const FIMGTraversalCandidate& Candidate, bool bRunning)
@@ -162,27 +187,15 @@ bool TraceTop(UWorld& World, const FVector& Point, float StartZ, float EndZ, flo
 	return bHit;
 }
 
-bool HasCapsuleRoom(const UWorld& World, const UCapsuleComponent& Capsule, const AActor& Character,
-	const FVector& Center, float Radius, float HalfHeight)
-{
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalRoom), false, &Character);
-	const FCollisionResponseParams Responses(Capsule.GetCollisionResponseToChannels());
-	const bool bHasRoom = !World.OverlapBlockingTestByChannel(Center, FQuat::Identity, Capsule.GetCollisionObjectType(),
-		FCollisionShape::MakeCapsule(Radius, HalfHeight), Params, Responses);
-#if ENABLE_DRAW_DEBUG
-	IMGTraversalDebug::Capsule(&World, Center, HalfHeight, Radius,
-		bHasRoom ? FColor::Green : FColor::Red, 3);
-#endif
-	return bHasRoom;
-}
-
 bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, const FVector& Forward,
+	float FrontEdgeVerticalSpan, float MidHeightApproachClearance,
 	FIMGTraversalCandidate& Out, EIMGTraversalFailure& Failure)
 {
 	AIMGCharacter* Character = Query.Character.Get();
+	const FIMGTraversalDetectorSettings& Settings = Query.Settings;
 	UPrimitiveComponent* FaceComponent = Face.GetComponent();
 	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
-	const UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
+	UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
 	UWorld* World = Character->GetWorld();
 	const float Radius = Capsule->GetScaledCapsuleRadius();
 	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
@@ -192,14 +205,14 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	const FVector SurfaceForward = -FlatFaceNormal;
 	const FVector Right = FVector::CrossProduct(Up, SurfaceForward).GetSafeNormal();
 	const float FacingDot = FVector::DotProduct(SurfaceForward, Forward);
-	if (!IsValid(FaceComponent) || !World || FacingDot < Query.MinFacingDot
+	if (!IsValid(FaceComponent) || !World || FacingDot < Settings.MinFacingDot
 		|| Face.ImpactNormal.Z > 0.9f
 		|| SurfaceForward.IsNearlyZero() || Right.IsNearlyZero())
 	{
 		Failure = EIMGTraversalFailure::InvalidSurface;
 		return false;
 	}
-	if (!AddObstacleComponent(Out, FaceComponent, Query))
+	if (!AddObstacleComponent(Out, FaceComponent, Settings))
 	{
 		Failure = EIMGTraversalFailure::MovingTarget;
 #if ENABLE_DRAW_DEBUG
@@ -223,7 +236,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	{
 		Failure = EIMGTraversalFailure::NoFrontLedge;
 #if ENABLE_DRAW_DEBUG
-		IMGTraversalDebug::String(World, ProbeOrigin + Up * Query.MaxHeight,
+		IMGTraversalDebug::String(World, ProbeOrigin + Up * Settings.MaxHeight,
 			TEXT("FrontLedge: top sweep missed"), FColor::Red, 2);
 #endif
 		return false;
@@ -238,25 +251,25 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		return false;
 	}
 	UPrimitiveComponent* TopComponent = CenterTop.GetComponent();
-	if (!AddObstacleComponent(Out, TopComponent, Query))
+	if (!AddObstacleComponent(Out, TopComponent, Settings))
 	{
 		Failure = EIMGTraversalFailure::MovingTarget;
 		return false;
 	}
 	const float Height = CenterTop.ImpactPoint.Z - FootZ;
-	if (Height < Query.MinHeight || Height > Query.MaxHeight)
+	if (Height < Settings.MinHeight || Height > Settings.MaxHeight)
 	{
 		Failure = EIMGTraversalFailure::NoFrontLedge;
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::String(World, CenterTop.ImpactPoint + Up * 12.f,
 			FString::Printf(TEXT("FrontLedge: height %.0f outside %.0f..%.0f"),
-				Height, Query.MinHeight, Query.MaxHeight), FColor::Red, 2);
+				Height, Settings.MinHeight, Settings.MaxHeight), FColor::Red, 2);
 #endif
 		return false;
 	}
 
 	const float SideOffset = FMath::Max(TopProbeRadius * 2.f,
-		Query.MinWidth * 0.5f - TopProbeRadius);
+		Settings.MinWidth * 0.5f - TopProbeRadius);
 	FVector SideTopPoints[2];
 	int32 SidePointIndex = 0;
 	for (const float Side : {-1.f, 1.f})
@@ -277,7 +290,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 #endif
 			return false;
 		}
-		if (!AddObstacleComponent(Out, SideTop.GetComponent(), Query))
+		if (!AddObstacleComponent(Out, SideTop.GetComponent(), Settings))
 		{
 			Failure = EIMGTraversalFailure::MovingTarget;
 			return false;
@@ -291,6 +304,16 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	FVector FrontPoint = CenterTop.ImpactPoint;
 	FrontPoint -= FlatFaceNormal
 		* FVector::DotProduct(FrontPoint - Face.ImpactPoint, FlatFaceNormal);
+	const FVector FootLocation(Character->GetActorLocation().X, Character->GetActorLocation().Y, FootZ);
+	if (IsReachableAlongGroundSlope(*Movement, FootLocation, FrontPoint, SurfaceForward))
+	{
+		Failure = EIMGTraversalFailure::InvalidSurface;
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::String(World, FrontPoint + Up * 20.f,
+			TEXT("Surface: reachable along ground slope"), FColor::Red, 2);
+#endif
+		return false;
+	}
 	const FRotator Facing = FRotationMatrix::MakeFromXZ(SurfaceForward, Up).Rotator();
 	Out.FrontLedge = FTransform(Facing, FrontPoint);
 	Out.HitComponent = FaceComponent;
@@ -301,6 +324,10 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
 	Out.DistanceToLedge = FVector::Distance(FrontPoint,
 		Mesh ? Mesh->GetComponentLocation() : Character->GetActorLocation());
+	Out.FrontEdgeVerticalSpan = FrontEdgeVerticalSpan;
+	Out.MidHeightApproachClearance = MidHeightApproachClearance;
+	Out.bHasHighOpenApproach = Height > HighOpenApproachMinHeight
+		&& MidHeightApproachClearance >= HighOpenApproachMinClearance;
 	Out.DetectionTime = World->GetTimeSeconds();
 	Out.Speed = Movement->Velocity.Size2D();
 	Out.MovementMode = Movement->MovementMode;
@@ -313,7 +340,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	bool bHasDropHit = false;
 	bool bHitRisingObstacle = false;
 	const int32 DepthSamples = FMath::Clamp(
-		FMath::CeilToInt(Query.MaxDepth / DepthProbeSpacing), 1, MaxDepthSamples);
+		FMath::CeilToInt(Settings.MaxDepth / DepthProbeSpacing), 1, MaxDepthSamples);
 	const float DepthStartOffset = HorizontalClearanceVerticalOffset
 		+ 2.f * HorizontalClearanceRadius * 2.f
 		- (DepthProbeRadius - HorizontalClearanceRadius) - HorizontalClearanceRadius;
@@ -331,7 +358,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	{
 		const FVector Probe = FrontPoint + SurfaceForward * (DepthProbeSpacing * Index);
 		const FVector ProbeStart = Probe + Up * DepthStartOffset;
-		const FVector ProbeEnd = ProbeStart - Up * Query.DepthProbeLength;
+		const FVector ProbeEnd = ProbeStart - Up * Settings.DepthProbeLength;
 		FHitResult DepthHit;
 		const bool bDepthHit = World->SweepSingleByChannel(DepthHit, ProbeStart, ProbeEnd,
 			FQuat::Identity, IMG_TraceChannel_Traversal,
@@ -359,7 +386,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			}
 			else if (!bDepthHit)
 			{
-				Out.DropHeight = Query.DepthProbeLength;
+				Out.DropHeight = Settings.DepthProbeLength;
 			}
 #if ENABLE_DRAW_DEBUG
 			if (bHitRisingObstacle)
@@ -371,7 +398,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			break;
 		}
 		LastTopPoint = DepthHit.ImpactPoint;
-		if (!AddObstacleComponent(Out, DepthHit.GetComponent(), Query))
+		if (!AddObstacleComponent(Out, DepthHit.GetComponent(), Settings))
 		{
 			Failure = EIMGTraversalFailure::MovingTarget;
 			return false;
@@ -392,7 +419,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 				&& FMath::Abs(RefineHit.ImpactPoint.Z - FrontPoint.Z) <= DepthHeightTolerance)
 			{
 				ValidPoint = RefineHit.ImpactPoint;
-				if (!AddObstacleComponent(Out, RefineHit.GetComponent(), Query))
+				if (!AddObstacleComponent(Out, RefineHit.GetComponent(), Settings))
 				{
 					Failure = EIMGTraversalFailure::MovingTarget;
 					return false;
@@ -407,7 +434,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		LastTopPoint = ValidPoint;
 	}
 	Out.ObstacleDepth = (bFoundEdge || bHitRisingObstacle)
-		? FVector::Dist2D(FrontPoint, LastTopPoint) : Query.MaxDepth;
+		? FVector::Dist2D(FrontPoint, LastTopPoint) : Settings.MaxDepth;
 	Out.bHasBackLedge = bFoundEdge;
 	Out.BackLedge = FTransform(Facing, LastTopPoint);
 	Out.BackLedgeComponent = LastTopComponent;
@@ -430,7 +457,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 #endif
 		if (bBackFaceHit)
 		{
-			if (!AddObstacleComponent(Out, BackFace.GetComponent(), Query))
+			if (!AddObstacleComponent(Out, BackFace.GetComponent(), Settings))
 			{
 				Failure = EIMGTraversalFailure::MovingTarget;
 				return false;
@@ -483,7 +510,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	Out.VerticalClearance = bVerticalClearanceHit
 		? (VerticalClearanceHit.bStartPenetrating ? 0.f
 			: FMath::Max(VerticalClearanceHit.Location.Z - FrontPoint.Z, 0.f))
-		: Query.MaxHeight;
+		: Settings.MaxHeight;
 #if ENABLE_DRAW_DEBUG
 	const FVector VerticalDebugEnd = bVerticalClearanceHit
 		? (VerticalClearanceHit.bStartPenetrating ? VerticalClearanceStart : VerticalClearanceHit.Location)
@@ -509,7 +536,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			ClearanceDirection = NormalizedSlope;
 		}
 	}
-	const float MaxClearance = FMath::Max(Query.MaxHorizontalClearance, HorizontalClearanceRadius * 2.f);
+	const float MaxClearance = FMath::Max(Settings.MaxHorizontalClearance, HorizontalClearanceRadius * 2.f);
 	float HorizontalClearance = MaxClearance;
 	for (int32 ClearanceIndex = 0; ClearanceIndex < 2; ++ClearanceIndex)
 	{
@@ -548,14 +575,14 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::String(World, FrontPoint + Up * (HalfHeight + 20.f),
 		FString::Printf(TEXT("Horizontal clearance %.0fcm"), HorizontalClearance),
-		HorizontalClearance <= Query.MinHorizontalClearance ? FColor::Red : FColor::Green, 3);
+		HorizontalClearance <= Settings.MinHorizontalClearance ? FColor::Red : FColor::Green, 3);
 #endif
-	if (HorizontalClearance <= Query.MinHorizontalClearance)
+	if (HorizontalClearance <= Settings.MinHorizontalClearance)
 	{
 		Failure = EIMGTraversalFailure::BlockedPath;
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::String(World, FrontPoint + Up * (HalfHeight + 38.f),
-			FString::Printf(TEXT("BlockedPath: clearance <= %.0fcm"), Query.MinHorizontalClearance),
+			FString::Printf(TEXT("BlockedPath: clearance <= %.0fcm"), Settings.MinHorizontalClearance),
 			FColor::Red, 2);
 #endif
 		return false;
@@ -564,11 +591,11 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 	if (Out.bHasBackLedge && bHasDropHit)
 	{
 		Out.BackLedgeHeight = LastTopPoint.Z - FirstDropHit.ImpactPoint.Z;
-		const FVector FloorCenter = FirstDropHit.ImpactPoint + Up * (HalfHeight + 3.f);
-		if (Out.DropHeight >= 0.f && Out.DropHeight <= Query.MaxDrop
-			&& IsComponentUsable(FirstDropHit.GetComponent(), Query)
-			&& HasCapsuleRoom(*World, *Capsule, *Character, FloorCenter, Radius, HalfHeight))
+		if (Out.DropHeight >= 0.f && Out.DropHeight <= Settings.MaxDrop
+			&& IsComponentUsable(FirstDropHit.GetComponent(), Settings))
 		{
+			// This probe establishes rear support geometry, not the animation landing pose.
+			// The selected montage curve determines that pose and the GA validates its full capsule and path.
 			Out.bHasBackFloor = true;
 			Out.BackFloorComponent = FirstDropHit.GetComponent();
 			Out.BackFloor = FTransform(Facing, FirstDropHit.ImpactPoint);
@@ -579,10 +606,10 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		&& (Out.ObstacleDepth >= 32.5f
 			|| (Out.HorizontalClearance > 40.f && Out.DropHeight <= 32.5f));
 	const float ForwardSpeed = FMath::Max(0.f, FVector::DotProduct(Movement->Velocity, Forward));
-	const bool bRunning = ForwardSpeed >= Query.RunningSpeedThreshold;
-	Out.bCanVault = Out.bHasBackLedge && Height <= Query.MaxVaultHeight
+	const bool bRunning = ForwardSpeed >= Settings.RunningSpeedThreshold;
+	Out.bCanVault = Out.bHasBackLedge && Height <= Settings.MaxVaultHeight
 		&& IsVaultExitSupported(Out, bRunning);
-	Out.bCanHurdle = Out.bCanVault && Out.bHasBackFloor && Height <= Query.MaxHurdleHeight;
+	Out.bCanHurdle = Out.bCanVault && Out.bHasBackFloor && Height <= Settings.MaxHurdleHeight;
 	Out.RecommendedAction = Out.bCanHurdle ? EIMGTraversalAction::Hurdle
 		: Out.bCanVault ? EIMGTraversalAction::Vault
 		: Out.bCanMantle ? EIMGTraversalAction::Mantle
@@ -614,6 +641,7 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	OutCandidate = FIMGTraversalCandidate();
 	OutFailure = EIMGTraversalFailure::None;
 	AIMGCharacter* Character = Query.Character.Get();
+	const FIMGTraversalDetectorSettings& Settings = Query.Settings;
 	if (!IsValid(Character) || !Character->GetWorld() || !Character->GetCapsuleComponent())
 	{
 		OutFailure = EIMGTraversalFailure::InvalidCharacter;
@@ -630,19 +658,18 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		return false;
 	}
 	const FVector Forward = FVector(Query.Direction.X, Query.Direction.Y, 0.f).GetSafeNormal();
-	if (Forward.IsNearlyZero() || Query.ForwardDistance <= 0.f
-		|| Query.StepUpForwardDistance <= 0.f || Query.StepUpForwardDistance > Query.ForwardDistance
-		|| Query.RunningForwardDistance < Query.ForwardDistance
-		|| Query.MaxForwardDistance < Query.RunningForwardDistance
-		|| Query.ForwardDistanceAtMaxSpeed <= Query.RunningSpeedThreshold
-		|| Query.MaxAnimationReachDistance <= 0.f || Query.MaxAnimationReachDistance > Query.SearchDistance
-		|| Query.MinHeight < 0.f || Query.MaxDepth <= 0.f
-		|| Query.MaxHorizontalClearance <= 0.f || Query.MinHorizontalClearance < 0.f
-		|| Query.MaxHorizontalClearance <= Query.MinHorizontalClearance
-		|| Query.DepthProbeLength <= 0.f || Query.MaxDrop < 0.f
-		|| Query.MaxHeight <= Query.MinHeight || Query.MinWidth <= 0.f
-		|| Query.MinFacingDot < -1.f || Query.MinFacingDot > 1.f
-		|| Query.MaxMovingSpeed < 0.f || Query.MaxAngularSpeedDegrees < 0.f || Query.MaxCandidateAge <= 0.f)
+	if (Forward.IsNearlyZero() || Settings.RunningSpeedThreshold < 0.f
+		|| Settings.SearchDistance <= 0.f
+		|| Settings.MaxAnimationReachDistance <= 0.f
+		|| Settings.MaxAnimationReachDistance > Settings.SearchDistance
+		|| Settings.MinHeight < 0.f || Settings.MaxDepth <= 0.f
+		|| Settings.MaxHorizontalClearance <= 0.f || Settings.MinHorizontalClearance < 0.f
+		|| Settings.MaxHorizontalClearance <= Settings.MinHorizontalClearance
+		|| Settings.DepthProbeLength <= 0.f || Settings.MaxDrop < 0.f
+		|| Settings.MaxHeight <= Settings.MinHeight || Settings.MinWidth <= 0.f
+		|| Settings.MinFacingDot < -1.f || Settings.MinFacingDot > 1.f
+		|| Settings.MaxMovingSpeed < 0.f || Settings.MaxAngularSpeedDegrees < 0.f
+		|| Settings.MaxCandidateAge <= 0.f)
 	{
 		OutFailure = EIMGTraversalFailure::InvalidMovement;
 #if ENABLE_DRAW_DEBUG
@@ -654,26 +681,30 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
 	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 	const FVector Origin = Character->GetActorLocation();
-	const float ForwardSpeed = FMath::Max(0.f, FVector::DotProduct(Movement->Velocity, Forward));
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::BeginTraversalSnapshot(Character->GetWorld());
 	if (IMGTraversalDebug::IsEnabled(2))
 	{
 		IMGTraversalDebug::String(Character->GetWorld(), Origin + FVector::UpVector * (HalfHeight + 35.f),
-			FString::Printf(TEXT("Search %.0f | Anim %.0f | Ref %.0f/%.0f..%.0f | H %.0f..%.0f | Speed %.0f | %s"),
-				Query.SearchDistance, Query.MaxAnimationReachDistance, Query.StepUpForwardDistance, Query.ForwardDistance,
-				Query.MaxForwardDistance, Query.MinHeight, Query.MaxHeight, Movement->Velocity.Size2D(),
+			FString::Printf(TEXT("Search %.0f | Anim %.0f | H %.0f..%.0f | Speed %.0f | %s"),
+				Settings.SearchDistance, Settings.MaxAnimationReachDistance,
+				Settings.MinHeight, Settings.MaxHeight, Movement->Velocity.Size2D(),
 				Movement->IsFalling() ? TEXT("Air") : TEXT("Ground")), FColor::White, 2);
 	}
 #endif
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalCandidates), false, Character);
-	TArray<FHitResult> Hits;
-	const float DuplicateDistanceSquared = FMath::Square(9.f);
+	TArray<FHitResult> EdgeHits;
+	TArray<FVector> EdgeMidPoints;
+	TArray<FVector> EdgeNormalSums;
+	TArray<FVector2D> EdgeHeightRanges;
+	TArray<float> EdgeScores;
 	const float FootZ = Origin.Z - HalfHeight;
 	const float SearchBaseZ = Origin.Z + SearchStartHeightOffset;
-	const float HighestProbeZ = FootZ + Query.MaxHeight + 25.f;
+	const float HighestProbeZ = FootZ + Settings.MaxHeight + 25.f;
 	const int32 ProbeLayerCount = FMath::Clamp(FMath::RoundToInt(
 		(HighestProbeZ - SearchBaseZ) / SearchProbeSeparation), 1, MaxForwardProbeLayers);
+	TArray<float> SearchLayerDistances;
+	SearchLayerDistances.Init(Settings.SearchDistance, ProbeLayerCount);
 #if ENABLE_DRAW_DEBUG
 	// The broad search layers stay live-only; the successful snapshot starts with the search summary.
 	IMGTraversalDebug::SetTraversalSnapshotCaptureEnabled(false);
@@ -683,10 +714,18 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 		TArray<FHitResult> ProbeHits;
 		const FVector Start(Origin.X, Origin.Y,
 			SearchBaseZ + SearchProbeRadius + SearchProbeSeparation * LayerIndex);
-		const FVector End = Start + Forward * Query.SearchDistance;
+		const FVector End = Start + Forward * Settings.SearchDistance;
 		Character->GetWorld()->SweepMultiByChannel(ProbeHits, Start, End,
 			FQuat::Identity, IMG_TraceChannel_Traversal,
 			FCollisionShape::MakeSphere(SearchProbeRadius), Params);
+		for (const FHitResult& Hit : ProbeHits)
+		{
+			if (Hit.bBlockingHit)
+			{
+				SearchLayerDistances[LayerIndex] = FMath::Min(SearchLayerDistances[LayerIndex],
+					FVector::Dist2D(Start, Hit.Location));
+			}
+		}
 #if ENABLE_DRAW_DEBUG
 		const FColor SearchColor = ProbeHits.IsEmpty() ? FColor::Silver : FColor::Cyan;
 		IMGTraversalDebug::Line(Character->GetWorld(), Start, End, SearchColor, 2, 1.5f);
@@ -702,72 +741,112 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 			{
 				continue;
 			}
-			const int32 ExistingIndex = Hits.IndexOfByPredicate([&Hit, DuplicateDistanceSquared](const FHitResult& Existing)
+			int32 EdgeIndex = INDEX_NONE;
+			for (int32 ExistingIndex = 0; ExistingIndex < EdgeHits.Num(); ++ExistingIndex)
 			{
-				return Existing.GetComponent() == Hit.GetComponent()
-					&& FVector::DistSquared2D(Existing.ImpactPoint, Hit.ImpactPoint) <= DuplicateDistanceSquared
-					&& FVector::DotProduct(Existing.ImpactNormal, Hit.ImpactNormal) >= 0.9f;
-			});
-			if (ExistingIndex == INDEX_NONE)
-			{
-				Hits.Add(Hit);
+				const FVector AverageNormal = EdgeNormalSums[ExistingIndex].GetSafeNormal();
+				const FVector2D HeightRange = EdgeHeightRanges[ExistingIndex];
+				if (FVector::DistSquared2D(EdgeMidPoints[ExistingIndex], Hit.ImpactPoint)
+						<= FMath::Square(EdgePlanarTolerance)
+					&& FVector::DotProduct(AverageNormal.GetSafeNormal2D(), Hit.ImpactNormal.GetSafeNormal2D())
+						>= EdgeHeadingToleranceDot
+					&& Hit.ImpactPoint.Z >= HeightRange.X - EdgeVerticalContinuity
+					&& Hit.ImpactPoint.Z <= HeightRange.Y + EdgeVerticalContinuity)
+				{
+					EdgeIndex = ExistingIndex;
+					break;
+				}
 			}
-			else if (Hit.ImpactPoint.Z > Hits[ExistingIndex].ImpactPoint.Z)
+			if (EdgeIndex == INDEX_NONE)
 			{
-				// A wall creates a vertical stack of hits; the upper sample is the useful ledge seed.
-				Hits[ExistingIndex] = Hit;
+				EdgeHits.Add(Hit);
+				EdgeMidPoints.Add(Hit.ImpactPoint);
+				EdgeNormalSums.Add(Hit.ImpactNormal);
+				EdgeHeightRanges.Add(FVector2D(Hit.ImpactPoint.Z, Hit.ImpactPoint.Z));
+				EdgeScores.Add(GetCandidateScore(Origin, Forward, Hit));
+			}
+			else
+			{
+				EdgeMidPoints[EdgeIndex] = (EdgeMidPoints[EdgeIndex] + Hit.ImpactPoint) * 0.5f;
+				EdgeNormalSums[EdgeIndex] += Hit.ImpactNormal;
+				EdgeHeightRanges[EdgeIndex].X = FMath::Min(EdgeHeightRanges[EdgeIndex].X, Hit.ImpactPoint.Z);
+				EdgeHeightRanges[EdgeIndex].Y = FMath::Max(EdgeHeightRanges[EdgeIndex].Y, Hit.ImpactPoint.Z);
+				EdgeScores[EdgeIndex] = FMath::Min(EdgeScores[EdgeIndex], GetCandidateScore(Origin, Forward, Hit));
+				if (Hit.ImpactPoint.Z > EdgeHits[EdgeIndex].ImpactPoint.Z)
+				{
+					EdgeHits[EdgeIndex] = Hit;
+				}
 			}
 		}
 	}
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::SetTraversalSnapshotCaptureEnabled(true);
 #endif
-	Hits.Sort([&Origin, &Forward](const FHitResult& A, const FHitResult& B)
+	TArray<int32> EdgeOrder;
+	EdgeOrder.Reserve(EdgeHits.Num());
+	for (int32 EdgeIndex = 0; EdgeIndex < EdgeHits.Num(); ++EdgeIndex)
 	{
-		return GetCandidateScore(Origin, Forward, A) < GetCandidateScore(Origin, Forward, B);
+		const FVector AverageNormal = EdgeNormalSums[EdgeIndex].GetSafeNormal();
+		if (!AverageNormal.IsNearlyZero())
+		{
+			EdgeHits[EdgeIndex].ImpactNormal = AverageNormal;
+		}
+		EdgeOrder.Add(EdgeIndex);
+#if ENABLE_DRAW_DEBUG
+		const FVector EdgeBottom(EdgeHits[EdgeIndex].ImpactPoint.X, EdgeHits[EdgeIndex].ImpactPoint.Y,
+			EdgeHeightRanges[EdgeIndex].X);
+		const FVector EdgeTop(EdgeBottom.X, EdgeBottom.Y, EdgeHeightRanges[EdgeIndex].Y);
+		IMGTraversalDebug::Line(Character->GetWorld(), EdgeBottom, EdgeTop, FColor::Purple, 2, 1.5f);
+		IMGTraversalDebug::Arrow(Character->GetWorld(), EdgeTop,
+			EdgeTop + EdgeHits[EdgeIndex].ImpactNormal * 30.f, FColor::Purple, 2);
+#endif
+	}
+	EdgeOrder.Sort([&EdgeScores](int32 A, int32 B)
+	{
+		return EdgeScores[A] < EdgeScores[B];
 	});
+	float MidHeightApproachClearance = Settings.SearchDistance;
+	for (int32 LayerIndex = 1; LayerIndex < FMath::Min(ProbeLayerCount, 4); ++LayerIndex)
+	{
+		MidHeightApproachClearance = FMath::Min(MidHeightApproachClearance, SearchLayerDistances[LayerIndex]);
+	}
 	OutFailure = EIMGTraversalFailure::NoSurface;
 	int32 Tested = 0;
-	for (const FHitResult& Hit : Hits)
+	for (const int32 EdgeIndex : EdgeOrder)
 	{
 		if (++Tested > MaxCandidateHits)
 		{
 			break;
 		}
+		const FHitResult& Hit = EdgeHits[EdgeIndex];
+		const float EdgeVerticalSpan = EdgeHeightRanges[EdgeIndex].Y - EdgeHeightRanges[EdgeIndex].X;
 		FIMGTraversalCandidate Candidate;
 		EIMGTraversalFailure Failure = EIMGTraversalFailure::InvalidSurface;
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::BeginTraversalCandidateSnapshot();
 		IMGTraversalDebug::String(Character->GetWorld(), Hit.ImpactPoint + FVector::UpVector * 20.f,
-			FString::Printf(TEXT("C%d/%d Score %.2f D%.0f Face %.2f"), Tested,
-				FMath::Min(Hits.Num(), MaxCandidateHits), GetCandidateScore(Origin, Forward, Hit),
+			FString::Printf(TEXT("C%d/%d Score %.2f D%.0f Face %.2f Span %.0f Mid %.0f"), Tested,
+				FMath::Min(EdgeOrder.Num(), MaxCandidateHits), EdgeScores[EdgeIndex],
 				FVector::Dist2D(Origin, Hit.ImpactPoint),
-				-FVector::DotProduct(Hit.ImpactNormal.GetSafeNormal2D(), Forward)), FColor::Yellow, 2);
+				-FVector::DotProduct(Hit.ImpactNormal.GetSafeNormal2D(), Forward),
+				EdgeVerticalSpan, MidHeightApproachClearance), FColor::Yellow, 2);
 #endif
-		if (MakeCandidate(Query, Hit, Forward, Candidate, Failure))
+		if (MakeCandidate(Query, Hit, Forward, EdgeVerticalSpan, MidHeightApproachClearance,
+			Candidate, Failure))
 		{
-			Candidate.ReferenceReachDistance = GetActionReach(Query, ForwardSpeed, Candidate.ObstacleHeight);
 			const float CandidateDistance = FVector::Dist2D(Origin, Candidate.FrontLedge.GetLocation());
-			if (CandidateDistance > Query.MaxAnimationReachDistance)
+			if (CandidateDistance > Settings.MaxAnimationReachDistance)
 			{
 				OutFailure = EIMGTraversalFailure::OutOfReach;
 #if ENABLE_DRAW_DEBUG
 				IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-					FString::Printf(TEXT("OutOfReach: %.0f > Anim %.0f (Ref %.0f)"), CandidateDistance,
-						Query.MaxAnimationReachDistance, Candidate.ReferenceReachDistance),
+					FString::Printf(TEXT("OutOfReach: %.0f > Anim %.0f"), CandidateDistance,
+						Settings.MaxAnimationReachDistance),
 					FColor::Red, 2);
 				IMGTraversalDebug::RollbackTraversalCandidateSnapshot();
 #endif
 				continue;
 			}
-#if ENABLE_DRAW_DEBUG
-			if (CandidateDistance > Candidate.ReferenceReachDistance && IMGTraversalDebug::IsEnabled(2))
-			{
-				IMGTraversalDebug::String(Character->GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-					FString::Printf(TEXT("Approach %.0f (Ref %.0f)"),
-						CandidateDistance, Candidate.ReferenceReachDistance), FColor::Yellow, 2);
-			}
-#endif
 			OutCandidate = Candidate;
 			OutFailure = EIMGTraversalFailure::None;
 			return true;
@@ -780,7 +859,7 @@ bool FIMGTraversalDetector::Detect(const FIMGTraversalQuery& Query, FIMGTraversa
 	}
 #if ENABLE_DRAW_DEBUG
 	IMGTraversalDebug::DiscardTraversalSnapshot();
-	DrawFailure(*Character, OutFailure, Origin + Forward * Query.SearchDistance + FVector::UpVector * 30.f);
+	DrawFailure(*Character, OutFailure, Origin + Forward * Settings.SearchDistance + FVector::UpVector * 30.f);
 #endif
 	return false;
 }

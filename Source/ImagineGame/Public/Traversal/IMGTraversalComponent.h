@@ -27,7 +27,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "IMG|Traversal")
 	UMotionWarpingComponent* GetMotionWarpingComponent() const;
 
-	const FIMGTraversalQuery& GetQuerySettings() const { return QuerySettings; }
+	const FIMGTraversalDetectorSettings& GetDetectorSettings() const { return DetectorSettings; }
 	void BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection);
 	bool PublishTraversalState(uint8 MontagePlayInstanceId);
 	void EndTraversal();
@@ -38,7 +38,7 @@ public:
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Detection")
-	FIMGTraversalQuery QuerySettings;
+	FIMGTraversalDetectorSettings DetectorSettings;
 
 	/** Matches the existing GASP FrontLedge warp contract without contaminating geometric measurements. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Warping")

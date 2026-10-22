@@ -39,13 +39,14 @@ UIMGTraversalComponent* UIMGTraversalComponent::Get(const AActor* Actor)
 bool UIMGTraversalComponent::Detect(FIMGTraversalCandidate& OutCandidate, EIMGTraversalFailure& OutFailure, FVector Direction) const
 {
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
-	FIMGTraversalQuery Query = QuerySettings;
+	FIMGTraversalQuery Query;
 	Query.Character = const_cast<AIMGCharacter*>(Character);
 	if (Direction.IsNearlyZero() && Character)
 	{
 		Direction = Character->GetActorForwardVector();
 	}
 	Query.Direction = Direction;
+	Query.Settings = DetectorSettings;
 	return FIMGTraversalDetector::Detect(Query, OutCandidate, OutFailure);
 }
 
@@ -253,8 +254,10 @@ bool UIMGTraversalComponent::IsReplicatedMontageReady(
 		return false;
 	}
 
-	const bool bNeedsBackLedge = ActiveState.Action == EIMGTraversalAction::Vault
-		|| ActiveState.Action == EIMGTraversalAction::Hurdle;
+	TArray<FMotionWarpingWindowData> BackLedgeWindows;
+	UMotionWarpingUtilities::GetMotionWarpingWindowsForWarpTargetFromAnimation(
+		Montage, BackLedgeName, BackLedgeWindows);
+	const bool bNeedsBackLedge = !BackLedgeWindows.IsEmpty();
 	if (bNeedsBackLedge && !Warping->FindWarpTarget(BackLedgeName))
 	{
 		return false;

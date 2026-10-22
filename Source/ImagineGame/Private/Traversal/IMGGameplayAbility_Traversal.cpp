@@ -314,7 +314,7 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	const UWorld* World = GetWorld();
 	const double CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
 	const bool bCandidateFresh = Traversal && World && CandidateAge >= 0.0
-		&& CandidateAge <= Traversal->GetQuerySettings().MaxCandidateAge;
+		&& CandidateAge <= Traversal->GetDetectorSettings().MaxCandidateAge;
 #if ENABLE_DRAW_DEBUG
 	if (!bCandidateFresh)
 	{
@@ -392,13 +392,11 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	int32 BackLedgeWindowCount = 0;
 	const bool bUsesBackLedge = Selection.Action == EIMGTraversalAction::Hurdle
 		|| Selection.Action == EIMGTraversalAction::Vault;
-	const bool bRequiresBackLedgeWindow = Selection.Action == EIMGTraversalAction::Hurdle;
 	const bool bBackLedgeWindowValid = bUsesBackLedge && GetWindowTimes(
 		TEXT("BackLedge"), BackLedgeWindowStart, BackLedgeWindowEnd, BackLedgeWindowCount);
-	// GASP Vault montages can be FrontLedge-only; an authored optional BackLedge window must still be valid.
-	const bool bBackLedgeWindowInvalid = bRequiresBackLedgeWindow
-		? (!bBackLedgeWindowValid || Selection.StartTime >= BackLedgeWindowEnd)
-		: (BackLedgeWindowCount > 0 && (!bBackLedgeWindowValid || Selection.StartTime >= BackLedgeWindowEnd));
+	// Traversal assets may use FrontLedge + BackFloor only. An authored BackLedge remains strictly validated.
+	const bool bBackLedgeWindowInvalid = BackLedgeWindowCount > 0
+		&& (!bBackLedgeWindowValid || Selection.StartTime >= BackLedgeWindowEnd);
 	if (bUsesBackLedge
 		&& (!Candidate.bHasBackLedge
 			|| !IsValid(Candidate.BackLedgeComponent)
@@ -448,10 +446,12 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		return false;
 	}
-	float BackLedgeDistance = 0.f;
+	const bool bUseBackLedgeAnchor = bBackLedgeWindowValid;
+	const float LandingAnchorTime = bUseBackLedgeAnchor ? BackLedgeWindowEnd : FrontLedgeWindowEnd;
+	float LandingAnchorCurveDistance = 0.f;
 	float BackFloorDistance = 0.f;
 	if (!UAnimationWarpingLibrary::GetCurveValueFromAnimation(
-		Selection.Montage, HurdleDistanceFromLedgeCurveName, BackLedgeWindowEnd, BackLedgeDistance)
+		Selection.Montage, HurdleDistanceFromLedgeCurveName, LandingAnchorTime, LandingAnchorCurveDistance)
 		|| !UAnimationWarpingLibrary::GetCurveValueFromAnimation(
 			Selection.Montage, HurdleDistanceFromLedgeCurveName, BackFloorWindowEnd, BackFloorDistance))
 	{
@@ -467,8 +467,10 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	{
 		LandingDirection = FVector(Candidate.ApproachDirection.X, Candidate.ApproachDirection.Y, 0.f).GetSafeNormal();
 	}
-	const float LandingDistance = FMath::Abs(BackFloorDistance - BackLedgeDistance);
-	FVector LandingPoint = Candidate.BackLedge.GetLocation() + LandingDirection * LandingDistance;
+	const float LandingDistance = FMath::Abs(BackFloorDistance - LandingAnchorCurveDistance);
+	const FVector LandingAnchor = bUseBackLedgeAnchor
+		? Candidate.BackLedge.GetLocation() : Candidate.FrontLedge.GetLocation();
+	FVector LandingPoint = LandingAnchor + LandingDirection * LandingDistance;
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	if (!Character || !Character->GetWorld() || !Character->GetCapsuleComponent() || !Character->GetIMGMovementComponent())
 	{
@@ -488,7 +490,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		return false;
 	}
-	const FIMGTraversalQuery& Settings = Traversal->GetQuerySettings();
+	const FIMGTraversalDetectorSettings& Settings = Traversal->GetDetectorSettings();
 	FHitResult FloorHit;
 	FCollisionQueryParams FloorParams(SCENE_QUERY_STAT(IMGTraversalSelectedLanding), false, Character);
 	const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
@@ -546,9 +548,10 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		bLandingPathBlocked ? PathHit.Location : LandingCenter,
 		bLandingPathBlocked ? FColor::Red : FColor::Green, 3, 2.f);
 	IMGTraversalDebug::String(Character->GetWorld(), LandingCenter + FVector::UpVector * 12.f,
-		FString::Printf(TEXT("Warp windows F %.2f..%.2f B %.2f..%.2f L %.2f..%.2f  Curve %.1f -> %.1f"),
+		FString::Printf(TEXT("Warp windows F %.2f..%.2f B %.2f..%.2f L %.2f..%.2f  Anchor %s %.1f -> %.1f"),
 			FrontLedgeWindowStart, FrontLedgeWindowEnd, BackLedgeWindowStart, BackLedgeWindowEnd,
-			BackFloorWindowStart, BackFloorWindowEnd, BackLedgeDistance, BackFloorDistance),
+			BackFloorWindowStart, BackFloorWindowEnd, bUseBackLedgeAnchor ? TEXT("Back") : TEXT("Front"),
+			LandingAnchorCurveDistance, BackFloorDistance),
 		bLandingPathBlocked ? FColor::Red : FColor::Green, 3);
 #endif
 	if (bLandingPathBlocked)
@@ -592,7 +595,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		K2_EndAbility();
 		return;
 	}
-	const FIMGTraversalQuery& Settings = Component->GetQuerySettings();
+	const FIMGTraversalDetectorSettings& Settings = Component->GetDetectorSettings();
 	const float DeltaTime = FMath::Max(World->GetTimeSeconds() - PreviousTargetCheckTime, KINDA_SMALL_NUMBER);
 	auto IsMovingTooFast = [&Settings, DeltaTime](const UPrimitiveComponent& Component,
 		const FTransform& CurrentTransform, const FTransform& PreviousTransform)

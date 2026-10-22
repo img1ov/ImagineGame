@@ -212,11 +212,15 @@ void SuccessfulTraversal(const UWorld* World, const FIMGTraversalCandidate& Cand
 		TEXT("Checks Geometry / Action / Animation / Warp / Montage PASS"),
 		FColor::Green, 1, FrameDuration);
 	String(World, Front + FVector::UpVector * 64.f,
-		FString::Printf(TEXT("H %.0f D %.0f Clear %.0f/%.0f Drop %.0f Dist %.0f Ref %.0f [%s] Parts %d"),
+		FString::Printf(TEXT("H %.0f D %.0f Clear %.0f/%.0f Drop %.0f Dist %.0f [%s] Parts %d"),
 			Candidate.ObstacleHeight, Candidate.ObstacleDepth, Candidate.HorizontalClearance,
 			Candidate.VerticalClearance, Candidate.DropHeight, Candidate.DistanceToLedge,
-			Candidate.ReferenceReachDistance, *Feasible, Candidate.ObstacleComponents.Num()),
+			*Feasible, Candidate.ObstacleComponents.Num()),
 		FColor::White, 1, FrameDuration);
+	String(World, Front + FVector::UpVector * 80.f,
+		FString::Printf(TEXT("Profile EdgeSpan %.0f MidClear %.0f HighOpen %d"),
+			Candidate.FrontEdgeVerticalSpan, Candidate.MidHeightApproachClearance,
+			Candidate.bHasHighOpenApproach), FColor::White, 2, FrameDuration);
 	ReplayTraversalSnapshot(-1.f);
 }
 

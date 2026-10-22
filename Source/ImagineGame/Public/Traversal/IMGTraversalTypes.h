@@ -35,39 +35,15 @@ enum class EIMGTraversalFailure : uint8
 	OutOfReach
 };
 
-/** A single, bounded synchronous geometry request. The detector owns no live state. */
+/** Persistent geometry, safety and validation settings shared by prediction and authority. */
 USTRUCT(BlueprintType)
-struct FIMGTraversalQuery
+struct FIMGTraversalDetectorSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite)
-	TObjectPtr<AIMGCharacter> Character = nullptr;
-
-	UPROPERTY(BlueprintReadWrite)
-	FVector Direction = FVector::ForwardVector;
-
-	/** GTA reference reach for a standing/manual action; exposed to animation selection, not used as the hard search gate. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float ForwardDistance = 150.f;
-
-	/** Standing reach for ledges at or below the reference 80 cm step-up height. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float StepUpForwardDistance = 100.f;
-
-	/** Maximum running action reach. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxForwardDistance = 200.f;
-
-	/** Running reach starts here once forward speed crosses RunningSpeedThreshold. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float RunningForwardDistance = 180.f;
-
+	/** Speed used only by geometry exit conditions that require a running traversal. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RunningSpeedThreshold = 350.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float ForwardDistanceAtMaxSpeed = 600.f;
 
 	/** Broad-phase probe length; matches the reference manual detector's 2.5 m search. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -75,7 +51,7 @@ struct FIMGTraversalQuery
 
 	/**
 	 * Maximum planar distance from the character origin to a returned front ledge.
-	 * Keep this independent from GTA's action reaches so Motion Matching may select a montage's ReachLedge approach segment.
+	 * This is an absolute detector bound; animation initiation distance remains owned by Motion Matching data.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxAnimationReachDistance = 250.f;
@@ -129,6 +105,22 @@ struct FIMGTraversalQuery
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bAllowSimulatingPhysics = false;
+};
+
+/** A single, bounded synchronous geometry request. The detector owns no live state. */
+USTRUCT(BlueprintType)
+struct FIMGTraversalQuery
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite)
+	TObjectPtr<AIMGCharacter> Character = nullptr;
+
+	UPROPERTY(BlueprintReadWrite)
+	FVector Direction = FVector::ForwardVector;
+
+	UPROPERTY(BlueprintReadWrite)
+	FIMGTraversalDetectorSettings Settings;
 };
 
 /** Geometry and feasible actions; animation assets never enter the detector. */
@@ -209,9 +201,17 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	float DistanceToLedge = 0.f;
 
-	/** GTA-style initiation reach for this speed/height. This is chooser data, not a detector rejection threshold. */
+	/** Vertical extent of the grouped broad-phase face hits that produced this candidate. */
 	UPROPERTY(BlueprintReadOnly)
-	float ReferenceReachDistance = 0.f;
+	float FrontEdgeVerticalSpan = 0.f;
+
+	/** Nearest broad-phase obstruction across the middle search layers. */
+	UPROPERTY(BlueprintReadOnly)
+	float MidHeightApproachClearance = 0.f;
+
+	/** Geometry fact only; the caller decides whether an open high approach should suppress traversal. */
+	UPROPERTY(BlueprintReadOnly)
+	bool bHasHighOpenApproach = false;
 
 	UPROPERTY(BlueprintReadOnly)
 	double DetectionTime = 0.0;
@@ -228,6 +228,7 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	bool bHasBackLedge = false;
 
+	/** A usable walkable surface was sampled after the back ledge; final landing clearance is animation-dependent. */
 	UPROPERTY(BlueprintReadOnly)
 	bool bHasBackFloor = false;
 
