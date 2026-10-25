@@ -48,6 +48,7 @@ public:
 	UE_API void ClearReplicatedMontageReadyDelegate(const UObject* Listener);
 	UE_API void RetryReplicatedMontage();
 	UE_API bool GetActiveReplicatedMontagePlayInstanceId(const UAnimMontage* Montage, uint8& OutPlayInstanceId) const;
+	UE_API bool MatchesReplicatedMontageInstance(const UAnimMontage* Montage, uint8 PlayInstanceId) const;
 
 	typedef TFunctionRef<bool(const UIMGGameplayAbility* IMGAbility, FGameplayAbilitySpecHandle Handle)> TShouldCancelAbilityFunc;
 	UE_API void CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, bool bReplicateCancelAbility);

@@ -156,6 +156,13 @@ bool UIMGAbilitySystemComponent::IsReadyForReplicatedMontage()
 			ReadyReplicatedMontageLogicalStartTime);
 }
 
+bool UIMGAbilitySystemComponent::MatchesReplicatedMontageInstance(
+	const UAnimMontage* Montage, uint8 PlayInstanceId) const
+{
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	return Montage && RepMontage.GetAnimMontage() == Montage && RepMontage.PlayInstanceId == PlayInstanceId;
+}
+
 float UIMGAbilitySystemComponent::PlayMontageSimulated(
 	UAnimMontage* Montage, const float InPlayRate, const FName StartSectionName)
 {
@@ -178,9 +185,7 @@ float UIMGAbilitySystemComponent::PlayMontageSimulated(
 		&& !RepMontage.SkipPositionCorrection && FMath::IsFinite(RepMontage.Position)
 		&& RepMontage.Position >= LogicalStartTime)
 	{
-		// Stay just inside GAS's native correction tolerance so simulated proxies can blend naturally.
-		constexpr float MaxPresentationLag = 0.075f;
-		PresentationStartTime = FMath::Max(LogicalStartTime, RepMontage.Position - MaxPresentationLag);
+		PresentationStartTime = RepMontage.Position;
 	}
 
 	const float Duration = AnimInstance->Montage_Play(Montage, InPlayRate,

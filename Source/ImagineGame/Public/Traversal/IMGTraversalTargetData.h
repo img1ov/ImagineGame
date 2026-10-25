@@ -15,6 +15,9 @@ struct FIMGTraversalTargetData : public FGameplayAbilityTargetData
 	FVector_NetQuantizeNormal Direction = FVector::ForwardVector;
 
 	UPROPERTY()
+	EIMGTraversalRequestSource Source = EIMGTraversalRequestSource::Manual;
+
+	UPROPERTY()
 	EIMGTraversalAction Action = EIMGTraversalAction::None;
 
 	UPROPERTY()
@@ -28,11 +31,16 @@ struct FIMGTraversalTargetData : public FGameplayAbilityTargetData
 
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 
-	virtual UScriptStruct* GetScriptStruct() const override { return StaticStruct(); }
+	virtual UScriptStruct* GetScriptStruct() const override
+	{
+		return StaticStruct();
+	}
 };
 
-template<>
-struct TStructOpsTypeTraits<FIMGTraversalTargetData> : TStructOpsTypeTraitsBase2<FIMGTraversalTargetData>
+template <> struct TStructOpsTypeTraits<FIMGTraversalTargetData> : TStructOpsTypeTraitsBase2<FIMGTraversalTargetData>
 {
-	enum { WithNetSerializer = true };
+	enum
+	{
+		WithNetSerializer = true
+	};
 };

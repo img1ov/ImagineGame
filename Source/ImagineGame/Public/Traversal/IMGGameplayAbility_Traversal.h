@@ -20,12 +20,12 @@ public:
 
 protected:
 	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr,
-		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+	    const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr,
+	    FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	    const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+	    const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 	/** Use CHT and PoseMatch here. None/empty montage rejects this attempt. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
@@ -42,6 +42,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Detection")
+	EIMGTraversalRequestSource RequestSource = EIMGTraversalRequestSource::Manual;
+
 	/** Optional graph hook for extra transition effects; core cleanup must remain native. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
 	void OnTraversalStarted(const FIMGTraversalCandidate& Candidate, EIMGTraversalAction Action);
@@ -54,8 +57,9 @@ private:
 	void OnTargetDataCancelled();
 	void CancelPendingTargetData();
 	bool IsSelectionValid(const FIMGTraversalAnimationSelection& Selection, const FIMGTraversalCandidate& Candidate,
-		bool bRemoteRequest) const;
-	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection) const;
+	    bool bRemoteRequest) const;
+	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
+	    TArray<FIMGTraversalWarpTarget>& OutTargets) const;
 	void CheckActiveTarget();
 
 	UFUNCTION()
@@ -70,9 +74,7 @@ private:
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
-	TWeakObjectPtr<UPrimitiveComponent> ActiveBackFloorComponent;
 	TArray<FTransform> PreviousObstacleTransforms;
-	FTransform PreviousBackFloorTransform;
 	float PreviousTargetCheckTime = 0.f;
 	bool bLocalRequest = false;
 	bool bTraversalStarted = false;
@@ -80,5 +82,4 @@ private:
 	// These persist through EndAbility until the next activation because montage startup can end synchronously.
 	bool bTargetDataSent = false;
 	bool bTargetDataCancellationSent = false;
-	EIMGTraversalAction ActiveAction = EIMGTraversalAction::None;
 };

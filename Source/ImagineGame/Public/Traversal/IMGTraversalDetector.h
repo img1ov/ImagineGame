@@ -6,5 +6,8 @@
 class IMAGINEGAME_API FIMGTraversalDetector
 {
 public:
-	static bool Detect(const FIMGTraversalQuery& Query, FIMGTraversalCandidate& OutCandidate, EIMGTraversalFailure& OutFailure);
+	static bool Detect(
+	    const FIMGTraversalQuery& Query, FIMGTraversalCandidate& OutCandidate, EIMGTraversalFailure& OutFailure);
+	static bool CanUseSurface(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings,
+	    EIMGTraversalRequestSource Source);
 };
