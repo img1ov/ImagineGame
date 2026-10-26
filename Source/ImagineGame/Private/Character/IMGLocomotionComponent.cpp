@@ -15,9 +15,6 @@
 UIMGLocomotionComponent::UIMGLocomotionComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
-	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
 void UIMGLocomotionComponent::OnRegister()
@@ -45,6 +42,10 @@ void UIMGLocomotionComponent::OnUnregister()
 void UIMGLocomotionComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsMovementPrerequisiteReady() && GetIMGCharacter() && !GetIMGCharacterMovementComponent())
+	{
+		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires IMGCharacterMovementComponent."), *GetNameSafe(GetOwner()));
+	}
 	RegisterForGameplayReady();
 }
 
@@ -54,21 +55,17 @@ void UIMGLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UIMGLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+bool UIMGLocomotionComponent::CanUpdateLocomotion() const
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	if (IsLocomotionReady())
-	{
-		UpdateLocomotionPreCMC(DeltaTime);
-	}
+	return IsLocomotionReady();
 }
 
 bool UIMGLocomotionComponent::IsLocomotionReady() const
 {
 	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
-	return PawnExtension && PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady)
-		&& IsValid(MovementComponent) && IsValid(AbilitySystemComponent)
+	return IsMovementPrerequisiteReady() && GetIMGCharacterMovementComponent()
+		&& PawnExtension && PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady)
+		&& IsValid(AbilitySystemComponent)
 		&& PawnExtension->GetIMGAbilitySystemComponent() == AbilitySystemComponent
 		&& AbilitySystemComponent->GetAvatarActor() == GetOwner();
 }
@@ -78,9 +75,14 @@ AIMGCharacter* UIMGLocomotionComponent::GetIMGCharacter() const
 	return Cast<AIMGCharacter>(GetOwner());
 }
 
+UIMGCharacterMovementComponent* UIMGLocomotionComponent::GetIMGCharacterMovementComponent() const
+{
+	return Cast<UIMGCharacterMovementComponent>(GetCharacterMovementComponent());
+}
+
 void UIMGLocomotionComponent::RegisterForGameplayReady()
 {
-	if (!IsRegistered() || GameplayReadyDelegate.IsBound())
+	if (!IsMovementPrerequisiteReady() || GameplayReadyDelegate.IsBound())
 	{
 		return;
 	}
@@ -114,30 +116,13 @@ void UIMGLocomotionComponent::RegisterForGameplayReady()
 
 void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 {
-	if (MovementComponent)
-	{
-		RefreshAbilitySystemConnection();
-		return;
-	}
-
-	const AIMGCharacter* Character = GetIMGCharacter();
 	UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
-	if (!Character || !PawnExtension
+	if (!IsMovementPrerequisiteReady() || !GetIMGCharacterMovementComponent() || !PawnExtension
 		|| !PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady))
 	{
 		return;
 	}
 
-	UIMGCharacterMovementComponent* IMGMovementComponent = Cast<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
-	if (!IMGMovementComponent)
-	{
-		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires IMGCharacterMovementComponent."), *GetNameSafe(GetOwner()));
-		return;
-	}
-
-	MovementComponent = IMGMovementComponent;
-	IMGMovementComponent->AddTickPrerequisiteComponent(this);
-	SetComponentTickEnabled(true);
 	PawnExtension->OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
 	// Register last: the immediate callback can run Blueprint code that tears down this component.
 	PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
@@ -145,12 +130,6 @@ void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 
 void UIMGLocomotionComponent::ClearConnections()
 {
-	SetComponentTickEnabled(false);
-	if (MovementComponent)
-	{
-		MovementComponent->RemoveTickPrerequisiteComponent(this);
-	}
-
 	if (UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get())
 	{
 		if (GameplayReadyDelegate.IsBound())
@@ -161,9 +140,9 @@ void UIMGLocomotionComponent::ClearConnections()
 	}
 	GameplayReadyDelegate.Unbind();
 
-	ClearAbilitySystemConnection();
 	PawnExtensionComponent.Reset();
-	MovementComponent = nullptr;
+	// Unavailable may re-enter lifecycle code; the old subscription state must already be cleared.
+	ClearAbilitySystemConnection();
 }
 
 void UIMGLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedParams& Params)
@@ -198,7 +177,7 @@ void UIMGLocomotionComponent::RefreshAbilitySystemConnection()
 	TGuardValue<bool> RefreshGuard(bRefreshingConnections, true);
 
 	UIMGAbilitySystemComponent* CurrentASC = nullptr;
-	if (IsValid(MovementComponent))
+	if (IsMovementPrerequisiteReady() && GetIMGCharacterMovementComponent())
 	{
 		if (const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get())
 		{
@@ -222,7 +201,7 @@ void UIMGLocomotionComponent::RefreshAbilitySystemConnection()
 	ClearAbilitySystemConnection();
 	// Unavailable can remove this component or replace the ASC/Set from Blueprint.
 	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
-	if (!IsValid(MovementComponent) || !PawnExtension
+	if (!IsMovementPrerequisiteReady() || !GetIMGCharacterMovementComponent() || !PawnExtension
 		|| !PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady)
 		|| !IsValid(CurrentASC)
 		|| PawnExtension->GetIMGAbilitySystemComponent() != CurrentASC

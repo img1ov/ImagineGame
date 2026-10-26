@@ -43,13 +43,18 @@
 - Movement Intent 只塑形方向，不另建速度、加速度或制动状态；`UIMGCharacterMovementComponent` 继续负责姿态、速度限制、制动和网络预测。当前未接管原生 AI Path Following，外部 AI 自行调用上述入口。
 - CMC 的制动朝向扩展默认关闭；启用后仅在地面无输入制动且速度高于阈值时以实际速度定向，不覆盖寻路请求、Root Motion 或空中旋转。胶囊保持逻辑/权威朝向，表现层平滑留在 ABP。
 
+### CMC 网络默认值与边界
+- IMGCMC 沿用 UE 5.8 网络默认值：Exponential；模拟代理位置/旋转平滑 0.10/0.05 秒，Listen Server 远端角色 0.04/0.033 秒，普通/大误差纠偏最小间隔 0.10/0.05 秒。自主代理位置纠偏应用服务端状态并重放 SavedMoves，不由上述代理插值时间、角色 NetUpdateFrequency 或 NetworkPrediction 插件缓冲参数控制。
+- GameNetworkManager 位置误差容差沿用引擎 MAXPOSITIONERRORSQUARED=3.0（约 1.73 cm）。Play As Client 未开启 Network Emulation 仍走网络移动；先用 p.NetShowCorrections 1 确认纠偏，再核对两端移动参数和预测，不以放宽容差替代修复。PreCMC 按输入选择制动参数时，本地待消费输入与服务端远端玩家的 RPC 加速度不能混用；ReplicateUsingRegisteredSubObjectList 只选择子对象复制路径，不会自动同步 MaxWalkSpeed 等 CMC 参数。
+
 ### Locomotion 的职责与接口
-- `UIMGLocomotionComponent` 是本机 ASC/AttributeSet 与 CMC 之间的中间件，不承担复制、RPC 或移动预测；移动同步仍由角色/CMC 链路负责。
-- C++ 负责引用、生命周期、属性订阅和 CMC 前置 Tick 排序；Locomotion 连接建立后把自身注册为 CMC 的 Tick prerequisite，并在自身 Tick 中调用 `UpdateLocomotionPreCMC`，未连接及退出时关闭 Tick。CMC 不提供 Locomotion 专用委托或额外 Tick 逻辑。组件蓝图负责监听 GA 意图 Tag、读取属性、计算并写入 CMC。不要把 Tag 规则搬进 C++，也不要重复维护意图或速度数据。
-- `UIMGLocomotionSet` 是可选的七项可复制移动属性来源。ASC 中存在该 Set 时组件才注册属性委托；没有 Set 时组件仍会 Ready 并执行 PreCMC，`GetLocomotionSet` 返回空。属性初始化和 Buff 由用户通过 GE 配置；组件只读取 `CurrentValue`，不创建 Set、不代管 GE 或回写属性。
-- Locomotion 是 PawnExtension InitState 的订阅者，不是独立 InitState feature：BeginPlay 只在取得 PawnExtension 后通过其 `RegisterAndCallForInitStateChange` 订阅 GameplayReady，必须立即回调；CMC Tick prerequisite 与 ASC 生命周期均在 GameplayReady 回调内才注册。EndPlay 与 OnUnregister 都幂等关闭 Tick、移除 prerequisite 并清理全部委托和缓存，已 BeginPlay 的组件重新 OnRegister 时会重新建立订阅。GameplayReady 后绑定 ASC，并在每次 ASC 初始化时检查一次可选 Set；Locomotion Tick 只转发蓝图计算，不轮询生命周期。
-- 蓝图入口：`OnLocomotionReady`、`OnLocomotionAttributeChanged`、`OnLocomotionUnavailable`、`UpdateLocomotionPreCMC`；通过 `GetIMGCharacter`、`GetLocomotionSet`、`GetIMGAbilitySystemComponent`、`GetIMGCharacterMovementComponent` 取引用，通过 `IsLocomotionReady` 查询绑定是否有效。项目专用对象 Getter 使用 `GetIMG...` 并返回具体 IMG 类型，避免蓝图自行 Cast 或与引擎通用节点同名。
-- Ready 表示 CMC 与当前 Pawn 的 ASC 已绑定，LocomotionSet 可为空；Unavailable 回调时 ASC/Set 引用已清空，CMC 仍可用于清理。UE 5.8 ASC 没有公开 SpawnedAttributes 变更委托，因此组件不自动追踪 ASC 初始化后的 Set 动态增删；初始化时缺少 Set 会输出一次 Warning。最终移动参数在 PreCMC 回调计算、写入；音频 Foley/OnLanded 和 ABP 接口转发不属于此组件职责。
+- UIMGMovementPrerequisiteComponent 是独立于 PawnExt/GAS 的抽象调度基类，缓存通用 Character/CMC，统一声明 BlueprintNativeEvent UpdateLocomotionPreCMC。只支持 Character/CMC；独立派生默认 CanUpdateLocomotion=true，调度就绪即可执行，额外数据条件由原生覆写提供。不主动注销或销毁组件，不查询 ASC，不另建复制、RPC 或移动预测。
+- 默认 TG_PrePhysics，显式建立 Controller → PreCMC → CMC 依赖；Controller 弱引用及 ReceiveControllerChangedDelegate 处理引用晚到、切换与解绑。BeginPlay 在蓝图回调前准备引用，回调后复核；重新 OnRegister 恢复调度，EndPlay/OnUnregister 幂等关闭 Tick、退订 Controller、移除依赖并清缓存。运行中替换 CMC 会停止业务更新，需重新注册恢复，不做 Tick 发现或重绑。
+- UIMGLocomotionComponent 是上述基类的 IMG 适配层，连接 PawnExt/ASC/可选 LocomotionSet，CanUpdateLocomotion 返回 IsLocomotionReady。保留 GameplayReady 且当前 Pawn 的 ASC/Avatar 绑定有效后才执行 PreCMC 的门槛；ASC 解绑停止业务，重绑恢复。基类调度可先建立，子类不重复缓存 CMC、管理 Tick 依赖或声明更新事件。
+- Locomotion 仅订阅 PawnExtension InitState，不注册独立 feature。调度就绪后 RegisterAndCallForInitStateChange 订阅 GameplayReady，必须立即回调；到达该状态才订阅 ASC 生命周期，初始化监听使用 RegisterAndCall。EndPlay/OnUnregister 先退订并清空 PawnExt 订阅状态，再解除属性委托、清空 ASC/Set 并触发 Unavailable，最后由基类释放 CMC 与调度，避免回调重入旧订阅。重新注册重建订阅；Tick 不轮询 ASC。
+- UIMGLocomotionSet 提供七项可复制移动属性，可缺省；缺少时仍 Ready，GetLocomotionSet 返回空并输出 Warning。组件只读 CurrentValue、订阅属性变化，不创建 Set、授予 GE 或回写属性。Set 仅在 ASC 初始化时检查；UE 5.8 无公开 SpawnedAttributes 变更委托，不自动追踪初始化后动态增删。
+- 业务事件为 OnLocomotionReady、OnLocomotionAttributeChanged、OnLocomotionUnavailable；统一更新事件继承自基类，C++ 覆写 UpdateLocomotionPreCMC_Implementation。GetIMGCharacter、GetIMGCharacterMovementComponent、GetIMGAbilitySystemComponent 返回具体 IMG 类型；IsMovementPrerequisiteReady 查询调度，IsLocomotionReady 查询 IMG 业务门槛，不能混用。Unavailable 时 ASC/Set 已清空，CMC 在对象有效时仍可用于清理。
+- 蓝图保留监听 GA 意图 Tag、读取属性及在 PreCMC 计算并写入最终 CMC 参数的职责；不把 Tag 规则搬入 C++，不重复维护意图或速度。Foley/OnLanded 与 ABP 转发不属于该组件，CMC 不增加 Locomotion 专用委托或 Tick 逻辑。
 
 ### Traversal：架构与接入
 - 源码位于 `Source/ImagineGame/{Public,Private}/Traversal`，仍为单蒙太奇执行。角色蓝图装配 Traversal/MotionWarping 组件，AbilitySet 授予 GA；输入决策独立，蓝图负责 CHT/PoseMatch，专用服务器需要不依赖 PoseHistory 的后备选择。
