@@ -11,6 +11,7 @@ namespace ETeamAttitude { enum Type : int; }
 struct FGenericTeamId;
 
 class APlayerState;
+class UIMGPawnData;
 class UAIPerceptionComponent;
 class UObject;
 struct FFrame;
@@ -21,12 +22,21 @@ struct FFrame;
  *	The controller class used by player bots in this project.
  */
 UCLASS(Blueprintable)
-class AIMGPlayerBotController : public AModularAIController, public IIMGTeamAgentInterface
+class IMAGINEGAME_API AIMGPlayerBotController : public AModularAIController, public IIMGTeamAgentInterface
 {
 	GENERATED_BODY()
 
 public:
 	AIMGPlayerBotController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	/**
+	 * Synchronous server query; may run before BeginPlay, PlayerState assignment and possession.
+	 * Keep the selection stable and free of side effects until the PlayerState claims it.
+	 * Return null to use the experience default. The PlayerState retains the first resolved data.
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "IMG|Pawn")
+	const UIMGPawnData* GetPawnData() const;
+	virtual const UIMGPawnData* GetPawnData_Implementation() const;
 
 	//~IIMGTeamAgentInterface interface
 	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override;

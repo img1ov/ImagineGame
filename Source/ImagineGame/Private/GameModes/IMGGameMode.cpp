@@ -50,7 +50,7 @@ const UIMGPawnData* AIMGGameMode::GetPawnDataForController(const AController* In
 			}
 		}
 	}
-	// If not, fall back to the default for the current experience
+	// Resolve new data only after the experience is ready; claimed PlayerState data stays authoritative.
 	check(GameState);
 	UIMGExperienceManagerComponent* ExperienceComponent = GameState->FindComponentByClass<UIMGExperienceManagerComponent>();
 	check(ExperienceComponent);
@@ -58,6 +58,17 @@ const UIMGPawnData* AIMGGameMode::GetPawnDataForController(const AController* In
 	if (ExperienceComponent->IsExperienceLoaded())
 	{
 		const UIMGExperienceDefinition* Experience = ExperienceComponent->GetCurrentExperienceChecked();
+
+		if (const AIMGPlayerBotController* BotController = Cast<AIMGPlayerBotController>(InController))
+		{
+			if (const UIMGPawnData* PawnData = BotController->GetPawnData())
+			{
+				return PawnData;
+			}
+
+			UE_LOG(LogIMGExperience, Warning, TEXT("Bot controller [%s] returned no PawnData from GetPawnData; falling back to experience [%s] DefaultPawnData [%s]."),
+				*GetPathNameSafe(BotController), *GetNameSafe(Experience), *GetNameSafe(Experience->DefaultPawnData));
+		}
 
 		if (Experience->DefaultPawnData != nullptr)
 		{

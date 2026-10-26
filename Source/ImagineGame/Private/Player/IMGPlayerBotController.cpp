@@ -21,6 +21,11 @@ AIMGPlayerBotController::AIMGPlayerBotController(const FObjectInitializer& Objec
 	bStopAILogicOnUnposses = false;
 }
 
+const UIMGPawnData* AIMGPlayerBotController::GetPawnData_Implementation() const
+{
+	return nullptr;
+}
+
 void AIMGPlayerBotController::OnPlayerStateChangedTeam(UObject* TeamAgent, int32 OldTeam, int32 NewTeam)
 {
 	ConditionalBroadcastTeamChanged(this, IntegerToGenericTeamId(OldTeam), IntegerToGenericTeamId(NewTeam));

@@ -23,20 +23,15 @@
 - `UIMGBotCreationComponent` 在 Experience 加载后由服务端生成 Bot；重生分派只支持玩家控制器和 `AIMGPlayerBotController` 派生类。当前无 StateTree 运行时代码；依赖待实现时加到所属模块。
 - `UIMGHealthComponent` 发送死亡事件，`UIMGGameplayAbility_Death` 控制开始/结束，`AIMGCharacter` 在结束后销毁；必须授予死亡能力。射击玩法的自动重生能力位于 `ShooterCoreRuntime/GameModes`。
 
-### AI PawnData：已核实链路与设计结论
-- 当前 BotCreation 只配置一种 BotControllerClass，按 Controller → PlayerState → Pawn 的顺序创建。`AIMGPlayerBotController` 开启 bWantsPlayerState，每个 Bot 自动拥有独立 PlayerState/ASC；PawnData 是可共用的配置资产引用，不共享能力运行状态或属性值。
-- 当前 PlayerState 在 Experience 回调中通过 GameMode::GetPawnDataForController 取数据：先取该 Controller 的 PlayerState.PawnData，再取 Experience.DefaultPawnData。回调注册时若 Experience 已加载会立即执行；SetPawnData 仅允许服务端首次设置，并立即授予 AbilitySets。普通 SpawnActor 返回后再替换数据已经太晚。
-- GameMode 根据 PawnData.PawnClass 生成 Pawn，在 FinishSpawning 前给 PawnExt 写入同一 PawnData。装有 Hero 且依赖满足的 Bot 仍走 PawnExt/Hero 的 Spawned → DataAvailable → DataInitialized → GameplayReady，并广播本机 OnAbilitySystemInitialized；仅跳过玩家输入要求及绑定。
-- 已确定的扩展方向（尚未实现）：AI 的 PawnData 配置入口随 Pawn，优先复用其现有 PawnExt 字段，不在 Pawn、Controller、Spawner 重复维护配置。支持地图放置及不同入口动态生成；保留 PlayerState ASC、现有 PawnExt/Hero 状态链和复制机制。玩家继续使用原有 Experience 配置流程。
-- 现有 PawnExt.PawnData 为 EditInstanceOnly 且可复制，尚不支持 Pawn 蓝图类默认配置；仅给 PawnExt 填数据不会授予 PlayerState 能力。Pawn 自带配置方案需要扩展 AI PlayerState 的数据就绪协调，不能让其先认领 Experience 默认数据后再覆盖。
-- 晚生成本身不会漏掉 Experience 初始化；客户端通过 PawnExt.OnRep_PawnData、Character.OnRep_PlayerState 等重新推进本机状态，模拟代理不要求 AIController。晚注册监听者使用 RegisterAndCall；IMGAbilitiesReady 当前仅在服务端 SetPawnData 发送，非网络广播；OnAbilitySystemInitialized 只表示本机 ASC/Avatar 已绑定，不保证能力和属性已全部复制到齐。
-
-### AI PawnData：待做
-- 扩展现有 PawnExt 配置，使 AI Pawn 蓝图类默认值及关卡实例可指定 PawnData；明确 PawnData.PawnClass 与实际 Pawn 类型的合同，避免重复配置不一致。
-- 在原有 PlayerState/PawnExt/Hero 职责内协调 AI 初始化：等待 PawnData、Controller/PlayerState 与 Experience 就绪后，服务端首次设置 PlayerState 数据并授予能力，再沿现有状态链绑定 ASC。覆盖 Experience 先到/后到、Possess 先于/晚于 BeginPlay；避免错误默认授予、重复授予及重复广播，不新增 Tick 轮询或补发初始化 RPC。
-- 调整 BotCreation 与生成/重生入口，使 Pawn 类型可先被选定，读取 Pawn 自带配置并保留必要的通用初始化、分队和出生点处理；支持共用 Controller 类，不要求每种 PawnData 建一个 Controller 蓝图。
-- 明确能力生命周期：同一 PlayerState 重生同类 Pawn 复用配置与能力；切换不同 PawnData 时设计旧能力/Effect/AttributeSet 回收或 PlayerState 重建，不能直接覆盖当前只写一次的数据。
-- 完成后审查服务端、模拟代理、Listen/Dedicated Server、晚加入、引用乱序、死亡重生、重复初始化和销毁清理；核对客户端资产可用及既有 RegisterAndCall 回调。当前仅完成源码调查和设计记录，未实现、未编译或验证网络表现。
+### 持久 Bot：PawnData 与初始化
+- BotCreation 配置 BotControllerClass，保留 Controller → PlayerState → Pawn 的生成顺序及通用初始化、分队和出生点规则，不新增 PawnData 配置。`AIMGPlayerBotController` 开启 bWantsPlayerState，每个 Bot 有独立 PlayerState/ASC；共享 PawnData 资产不共享能力运行状态或属性值。
+- GameMode::GetPawnDataForController 优先返回 PlayerState 已认领的数据；尚未认领且 Experience 就绪时，查询持久 Bot 的 `AIMGPlayerBotController::GetPawnData`。该入口为 BlueprintNativeEvent/BlueprintPure，支持 C++/蓝图覆写；默认返回空，GameMode 输出 LogIMGExperience Warning 并回退 Experience.DefaultPawnData。普通玩家保留原默认来源，未就绪时不调用 Bot 查询。
+- GetPawnData 只同步返回配置，不负责授予能力或生成 Pawn；查询应无副作用，首次认领前保持选择稳定。首次查询可能早于 Controller.BeginPlay、PlayerState 成员赋值、分队和 Possess，选择依据必须提前可用。空值表示回退默认配置，不表示等待异步注入。BotController 已导出，可供其他运行时模块派生。
+- PlayerState 在 Experience 回调中认领数据，仅服务端首次 SetPawnData 授予 AbilitySets。已加载时注册会立即回调，普通 SpawnActor 返回后再覆盖已太晚；同一 PlayerState 的后续生成、出生点体型检查及重生复用已认领配置与能力。切换不同 PawnData 不属于此查询入口，不能直接覆盖只写一次的数据。
+- GameMode 按 PawnData.PawnClass 生成 Pawn，在 FinishSpawning 前将同一数据写入 PawnExt；所选 Pawn 仍须装配 PawnExt/Hero 及所需组件。依赖满足后沿 Spawned → DataAvailable → DataInitialized → GameplayReady 绑定 PlayerState ASC，Bot 仅跳过玩家输入要求及绑定，不跳过状态条件。
+- 网络继续使用现有 PawnExt.PawnData、Pawn.PlayerState 与 GAS 复制，不新增 RPC、Tick 或重复状态。客户端经 PawnExt.OnRep_PawnData、Character.OnRep_PlayerState 等推进本机初始化，模拟代理不要求 AIController；晚注册监听者使用 RegisterAndCall。IMGAbilitiesReady 仅在服务端 SetPawnData 发送，OnAbilitySystemInitialized 仅表示本机 ASC/Avatar 已绑定，不保证能力、属性全部复制到齐。
+- 独立敌人 AI 可采用 Pawn 自持 ASC 或其他技能初始化体系，不强制接入持久 Bot 的 PawnData 选择。AIMGCharacterWithAbilities 自持 ASC，但仍继承 PawnExt；自身 InitAbilityActorInfo 不会自动推进 PawnExt 至 GameplayReady。
+- 本次完成同步查询与回退入口及相关生命周期、复制和重生源码审查；未编译、未检查 Content 或验证实机网络表现，客户端资产可用及具体蓝图装配仍需运行确认。
 
 ## 角色与移动
 - `UIMGHeroComponent::AddMovementIntent` 是世界空间移动意图的统一入口，负责方向平滑、急转事件和提交 `AddMovementInput`；玩家输入、自动奔跑及外部 AI 驱动均复用它。调用方结束或中断持续移动时调用 `ResetMovementIntent`；组件在输入结束、Controller 切换和 EndPlay 时兜底清理。
