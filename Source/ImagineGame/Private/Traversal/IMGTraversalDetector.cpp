@@ -746,15 +746,16 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			    FColor::Green, EStage::Validate);
 		}
 #endif
-		// Initial overlap cannot establish a drop or a rear edge.
+		// A blocked depth sample does not invalidate the independently tested handhold or prove a new rear edge.
 		if (Hit.bBlockingHit && Hit.bStartPenetrating)
 		{
-			Failure = EIMGTraversalFailure::UnsafeTop;
 #if ENABLE_DRAW_DEBUG
 			IMGTraversalDebug::String(World, Start,
-			    TEXT("Depth rejected: initial overlap; rear edge unknown"), FColor::Red, 2, -2.f, EStage::Validate);
+			    FString::Printf(TEXT("Depth %d stopped: initial overlap | retain verified geometry, rear edge %s"),
+			        Index + 1, bFoundEdge ? TEXT("confirmed earlier") : TEXT("unconfirmed")),
+			    FColor::Orange, 2, -2.f, EStage::Validate);
 #endif
-			return false;
+			break;
 		}
 		if (bHit)
 		{

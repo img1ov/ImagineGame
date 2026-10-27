@@ -65,7 +65,7 @@
 - Component 的 `ActionSettings` 为动作默认值，`MontageSettings` 按 Action/Montage 完整覆盖。WarpBindings 配置名字、Front/Back Ledge/BackFloor 几何锚点及偏移，RequiredTargets 配置必要接触；名字默认仍为 FrontLedge/BackLedge/BackFloor，前沿默认上移 0.5 cm。
 - 同名 Warp Window 可重复，项目不限制数量；Notify 继续负责窗口时间和 UE Modifier 参数。Landing 配置选择无落点、检测地面或曲线落点，并配置曲线名、锚点/落地窗口序号（-1 为最后一个可用平移窗口）；默认 Hurdle 使用 Distance_From_Ledge，BackLedge 缺失时回退 FrontLedge。过期的显式窗口序号不能自动移到下一个窗口。
 - 最终落点仍校验可走地面、表面许可、最大落差和完整胶囊；直线扫掠为可选保守策略，默认关闭，不能把直线弦当作动画弧线。位移由 Root Motion、PoseSearch StartTime 与 UE MotionWarping 负责，不叠加 GTA Task 的手动速度补偿。
-- 净空按 `ImpactPoint` 的表面接触点计算，扫掠球心 `Location` 只用于调试体积；未命中返回的净空上限必须被实际扫掠覆盖，水平长度计入后移和坡度。后沿细化围绕最后有效顶面高度；深度扫掠初始穿透拒绝该候选，不能当作无支撑来生成后沿/落差。面方向重试按实际使用的请求方向判断，失败候选不发布。
+- 净空按 `ImpactPoint` 的表面接触点计算，扫掠球心 `Location` 只用于调试体积；未命中返回的净空上限必须被实际扫掠覆盖，水平长度计入后移和坡度。后沿细化围绕最后有效顶面高度；深度扫掠初始穿透仅停止后续深度采样，保留此前已验证的前沿/支撑/后沿，不新增后沿或落差，也不直接拒绝整个候选；接近路径与净空仍须通过。未确认后沿时 ObstacleDepth 只表示已采样顶面范围（可为0），不能当作完整障碍厚度。面方向重试按实际使用的请求方向判断，失败候选不发布。
 - CHT 预选接收 Detector 几何；GA 选定动画后可重解 BackFloor/DropHeight/BackLedgeHeight，OnTraversalStarted 接收该执行结果。DistanceToLedge 保留 Mesh 世界位置到前沿的三维距离，PlanarDistanceToLedge 为 Actor 到前沿的 XY 距离。BackLedge 是跌落前支撑，BackFloor 是采样/动画落点，必须按各自存在标志消费。
 
 ### Traversal：执行与网络

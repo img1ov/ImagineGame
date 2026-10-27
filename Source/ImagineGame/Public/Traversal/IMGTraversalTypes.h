@@ -415,6 +415,7 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	float ObstacleHeight = 0.f;
 
+	/** Rear-edge depth when bHasBackLedge; otherwise only the sampled top extent, possibly zero. */
 	UPROPERTY(BlueprintReadOnly)
 	float ObstacleDepth = 0.f;
 
