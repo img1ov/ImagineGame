@@ -42,6 +42,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 
+	/**
+	 * 选择本次玩家请求使用的检测与发起规则；GA 的激活时机、尝试频率和重试由外部逻辑负责。
+	 * 每次激活只处理一次翻越尝试，失败即结束；本配置与 ActivationPolicy 独立，不开启持续检测。
+	 * Manual：使用通用几何检测和手动发起条件，默认允许站立发起。
+	 * Automatic：增加自动专属几何限制；InitiationSettings 启用时还要求移动意图、接近速度、方向和距离等条件。
+	 * 两者均先检测并检查发起条件，再交给 SelectTraversalAnimation/CHT 选动画，选中后仍需通过执行校验。
+	 * 案例：外部收到翻越按键后激活 Manual GA，可尝试站立或低速翻越。
+	 * 案例：外部移动逻辑决定尝试自动翻越时激活 Automatic GA；默认站立或接近速度不足 190 cm/s 会被拒绝。
+	 * 服务端控制的 AI 会强制使用 AI 来源；远端玩家请求的来源必须与服务端 GA 的此配置一致。
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Detection")
 	EIMGTraversalRequestSource RequestSource = EIMGTraversalRequestSource::Manual;
 
