@@ -99,6 +99,13 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 		return false;
 	}
 	const FVector ToLedge = (Candidate.FrontLedge.GetLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+	const float MinFacingDot = Candidate.RequestSource == EIMGTraversalRequestSource::Automatic
+	    ? DetectorSettings.AutomaticMinFacingDot : DetectorSettings.MinFacingDot;
+	if (!FMath::IsFinite(MinFacingDot) || FMath::Abs(MinFacingDot) > 1.f ||
+	    FVector::DotProduct(Character->GetActorForwardVector().GetSafeNormal2D(), ToLedge) < MinFacingDot)
+	{
+		return false;
+	}
 	FVector Intent = Character->GetPendingMovementInputVector().GetSafeNormal2D();
 	if (Intent.IsNearlyZero())
 	{
@@ -459,6 +466,24 @@ void UIMGTraversalComponent::RefreshMovementIgnores()
 	{
 		return;
 	}
+	if (Character->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		const UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
+		TEnumAsByte<EMovementMode> NetMode(MOVE_None);
+		TEnumAsByte<EMovementMode> NetGroundMode(MOVE_None);
+		uint8 NetCustomMode = 0;
+		if (Movement)
+		{
+			Movement->UnpackNetworkMovementMode(
+			    Character->GetReplicatedMovementMode(), NetMode, NetCustomMode, NetGroundMode);
+		}
+		// Authority may leave Flying before the local montage exits; floor queries must see the landing obstacle.
+		if (NetMode != MOVE_Flying)
+		{
+			RestoreMovementIgnores();
+			return;
+		}
+	}
 	for (UPrimitiveComponent* Obstacle : ActiveState.ObstacleComponents)
 	{
 		if (IsValid(Obstacle) && !Capsule->GetMoveIgnoreComponents().Contains(Obstacle))
@@ -510,7 +535,7 @@ void UIMGTraversalComponent::HandleAbilitySystemInitialized()
 	BoundAbilitySystemComponent = ASC;
 	ASC->SetReplicatedMontageReadyDelegate(
 	    FIMGReplicatedMontageReadyDelegate::CreateUObject(this, &ThisClass::IsReplicatedMontageReady));
-	ASC->RetryReplicatedMontage();
+	OnRep_TraversalState();
 }
 
 void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
@@ -520,6 +545,10 @@ void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 		ASC->ClearReplicatedMontageReadyDelegate(this);
 	}
 	BoundAbilitySystemComponent.Reset();
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		EndTraversal();
+	}
 }
 
 bool UIMGTraversalComponent::IsReplicatedMontageReady(
@@ -615,11 +644,22 @@ void UIMGTraversalComponent::RefreshWarpTargets()
 			Warping->AddOrUpdateWarpTarget(Resolved);
 		}
 #if ENABLE_DRAW_DEBUG
-		IMGTraversalDebug::Point(GetWorld(), Transform.GetLocation(), FColor::Yellow, 1, 12.f, 0.f);
-		IMGTraversalDebug::Arrow(GetWorld(), Transform.GetLocation(),
-		    Transform.GetLocation() + Transform.GetUnitAxis(EAxis::X) * 45.f, FColor::Yellow, 1, 0.f);
-		IMGTraversalDebug::String(GetWorld(), Transform.GetLocation() + FVector::UpVector * 12.f,
-		    Target.Name.ToString(), FColor::White, 2, 0.f);
+		if (IMGTraversalDebug::IsEnabled(1) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+		{
+			IMGTraversalDebug::Point(GetWorld(), Transform.GetLocation(), FColor::Yellow, 1, 12.f, 0.f);
+			IMGTraversalDebug::Arrow(GetWorld(), Transform.GetLocation(),
+			    Transform.GetLocation() + Transform.GetUnitAxis(EAxis::X) * 45.f, FColor::Yellow, 1, 0.f);
+			if (IMGTraversalDebug::IsEnabled(2))
+			{
+				const AIMGCharacter* DebugCharacter = Cast<AIMGCharacter>(GetOwner());
+				const UIMGCharacterMovementComponent* DebugMovement = DebugCharacter ? DebugCharacter->GetIMGMovementComponent() : nullptr;
+				IMGTraversalDebug::String(GetWorld(), Transform.GetLocation(),
+				    FString::Printf(TEXT("%s | %s | %s | %s | Mode %s | AddedIgnore %d"), *GetNameSafe(GetOwner()), *Target.Name.ToString(),
+				        GetOwner() ? *UEnum::GetValueAsString(GetOwner()->GetLocalRole()) : TEXT("No owner"), *GetNameSafe(Target.Component.Get()),
+				        DebugMovement ? *UEnum::GetValueAsString(DebugMovement->MovementMode) : TEXT("No CMC"), AddedMovementIgnores.Num()),
+				    FColor::White, 2, 0.f, IMGTraversalDebug::EStage::Execution, Target.Name, GetOwner());
+			}
+		}
 #endif
 	}
 }

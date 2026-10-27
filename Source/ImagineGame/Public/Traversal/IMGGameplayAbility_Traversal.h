@@ -55,6 +55,7 @@ protected:
 private:
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag);
 	void OnTargetDataCancelled();
+	void SendPendingTargetDataCancellation();
 	void CancelPendingTargetData();
 	bool IsSelectionValid(const FIMGTraversalAnimationSelection& Selection, const FIMGTraversalCandidate& Candidate,
 	    bool bRemoteRequest) const;

@@ -62,7 +62,8 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(ActorInfo->AvatarActor.Get());
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(Character);
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
-	return Component && !Component->IsTraversalActive() && Component->GetMotionWarpingComponent() &&
+	return Component && Component->IsRegistered() && !Component->IsTraversalActive() &&
+	    IsValid(Component->GetMotionWarpingComponent()) && Component->GetMotionWarpingComponent()->IsRegistered() &&
 	    Character->GetIMGMovementComponent() && (!Health || !Health->IsDeadOrDying());
 }
 
@@ -70,7 +71,6 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
     const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
-	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 	bLocalRequest = false;
 	bTraversalStarted = false;
 	bMontageCompleted = false;
@@ -79,6 +79,12 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	ActiveObstacleComponents.Reset();
 	PreviousObstacleTransforms.Reset();
 	LocalCandidate = FIMGTraversalCandidate();
+	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	if (!IsActive() || bIsAbilityEnding)
+	{
+		CancelPendingTargetData();
+		return;
+	}
 	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	if (!ASC || !Component)
@@ -95,7 +101,7 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 		    ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
 		        .AddUObject(this, &ThisClass::OnTargetDataCancelled);
 		ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, ActivationInfo.GetActivationPredictionKey());
-		if (!IsActive())
+		if (!IsActive() || bIsAbilityEnding || bTraversalStarted)
 		{
 			return;
 		}
@@ -118,13 +124,13 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 		return;
 	}
 	PreSelectTraversalAnimation(LocalCandidate);
-	if (!IsActive())
+	if (!IsActive() || bIsAbilityEnding)
 	{
 		CancelPendingTargetData();
 		return;
 	}
 	const FIMGTraversalAnimationSelection Selection = SelectTraversalAnimation(LocalCandidate);
-	if (!IsSelectionValid(Selection, LocalCandidate, false))
+	if (!IsActive() || bIsAbilityEnding || !IsSelectionValid(Selection, LocalCandidate, false))
 	{
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(Character, TEXT("Traversal GA: animation selection rejected"), FColor::Red);
@@ -144,7 +150,7 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	OnTargetDataReady(Data, FGameplayTag());
 }
 
-void UIMGGameplayAbility_Traversal::CancelPendingTargetData()
+void UIMGGameplayAbility_Traversal::SendPendingTargetDataCancellation()
 {
 	if (!bTargetDataSent && !bTargetDataCancellationSent && CurrentActorInfo &&
 	    CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
@@ -157,6 +163,11 @@ void UIMGGameplayAbility_Traversal::CancelPendingTargetData()
 			bTargetDataCancellationSent = true;
 		}
 	}
+}
+
+void UIMGGameplayAbility_Traversal::CancelPendingTargetData()
+{
+	SendPendingTargetDataCancellation();
 	if (IsActive())
 	{
 		K2_EndAbility();
@@ -181,7 +192,8 @@ void UIMGGameplayAbility_Traversal::OnTargetDataCancelled()
 void UIMGGameplayAbility_Traversal::OnTargetDataReady(
     const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag)
 {
-	if (!IsActive() || bTraversalStarted || !CurrentActorInfo || !CurrentActorInfo->AbilitySystemComponent.IsValid())
+	if (!IsActive() || bIsAbilityEnding || bTraversalStarted || !CurrentActorInfo ||
+	    !CurrentActorInfo->AbilitySystemComponent.IsValid())
 	{
 		return;
 	}
@@ -243,6 +255,22 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 		CancelPendingTargetData();
 		return;
 	}
+	if (!IsActive() || bIsAbilityEnding || GetAvatarActorFromActorInfo() != Character ||
+	    !IsValid(Component) || !IsSelectionValid(Selection, Candidate, bRemoteRequest))
+	{
+		CancelPendingTargetData();
+		return;
+	}
+	for (const FIMGTraversalWarpTarget& Target : WarpTargets)
+	{
+		if (!FIMGTraversalDetector::CanUseSurface(
+		        Target.Component, Component->GetDetectorSettings(), Candidate.RequestSource))
+		{
+			CancelPendingTargetData();
+			return;
+		}
+	}
+	LocalCandidate = Candidate;
 	ActiveComponent = Component;
 	ActiveObstacleComponents.Reset();
 	PreviousObstacleTransforms.Reset();
@@ -271,6 +299,13 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 	bTraversalStarted = true;
 	Component->BeginTraversal(Candidate, Selection, WarpTargets);
 	Character->GetIMGMovementComponent()->SetMovementMode(MOVE_Flying);
+	if (!IsActive() || bIsAbilityEnding || !IsValid(Component) || !Component->IsTraversalActive() ||
+	    !IsValid(Character) || GetAvatarActorFromActorInfo() != Character ||
+	    !Character->GetIMGMovementComponent() || !Character->GetIMGMovementComponent()->IsFlying())
+	{
+		CancelPendingTargetData();
+		return;
+	}
 	GetWorld()->GetTimerManager().SetTimer(TargetCheckTimer, this, &ThisClass::CheckActiveTarget,
 	    FMath::Max(Component->GetTargetValidationInterval(), 0.01f), true);
 	UAbilityTask_PlayMontageAndWait* MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
@@ -279,7 +314,7 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 	MontageTask->OnInterrupted.AddDynamic(this, &ThisClass::OnMontageInterrupted);
 	MontageTask->OnCancelled.AddDynamic(this, &ThisClass::OnMontageInterrupted);
 	MontageTask->ReadyForActivation();
-	if (!IsActive())
+	if (!IsActive() || bIsAbilityEnding || !IsValid(Component) || !Component->IsTraversalActive())
 	{
 		CancelPendingTargetData();
 		return;
@@ -296,10 +331,10 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 		}
 	}
 #if ENABLE_DRAW_DEBUG
-	IMGTraversalDebug::SuccessfulTraversal(Character->GetWorld(), Candidate, Selection);
+	IMGTraversalDebug::SuccessfulTraversal(Character, Candidate, Selection);
 #endif
 	OnTraversalStarted(Candidate, Selection.Action);
-	if (!IsActive())
+	if (!IsActive() || bIsAbilityEnding)
 	{
 		CancelPendingTargetData();
 		return;
@@ -317,6 +352,23 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
     const FIMGTraversalCandidate& Candidate, bool bRemoteRequest) const
 {
 	const UIMGTraversalComponent* Traversal = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
+	const AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
+	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
+	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
+	if (!Traversal || !Traversal->IsRegistered() || Traversal->IsTraversalActive() ||
+	    !IsValid(Traversal->GetMotionWarpingComponent()) || !Traversal->GetMotionWarpingComponent()->IsRegistered() ||
+	    !Movement || Character->GetStance() != EIMGStance::Stand ||
+	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
+	{
+		return false;
+	}
+	for (const UPrimitiveComponent* Obstacle : Candidate.ObstacleComponents)
+	{
+		if (!FIMGTraversalDetector::CanUseSurface(Obstacle, Traversal->GetDetectorSettings(), Candidate.RequestSource))
+		{
+			return false;
+		}
+	}
 	const UWorld* World = GetWorld();
 	const double CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
 	const bool bCandidateFresh =
@@ -324,7 +376,7 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 #if ENABLE_DRAW_DEBUG
 	if (!bCandidateFresh)
 	{
-		if (const AIMGCharacter* Character = GetIMGCharacterFromActorInfo())
+		if (Character)
 		{
 			IMGTraversalDebug::String(Character->GetWorld(), Character->GetActorLocation() + FVector::UpVector * 160.f,
 			    FString::Printf(TEXT("Traversal Validate: stale candidate %.3fs"), CandidateAge), FColor::Red, 1);
@@ -371,6 +423,9 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	{
 		return false;
 	}
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::BeginTraversalSnapshot(Character, false);
+#endif
 	auto Reject = [Character, &Selection](const FString& Reason)
 	{
 		UE_LOG(LogIMGTraversal, Warning, TEXT("%s: %s"), *GetNameSafe(Selection.Montage.Get()), *Reason);
@@ -472,7 +527,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			const FIMGTraversalWarpWindow* AnchorWindow =
 			    SelectWindow(Landing.AnchorTargetName, Landing.AnchorWindowIndex, -1.f, LandingWindow->EndTime);
-			if (!AnchorWindow)
+			if (!AnchorWindow && !SelectWindow(Landing.AnchorTargetName, -1, -1.f, Selection.Montage->GetPlayLength()))
 			{
 				AnchorWindow = SelectWindow(
 				    Landing.FallbackAnchorTargetName, Landing.AnchorWindowIndex, -1.f, LandingWindow->EndTime);
@@ -527,6 +582,13 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bHit ? Floor.ImpactPoint : TraceEnd,
 		    bHit ? FColor::Green : FColor::Red, 3);
+		if (bHit)
+		{
+			IMGTraversalDebug::Intersection(Character->GetWorld(), Floor,
+			    Character->GetIMGMovementComponent()->IsWalkable(Floor) &&
+			        FIMGTraversalDetector::CanUseSurface(Floor.GetComponent(), Geometry, Candidate.RequestSource),
+			    TEXT("Animation-selected floor"), IMGTraversalDebug::EStage::Execution);
+		}
 #endif
 		UPrimitiveComponent* FloorComponent = Floor.GetComponent();
 		if (!bHit || !Character->GetIMGMovementComponent()->IsWalkable(Floor) ||
@@ -585,6 +647,32 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			return Reject(TEXT("Selected landing capsule is blocked"));
 		}
+		// An animation warp-point offset may place the capsule beyond the floor traced at the contact point.
+		FFindFloorResult RootFloor;
+		const float FloorDistance = Landing.CapsuleClearance + UCharacterMovementComponent::MAX_FLOOR_DIST;
+		Character->GetIMGMovementComponent()->ComputeFloorDist(
+		    LandingCenter, FloorDistance, FloorDistance, RootFloor, Radius);
+		UPrimitiveComponent* RootSupport = RootFloor.HitResult.GetComponent();
+		const float RootDrop = Candidate.FrontLedge.GetLocation().Z - RootFloor.HitResult.ImpactPoint.Z;
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Line(Character->GetWorld(), FloorTarget.GetLocation(), RootTarget.GetLocation(), FColor::Yellow, 3);
+		IMGTraversalDebug::String(Character->GetWorld(), LandingCenter + FVector::UpVector * HalfHeight,
+		    FString::Printf(TEXT("Landing contact -> binding/warp-point -> capsule | floor reach %.1f"), FloorDistance),
+		    FColor::Yellow, 3);
+		if (RootFloor.bBlockingHit)
+		{
+			IMGTraversalDebug::Intersection(Character->GetWorld(), RootFloor.HitResult,
+			    RootFloor.IsWalkableFloor() && RootDrop >= 0.f && RootDrop <= Geometry.MaxDrop &&
+			        FIMGTraversalDetector::CanUseSurface(RootSupport, Geometry, Candidate.RequestSource),
+			    TEXT("Actual capsule support"), IMGTraversalDebug::EStage::Execution);
+		}
+#endif
+		if (!RootFloor.IsWalkableFloor() || RootDrop < 0.f || RootDrop > Geometry.MaxDrop ||
+		    !FIMGTraversalDetector::CanUseSurface(RootSupport, Geometry, Candidate.RequestSource))
+		{
+			return Reject(TEXT("Selected landing capsule has no usable floor support"));
+		}
+		FloorComponent = RootSupport;
 		if (Landing.bCheckStraightPath)
 		{
 			FCollisionQueryParams PathParams(FloorParams);
@@ -595,9 +683,20 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 			FHitResult PathHit;
 			const FVector Start =
 			    PathAnchor.GetLocation() + FVector::UpVector * (HalfHeight + Landing.CapsuleClearance);
-			if (Character->GetWorld()->SweepSingleByChannel(PathHit, Start, LandingCenter, FQuat::Identity,
+			const bool bPathBlocked = Character->GetWorld()->SweepSingleByChannel(PathHit, Start, LandingCenter, FQuat::Identity,
 			        Capsule->GetCollisionObjectType(), FCollisionShape::MakeCapsule(Radius, HalfHeight), PathParams,
-			        Responses))
+			        Responses);
+#if ENABLE_DRAW_DEBUG
+			IMGTraversalDebug::Capsule(Character->GetWorld(), Start, HalfHeight, Radius, FColor::Cyan, 3);
+			IMGTraversalDebug::Line(Character->GetWorld(), Start, LandingCenter,
+			    bPathBlocked ? FColor::Red : FColor::Cyan, 3);
+			if (bPathBlocked)
+			{
+				IMGTraversalDebug::Intersection(Character->GetWorld(), PathHit, false,
+				    TEXT("Optional straight capsule path"), IMGTraversalDebug::EStage::Execution);
+			}
+#endif
+			if (bPathBlocked)
 			{
 				return Reject(TEXT("Configured straight landing path is blocked"));
 			}
@@ -607,7 +706,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		Candidate.LocalBackFloor = FloorTarget.GetRelativeTransform(FloorComponent->GetComponentTransform());
 		Candidate.bHasBackFloor = true;
 		Candidate.DropHeight = Drop;
-		Candidate.BackLedgeHeight = Candidate.BackLedge.GetLocation().Z - LandingPoint.Z;
+		Candidate.BackLedgeHeight = Candidate.bHasBackLedge ? Candidate.BackLedge.GetLocation().Z - LandingPoint.Z : 0.f;
 	}
 	for (const FIMGTraversalWarpBinding& Binding : Settings->WarpBindings)
 	{
@@ -635,6 +734,15 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			return Reject(TEXT("Warp carrier transform is invalid"));
 		}
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::Line(Character->GetWorld(), Anchor.GetLocation(), Transform.GetLocation(), FColor::Yellow, 3);
+		IMGTraversalDebug::Arrow(Character->GetWorld(), Transform.GetLocation(),
+		    Transform.GetLocation() + Transform.GetUnitAxis(EAxis::X) * 30.f, FColor::Yellow, 3);
+		IMGTraversalDebug::String(Character->GetWorld(), Transform.GetLocation() + FVector::UpVector * 15.f,
+		    FString::Printf(TEXT("%s <- %s + offset | %s"), *Binding.TargetName.ToString(),
+		        *StaticEnum<EIMGTraversalAnchor>()->GetNameStringByValue(static_cast<int64>(Binding.Anchor)), *GetNameSafe(Component)),
+		    FColor::White, 3);
+#endif
 	}
 	return true;
 }
@@ -653,7 +761,11 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		K2_EndAbility();
 		return;
 	}
-	if (!Component || !World || ActiveObstacleComponents.IsEmpty() ||
+	if (!IsValid(Component) || !Component->IsRegistered() || !World || !IsValid(Character) ||
+	    Component->GetOwner() != Character || !IsValid(Component->GetMotionWarpingComponent()) ||
+	    !Component->GetMotionWarpingComponent()->IsRegistered() ||
+	    !Character->GetIMGMovementComponent() || !Character->GetIMGMovementComponent()->IsFlying() ||
+	    !Component->IsTraversalActive() || ActiveObstacleComponents.IsEmpty() ||
 	    ActiveObstacleComponents.Num() != PreviousObstacleTransforms.Num())
 	{
 #if ENABLE_DRAW_DEBUG
@@ -679,7 +791,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
 	{
 		UPrimitiveComponent* Target = ActiveObstacleComponents[Index].Get();
-		if (!IsValid(Target))
+		if (!FIMGTraversalDetector::CanUseSurface(Target, Settings, LocalCandidate.RequestSource))
 		{
 #if ENABLE_DRAW_DEBUG
 			DrawAbilityMessage(
@@ -737,58 +849,80 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
     const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
     bool bReplicateEndAbility, bool bWasCancelled)
 {
+	if (!IsEndAbilityValid(Handle, ActorInfo))
+	{
+		return;
+	}
+	if (ScopeLockCount > 0)
+	{
+		WaitingToExecute.Add(FPostLockDelegate::CreateUObject(this, &ThisClass::EndAbility,
+		    Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled));
+		return;
+	}
+	// Cleanup and Blueprint notifications can synchronously request another end.
+	{
+		TGuardValue<bool> EndingGuard(bIsAbilityEnding, true);
+		SendPendingTargetDataCancellation();
 #if ENABLE_DRAW_DEBUG
-	IMGTraversalDebug::DiscardTraversalSnapshot();
+		IMGTraversalDebug::DiscardTraversalSnapshot(GetAvatarActorFromActorInfo());
 #endif
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(TargetCheckTimer);
-	}
-	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
-	{
-		UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-		if (TargetDataDelegateHandle.IsValid())
+		if (UWorld* World = GetWorld())
 		{
-			ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
-			    .Remove(TargetDataDelegateHandle);
+			World->GetTimerManager().ClearTimer(TargetCheckTimer);
 		}
-		if (TargetDataCancelledDelegateHandle.IsValid())
+		if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 		{
-			ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
-			    .Remove(TargetDataCancelledDelegateHandle);
-		}
-		ASC->ConsumeClientReplicatedTargetData(Handle, ActivationInfo.GetActivationPredictionKey());
-	}
-	TargetDataDelegateHandle.Reset();
-	TargetDataCancelledDelegateHandle.Reset();
-	if (bTraversalStarted)
-	{
-		if (UIMGTraversalComponent* Component = ActiveComponent.Get())
-		{
-			Component->EndTraversal();
-		}
-		if (AIMGCharacter* Character = GetIMGCharacterFromActorInfo())
-		{
-			const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
-			if ((!Health || !Health->IsDeadOrDying()) && Character->GetIMGMovementComponent())
+			UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+			if (TargetDataDelegateHandle.IsValid())
 			{
-				UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
-				if (Movement->MovementMode == MOVE_Flying)
+				ASC->AbilityTargetDataSetDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
+				    .Remove(TargetDataDelegateHandle);
+			}
+			if (TargetDataCancelledDelegateHandle.IsValid())
+			{
+				ASC->AbilityTargetDataCancelledDelegate(Handle, ActivationInfo.GetActivationPredictionKey())
+				    .Remove(TargetDataCancelledDelegateHandle);
+			}
+			ASC->ConsumeClientReplicatedTargetData(Handle, ActivationInfo.GetActivationPredictionKey());
+		}
+		TargetDataDelegateHandle.Reset();
+		TargetDataCancelledDelegateHandle.Reset();
+		const bool bNotifyTraversalEnded = bTraversalStarted;
+		const bool bCompleted = bMontageCompleted && !bWasCancelled;
+		bTraversalStarted = false;
+		if (bNotifyTraversalEnded)
+		{
+			AIMGCharacter* Character = ActiveComponent.IsValid()
+			    ? Cast<AIMGCharacter>(ActiveComponent->GetOwner()) : GetIMGCharacterFromActorInfo();
+			if (UIMGTraversalComponent* Component = ActiveComponent.Get())
+			{
+				Component->EndTraversal();
+			}
+			if (IsValid(Character))
+			{
+				const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
+				if ((!Health || !Health->IsDeadOrDying()) && Character->GetIMGMovementComponent())
 				{
-					FFindFloorResult Floor;
-					Movement->FindFloor(Character->GetActorLocation(), Floor, false);
-					Movement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
+					UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
+					if (Movement->MovementMode == MOVE_Flying)
+					{
+						FFindFloorResult Floor;
+						Movement->FindFloor(Character->GetActorLocation(), Floor, false);
+						Movement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
+					}
 				}
 			}
 		}
-		OnTraversalEnded(bMontageCompleted && !bWasCancelled);
+		bMontageCompleted = false;
+		bLocalRequest = false;
+		ActiveComponent.Reset();
+		ActiveObstacleComponents.Reset();
+		PreviousObstacleTransforms.Reset();
+		LocalCandidate = FIMGTraversalCandidate();
+		if (bNotifyTraversalEnded)
+		{
+			OnTraversalEnded(bCompleted);
+		}
 	}
-	bTraversalStarted = false;
-	bMontageCompleted = false;
-	bLocalRequest = false;
-	ActiveComponent.Reset();
-	ActiveObstacleComponents.Reset();
-	PreviousObstacleTransforms.Reset();
-	LocalCandidate = FIMGTraversalCandidate();
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

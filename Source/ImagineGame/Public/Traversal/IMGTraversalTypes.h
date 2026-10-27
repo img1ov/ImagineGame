@@ -195,6 +195,9 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MinFacingDot = 0.3f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
+	float AutomaticMinFacingDot = 0.8f;
+
 	/** Keep the project's CHT height convention by default; GroundPos mapping is available explicitly. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height")
 	bool bUseGroundPositionForHeight = false;
@@ -415,14 +418,15 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	float ObstacleDepth = 0.f;
 
-	/** Free distance after the front ledge before another obstacle is encountered. */
+	/** XY surface distance from the front ledge, capped at the fully swept horizontal range. */
 	UPROPERTY(BlueprintReadOnly)
 	float HorizontalClearance = 0.f;
 
-	/** Free vertical space above the ledge measured by the dedicated clearance probe. */
+	/** Surface height above the ledge; a miss returns the fully swept configured cap. */
 	UPROPERTY(BlueprintReadOnly)
 	float VerticalClearance = 0.f;
 
+	/** Front ledge to sampled/selected floor; without bHasBackFloor this is a probe result, not a landing. */
 	UPROPERTY(BlueprintReadOnly)
 	float DropHeight = 0.f;
 
@@ -430,6 +434,7 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	float BackLedgeHeight = 0.f;
 
+	/** Mesh component origin to front ledge in world-space 3D, retained for animation selection. */
 	UPROPERTY(BlueprintReadOnly)
 	float DistanceToLedge = 0.f;
 
