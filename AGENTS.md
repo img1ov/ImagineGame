@@ -71,12 +71,13 @@
 ### Traversal：执行与网络
 - 继续按校验→Commit→建立 Target/碰撞忽略→Flying→蒙太奇启动→提交 TargetData/发布快照执行。Component 统一管理临时碰撞忽略；完成、中断、取消、死亡或载体失效时幂等恢复。GA 不在正常 BlendOut 提前结束，退出按脚下地面恢复 Walking/Falling；模拟代理收到权威非 Flying 模式后先恢复碰撞，使 CMC 地面查询看到支撑，Target 仍可保留至本机实例退出。
 - 现有载体逻辑保存局部 Target，并建立载体组件 → Traversal → CMC 的 Tick 依赖；默认每 0.05 秒复核存活、物理许可和速度，默认 500 cm/s、85 deg/s，Candidate 时效 0.25 秒。这不保证载体 Actor Tick 或物理驱动的完整更新时序，也不代表动态平台已受支持；不要直接 Attach 绕过 CMC 网络预测。
+- Tick 依赖保留：载体组件先更新变换，Traversal 刷新 Target/碰撞忽略，CMC 再移动与查地；模拟代理结束时必须在 CMC 查地前恢复障碍碰撞。Traversal 组件仅在活动期间开启 Tick，用于代理引用晚到、蒙太奇重试和延后结束；GA 不新增 Tick。MotionWarping.OnPreUpdate 在实际 Warp 采样前再次刷新 Target。添加依赖本身不要求 Flying；BeginTraversal 建立状态后才切 Flying，代理蒙太奇启动门槛另行检查 Flying。
 - 保留 LocalPredicted、启动成功后提交请求、启动前单次取消和服务端按方向重检；请求来源必须与服务端 GA 配置一致。远端仍验证 Action、时间、PlayRate、动画合同和可选 AllowedMontages，不接受客户端几何。
 - 代理仅消费 COND_SkipOwner 快照、CMC 与 GAS 蒙太奇；匹配 Montage/PlayInstanceId，并等待 Target、障碍碰撞忽略与 CMC Flying 就绪。OnPreUpdate 在 Warp 采样前重建当前 Target，既有 Target 的恢复历史随权威快照传输，不在代理捕获乱序的原生复制值；结束快照先到时保留当前动画到本机实例退出（含 BlendOut），同实例引用补齐不反复拆建。
 - ASC 保留 Position 复制、StartTime 下界、资产 BlendIn 和 GAS 原生纠偏；已移除固定 0.075 秒起播落后量。社区参考：`https://forums.unrealengine.com/t/motionwarping-warp-targets-and-data-caching/2678223`（Target 与蒙太奇的独立复制时序），不是固定落后量的依据。
 
 ### Traversal：Debug 对照与排查
-- 仅调试当前 Traversal 实际执行的检测/输出/动画消费，不移植 GTA 网络或画未接入的异步批次、IK/平台体积。对照 `ClimbDetector` 的 Search/Intersections/Compute/Validate、`TestCapsule` 和 `ClimbHandHoldDetected::Render/DumpToLog`；所有代码受 ENABLE_DRAW_DEBUG 保护，控制台项为 Cheat，默认关闭。
+- 仅调试当前 Traversal 实际执行的检测/输出/动画消费，不移植 GTA 网络或画未接入的异步批次、IK/平台体积。对照 `ClimbDetector` 的 Search/Intersections/Compute/Validate、`TestCapsule` 和 `ClimbHandHoldDetected::Render/DumpToLog`；绘图代码受 ENABLE_DRAW_DEBUG 保护，绘图控制台项为 Cheat，默认关闭。
 - `IMG.Traversal.DebugDraw`：0关闭，1几何/执行输出及活动 Target，2增加搜索/评分/失败/重试，3全部探针。`IMG.Traversal.DebugStages` 为组合掩码：搜索1、命中2、手点4、体积8、输出16、执行32，默认63；例24只看体积与输出、48看输出与执行，等级和掩码同时生效。
 - `IMG.Traversal.DebugDuration` 默认2秒，仅控制启动成功后的快照；`IMG.Traversal.DebugProcessDuration` 默认0（单帧），设3可保留失败/重试过程，对照 GTA 的3000ms历史。连续自动检测会叠图，宜单次手动触发或暂停查看。活动 Target 始终单帧、不进入过程快照；失败候选不混入成功快照。
 - 搜索分层为不同蓝色，显示真实起终点/半径/实际长度/高度/命中数；紫色 edge 连接真实最低/最高命中，显示编号、Score、Span、Drift。命中显示首次/次级、组件、接触点和外法线；青色小球为可进入分组，红色大球与文字说明表面策略、穿透、水平面或同坡面排除。
@@ -87,12 +88,14 @@
 - 球扫两端显示探针球（默认按上述比例缩小）；红球为停止时的球心 Location，小接触点/法线为 ImpactPoint/ImpactNormal，白线连接两者。红球只表示接触，拒绝看文字。输出用厘米标尺画高度、XY深度、前沿落差、后沿高度和净空；净空未命中表示已扫范围的有限上限，非无限空间。EdgeSpan 不是左右手点的最高/最低Z，两者分别显示。
 - Detector 输出标记 pre-selection，启动后显示执行 Action/Montage/Start/Rate；CHT 原始 BackFloor 与动画解析后的结果可能不同。执行图包括曲线窗口、重新查地、Binding/WarpPoint 偏移、完整胶囊、实际脚下支撑、可选直线路径及锚点→Target。活动 Target 标明角色名、网络角色、当前 CMC Mode 和本系统 AddedIgnore 数量；模拟代理通常只消费执行状态，不跑 Detector。
 - `IMG.Traversal.DebugLog`：0关闭，1在 LogIMG 的 [Traversal] 记录输出坐标、法线、尺寸/距离/角度及网络角色，2额外记录所选阶段文字和拒绝原因；仍需开启 DebugDraw 与对应阶段。活动 Target 不持续写日志，成功快照重放不重复写日志，动画合同失败沿现有 LogIMGTraversal。
+- 预测/执行日志独立于 DebugDraw：`LogIMGAbilitySystem` 的 Warning `[PredictionRejected]` 记录服务端拒绝激活，在引擎回滚前输出 Ability/Avatar/Spec/PredictionKey；Verbose `[ActivationFailed]` 记录激活失败 Tag 与当前 ScopedPredKey。`LogIMGTraversal` 的 Warning 记录服务端来源/方向/检测/选择拒绝、Warp 合同、Commit、快照发布及执行中止；Verbose 记录本地正常检测失败、请求提交/取消、等待、启动与结束。控制台分别执行 `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose`，两端按 Avatar/Spec/PredKey 对照，查完以 `Log LogIMGTraversal Log`、`Log LogIMGAbilitySystem Log` 恢复。服务端 TargetData 重检失败发生在激活之后，不等于激活 PredictionKey 被拒绝；`AuthorityEndedPredictedTraversal` 只说明权威实例先结束，不能单凭该日志认定预测错误。未新增日志 RPC、Tick、计时器或复制状态。
 - 完整观察可依次设置 `IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`。单进程 PIE 共享 CVar，多进程分别设置；图和日志需按角色/网络角色区分。优先对照平顶遮挡接触点、斜顶后沿、上坡/后移后的净空范围、方向失败重试、后方独立障碍、偏移后胶囊支撑及各代理结束清理；静态审查与 Debug 覆盖不替代资产和联机运行验证。
 
 ### Traversal：GTA 参考与映射边界
 - 参考根目录：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`。几何/手点：`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`；发起：`task/Default/TaskPlayer.cpp`（CTaskPlayerOnFoot）；Jump/Vault 分流：`task/Movement/Jumping/TaskJump.*`；执行/载体/清理：`task/Movement/Climbing/TaskVault.*`。
 - 网络使用本工程现有 GAS LocalPredicted、TargetData、蒙太奇复制、CMC 与 Traversal Target 快照，不移植 GTA 网络协议。GTA 的 `task/System/TaskFsmClone.*`、`Peds/QueriableInterface.cpp`、`network/Objects/Entities/NetObjPed.cpp` 仅作职责边界参考；Detector/Candidate、CHT、GA、Component 分别承担几何、动作选择、执行和代理状态，未复制 GTA Task FSM。
 - GTA 出口表服务于其动画库；GroundPositionAtDrop 是跌落前支撑点，非最终落地。项目按自身动画覆盖配置门槛，以 UE Warp/地面复核映射执行；GTA 实体类型、动画组合与手动位移不能机械硬搬。
+- GTA 也依赖执行顺序：`CTaskVault::ProcessPreFSM` 请求 PhysicsTasks/PostMovement，`CPedIntelligence`/`CTaskTree` 调用 `ProcessPhysics` 与 `ProcessPostMovement`；Vault 对物理载体使用 Attach，`scene/world/GameWorld.cpp::ProcessAttachmentAfterAllMovement` 在移动之后处理附件，`scene/Physical.cpp::ProcessAllAttachments` 按父→子递归更新（`Physical.h` 有对应约束）。本工程的 Tick 依赖保留同类先更新来源、再消费变换/碰撞的约束，调度机制与 GTA 不相同，不能据此声称完整支持动态平台。
 - GTA Detector 通用搜索回退为 5 m，但 TaskPlayer::GetClimbDetectorParam 的普通玩家覆写为 2.5 m；项目 250 cm 默认有该调用链依据。检测在边缘分组前过滤水平面与同地面坡面，并保留近身上半身遮挡检查；低障碍按请求朝向验证时同步调整手点。Automatic 的面朝向/朝向手点阈值默认 0.8，Manual/AI 默认 0.3；移动意图阈值仍由 InitiationSettings 独立控制。
 - 本轮以 Detector/探测逻辑为主，也复核 GA 执行、GAS 取消握手及自主/模拟代理生命周期；不改用 GTA 网络。Automatic 楼梯下行过滤使用楼梯标签与 CMC 地面法线，不能等同 GTA 独立的 slope-normal 数据源。动画落点复核 WarpPoint/Binding 偏移后的胶囊脚下支撑；曲线锚点仅在主目标没有平移窗口时使用备用名字。ASC 解绑清理代理临时状态，重绑重建权威快照。
 - 后续边界：输入历史与楼梯退出延迟、异步 broad phase 缓存、完整 BasedMovement/动态 Bone、悬挂/Shimmy/梯子等仍属独立工作，不应宣称本次已完整等价。

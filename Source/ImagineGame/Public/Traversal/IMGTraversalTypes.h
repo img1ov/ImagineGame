@@ -661,7 +661,7 @@ struct FIMGTraversalWarpWindow
 	float EndTime = 0.f;
 };
 
-/** GASP Chooser and PoseMatch decide this in a Blueprint child of the native ability. */
+/** Chooser and PoseMatch decide this in a Blueprint child of the native ability. */
 USTRUCT(BlueprintType)
 struct FIMGTraversalAnimationSelection
 {

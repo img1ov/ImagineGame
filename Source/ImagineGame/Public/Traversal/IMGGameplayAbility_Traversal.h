@@ -9,7 +9,7 @@
 class UIMGTraversalComponent;
 class UPrimitiveComponent;
 
-/** One-montage GASP traversal. Blueprint selects the action/montage; native code owns geometry and lifetime. */
+/** Single-montage traversal. Blueprint selects the action/montage; native code owns geometry and lifetime. */
 UCLASS(Abstract, Blueprintable)
 class IMAGINEGAME_API UIMGGameplayAbility_Traversal : public UIMGGameplayAbility
 {
@@ -53,6 +53,7 @@ protected:
 	void OnTraversalEnded(bool bCompleted);
 
 private:
+	void LogTraversalEvent(const TCHAR* Event, const FString& Detail, bool bWarning = false) const;
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag);
 	void OnTargetDataCancelled();
 	void SendPendingTargetDataCancellation();

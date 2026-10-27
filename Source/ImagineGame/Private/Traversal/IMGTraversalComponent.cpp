@@ -302,6 +302,7 @@ void UIMGTraversalComponent::BeginPlay()
 	{
 		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())
 		{
+			// Proxy collision restoration must precede CMC floor queries, even without a root-motion update.
 			Movement->AddTickPrerequisiteComponent(this);
 		}
 	}
@@ -328,6 +329,7 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 		TargetTickPrerequisites.Reset();
 		return;
 	}
+	// Read carrier transforms after their component ticks; this does not order actor ticks or physics.
 	auto Add = [this](UPrimitiveComponent* Component)
 	{
 		if (IsValid(Component) && !TargetTickPrerequisites.Contains(Component))

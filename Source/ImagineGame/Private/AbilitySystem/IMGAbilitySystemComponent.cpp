@@ -691,6 +691,12 @@ void UIMGAbilitySystemComponent::ClientTryActivateAbility_Implementation(FGamepl
 void UIMGAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(FGameplayAbilitySpecHandle AbilityToActivate, int16 PredictionKey)
 {
 	const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(AbilityToActivate);
+	// Super broadcasts rejection and may synchronously end the predicted montage/ability.
+	UE_LOG(LogIMGAbilitySystem, Warning,
+		TEXT("[PredictionRejected] Ability=%s Owner=%s Avatar=%s Role=%d Spec=%s PredKey=%d; server rejected activation (details in authority failure log)"),
+		*GetNameSafe(AbilitySpec ? AbilitySpec->Ability.Get() : nullptr), *GetNameSafe(GetOwnerActor()),
+		*GetNameSafe(GetAvatarActor()), GetAvatarActor() ? static_cast<int32>(GetAvatarActor()->GetLocalRole()) : -1,
+		*AbilityToActivate.ToString(), PredictionKey);
 
 	Super::ClientActivateAbilityFailed_Implementation(AbilityToActivate, PredictionKey);
 }
@@ -716,6 +722,11 @@ void UIMGAbilitySystemComponent::NotifyAbilityActivated(const FGameplayAbilitySp
 
 void UIMGAbilitySystemComponent::NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason)
 {
+	UE_LOG(LogIMGAbilitySystem, Verbose,
+		TEXT("[ActivationFailed] Ability=%s Owner=%s Avatar=%s Role=%d Auth=%d Spec=%s ScopedPredKey=%d FailureTags=%s"),
+		*GetNameSafe(Ability), *GetNameSafe(GetOwnerActor()), *GetNameSafe(GetAvatarActor()),
+		GetAvatarActor() ? static_cast<int32>(GetAvatarActor()->GetLocalRole()) : -1,
+		IsOwnerActorAuthoritative(), *Handle.ToString(), ScopedPredictionKey.Current, *FailureReason.ToStringSimple());
 	Super::NotifyAbilityFailed(Handle, Ability, FailureReason);
 
 	if (APawn* Avatar = Cast<APawn>(GetAvatarActor()))
