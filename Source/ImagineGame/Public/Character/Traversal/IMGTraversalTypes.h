@@ -316,7 +316,7 @@ struct FIMGTraversalDetectorSettings
 	bool bRejectAutomaticHighOpenApproach = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "1", ClampMax = "16"))
-	int32 AutomaticMinDepthSamples = 4;
+	int32 AutomaticMinDepthSamples = 1;
 
 	/** Drop below the approach ground for automatic crossing of shallow tops with open space behind. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
