@@ -142,6 +142,7 @@ public:
 	UE_API virtual void Restart() override;
 	UE_API virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UE_API virtual void PreReplication(IRepChangedPropertyTracker& ChangedPropertyTracker) override;
+	UE_API virtual void OnRep_ReplicatedMovement() override;
 	//~End of AActor interface
 
 	//~APawn interface

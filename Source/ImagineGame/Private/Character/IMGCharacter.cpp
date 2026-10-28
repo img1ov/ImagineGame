@@ -716,6 +716,17 @@ bool AIMGCharacter::CanJumpInternal_Implementation() const
 }
 
 
+void AIMGCharacter::OnRep_ReplicatedMovement()
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy && GetIMGMovementComponent()->HasRagdollNetworkMovementMode())
+	{
+		// External animation must not suppress the authoritative ragdoll capsule stream.
+		AActor::OnRep_ReplicatedMovement();
+		return;
+	}
+	Super::OnRep_ReplicatedMovement();
+}
+
 bool AIMGCharacter::UpdateSharedReplication()
 {
 	if (GetLocalRole() == ROLE_Authority)

@@ -134,7 +134,7 @@ bool AreSettingsValid(const FIMGTraversalDetectorSettings& Settings)
 			return false;
 		}
 	}
-	return FMath::IsFinite(Settings.SearchStartHeightOffset) && FMath::IsFinite(Settings.HandholdPathVerticalOffset) &&
+	return Settings.TraceChannel < ECC_MAX && FMath::IsFinite(Settings.SearchStartHeightOffset) && FMath::IsFinite(Settings.HandholdPathVerticalOffset) &&
 	    FMath::IsFinite(Settings.MinFacingDot) && Settings.MinFacingDot >= -1.f && Settings.MinFacingDot <= 1.f &&
 	    FMath::IsFinite(Settings.AutomaticMinFacingDot) && FMath::Abs(Settings.AutomaticMinFacingDot) <= 1.f &&
 	    Settings.HandholdMinNormalZ <= 1.f && Settings.WalkableSlopeMinNormalZ <= 1.f &&

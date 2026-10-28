@@ -1,6 +1,7 @@
 
 
 #include "IMGGameplayTags.h"
+#include "Character/IMGCharacterMovementComponent.h"
 
 #include "IMGLogChannels.h"
 
@@ -55,6 +56,7 @@ namespace IMGGameplayTags
 
 	// When extending IMG, update GetCustomMovementModeTagMap() for any custom movement modes.
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Custom, "Movement.Mode.Custom", "This is invalid and should be replaced with custom tags.  See IMGGameplayTags::CustomMovementModeTagMap.");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Custom_Ragdoll, "Movement.Mode.Custom.Ragdoll", "Character capsule follows a ragdoll body.");
 
 	// Unreal Movement Modes
 	const TMap<uint8, FGameplayTag> MovementModeTagMap =
@@ -70,7 +72,7 @@ namespace IMGGameplayTags
 	// Custom Movement Modes
 	const TMap<uint8, FGameplayTag> CustomMovementModeTagMap =
 	{
-		// Fill these in with custom modes
+		{ static_cast<uint8>(EIMGCustomMovementMode::Ragdoll), Movement_Mode_Custom_Ragdoll }
 	};
 
 

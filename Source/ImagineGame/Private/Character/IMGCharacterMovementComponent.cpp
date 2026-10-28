@@ -5,9 +5,11 @@
 #include "AbilitySystemGlobals.h"
 #include "Character/IMGCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/ScopedMovementUpdate.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCharacterMovementComponent)
 
@@ -17,11 +19,13 @@ class FSavedMove_IMG final : public FSavedMove_Character
 {
 public:
 	EIMGStance SavedStance = EIMGStance::Stand;
+	FIMGRagdollMovementInput SavedRagdollInput;
 
 	virtual void Clear() override
 	{
 		FSavedMove_Character::Clear();
 		SavedStance = EIMGStance::Stand;
+		SavedRagdollInput = FIMGRagdollMovementInput();
 	}
 
 	virtual uint8 GetCompressedFlags() const override
@@ -34,21 +38,76 @@ public:
 	virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
 	{
 		const FSavedMove_IMG* OtherMove = static_cast<const FSavedMove_IMG*>(NewMove.Get());
-		return SavedStance == OtherMove->SavedStance && FSavedMove_Character::CanCombineWith(NewMove, Character, MaxDelta);
+		return !SavedRagdollInput.IsValid() && !OtherMove->SavedRagdollInput.IsValid()
+			&& SavedStance == OtherMove->SavedStance && FSavedMove_Character::CanCombineWith(NewMove, Character, MaxDelta);
 	}
 
 	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override
 	{
 		FSavedMove_Character::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
-		SavedStance = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement())->GetDesiredStance();
+		UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
+		SavedStance = Movement->GetDesiredStance();
+		SavedRagdollInput = Movement->CaptureRagdollInput();
+		Movement->RagdollMode.Input = SavedRagdollInput;
+		bForceNoCombine |= SavedRagdollInput.IsValid();
 	}
 
 	virtual void PrepMoveFor(ACharacter* Character) override
 	{
 		FSavedMove_Character::PrepMoveFor(Character);
 		CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement())->SetDesiredStanceFromMove(SavedStance);
+		CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement())->RagdollMode.Input = SavedRagdollInput;
 	}
 };
+
+void FIMGCharacterNetworkMoveData::ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType)
+{
+	FCharacterNetworkMoveData::ClientFillNetworkMoveData(ClientMove, MoveType);
+	RagdollInput = static_cast<const FSavedMove_IMG&>(ClientMove).SavedRagdollInput;
+}
+
+bool FIMGCharacterNetworkMoveData::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType)
+{
+	const bool bBaseSuccess = FCharacterNetworkMoveData::Serialize(CharacterMovement, Ar, PackageMap, MoveType);
+	bool bSuccess = true;
+	RagdollInput.NetSerialize(Ar, PackageMap, bSuccess);
+	return bBaseSuccess && bSuccess && !Ar.IsError();
+}
+
+FIMGCharacterNetworkMoveDataContainer::FIMGCharacterNetworkMoveDataContainer()
+{
+	NewMoveData = &Moves[0];
+	PendingMoveData = &Moves[1];
+	OldMoveData = &Moves[2];
+}
+
+void FIMGCharacterMoveResponseDataContainer::ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment)
+{
+	FCharacterMoveResponseDataContainer::ServerFillResponseData(CharacterMovement, PendingAdjustment);
+	RagdollState = CastChecked<const UIMGCharacterMovementComponent>(&CharacterMovement)->GetRagdollMovementState();
+	bHasRagdollState = RagdollState.Revision != 0;
+	if (bHasRagdollState && RagdollState.Phase != EIMGRagdollPhase::Inactive)
+	{
+		bHasRotation = true;
+	}
+	if (CastChecked<const UIMGCharacterMovementComponent>(&CharacterMovement)->IsRagdollMovementMode())
+	{
+		bRootMotionMontageCorrection = false;
+		bRootMotionSourceCorrection = false;
+	}
+}
+
+bool FIMGCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
+{
+	const bool bBaseSuccess = FCharacterMoveResponseDataContainer::Serialize(CharacterMovement, Ar, PackageMap);
+	Ar.SerializeBits(&bHasRagdollState, 1);
+	bool bSuccess = true;
+	if (bHasRagdollState)
+	{
+		RagdollState.NetSerialize(Ar, PackageMap, bSuccess);
+	}
+	return bBaseSuccess && bSuccess && !Ar.IsError();
+}
 
 class FNetworkPredictionData_Client_IMG final : public FNetworkPredictionData_Client_Character
 {
@@ -69,8 +128,11 @@ UIMGCharacterMovementComponent::UIMGCharacterMovementComponent(const FObjectInit
 	: Super(ObjectInitializer)
 {
 	NavAgentProps.bCanCrouch = true;
+	SetIsReplicatedByDefault(true);
 	SetCrouchedHalfHeight(60.0f);
 	MaxWalkSpeedCrouched = 250.0f;
+	SetNetworkMoveDataContainer(IMGNetworkMoveData);
+	SetMoveResponseDataContainer(IMGMoveResponseData);
 }
 
 bool FIMGStanceStateMachine::TransitionTo(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance, bool bClientSimulation)
@@ -343,6 +405,10 @@ bool UIMGCharacterMovementComponent::ResizeForCrawlTransition(EIMGStance Previou
 
 bool UIMGCharacterMovementComponent::RequestStance(EIMGStance NewStance)
 {
+	if (NewStance != GetStance() && (IsRagdollMovementMode() || IsRagdollRecovering()))
+	{
+		return false;
+	}
 	return StanceMachine.RequestTransition(*this, NewStance);
 }
 
@@ -378,6 +444,27 @@ void UIMGCharacterMovementComponent::SetDesiredStanceFromMove(EIMGStance NewStan
 
 void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
+	UpdateRagdollMovementState();
+	if (!HasValidData()) { return; }
+	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating)
+	{
+		if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy && MovementMode != MOVE_None)
+		{
+			SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+			if (CharacterOwner->HasAuthority() && (CharacterOwner->IsLocallyControlled() || CharacterOwner->GetRemoteRole() != ROLE_AutonomousProxy))
+			{
+				RagdollMode.Input = CaptureRagdollInput();
+			}
+		}
+		return;
+	}
+	if (IsRagdollRecovering())
+	{
+		Acceleration = FVector::ZeroVector;
+		bHasRequestedVelocity = false;
+		RequestedVelocity = FVector::ZeroVector;
+		return;
+	}
 	if (!CharacterOwner || CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
 	{
 		return;
@@ -401,6 +488,10 @@ void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float De
 
 void UIMGCharacterMovementComponent::UpdateCharacterStateAfterMovement(float DeltaSeconds)
 {
+	if (IsRagdollMovementMode() || IsRagdollRecovering())
+	{
+		return;
+	}
 	if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
 	{
 		StanceMachine.UpdateCurrentState(*this);
@@ -548,6 +639,7 @@ FRotator UIMGCharacterMovementComponent::ComputeOrientToMovementRotation(
 
 float UIMGCharacterMovementComponent::GetMaxSpeed() const
 {
+	if (IsRagdollRecovering()) { return 0.0f; }
 	if (const UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner()))
 	{
 		if (ASC->HasMatchingGameplayTag(TAG_Gameplay_MovementStopped))
@@ -585,6 +677,10 @@ void UIMGCharacterMovementComponent::TickCharacterPose(float DeltaTime)
 
 bool UIMGCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
+	if (IsRagdollMovementMode() || IsRagdollRecovering())
+	{
+		return false;
+	}
 	// Server moves and prediction replay also need to stand before changing movement mode.
 	return RequestStance(EIMGStance::Stand) && GetStance() == EIMGStance::Stand
 		&& Super::DoJump(bReplayingMoves, DeltaTime);
@@ -592,7 +688,406 @@ bool UIMGCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTim
 
 bool UIMGCharacterMovementComponent::CanAttemptJump() const
 {
+	if (IsRagdollMovementMode() || IsRagdollRecovering())
+	{
+		return false;
+	}
 	// Same as UCharacterMovementComponent's implementation but without the crouch check
 	return IsJumpAllowed() &&
 		(IsMovingOnGround() || IsFalling()); // Falling included for double-jump and non-zero jump hold time, but validated by character.
+}
+
+bool UIMGCharacterMovementComponent::IsRagdollMovementMode() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll);
+}
+
+bool UIMGCharacterMovementComponent::HasRagdollNetworkMovementMode() const
+{
+	if (IsRagdollMovementMode()) { return true; }
+	if (!CharacterOwner) { return false; }
+	TEnumAsByte<EMovementMode> Mode;
+	TEnumAsByte<EMovementMode> GroundMode;
+	uint8 CustomMode = 0;
+	UnpackNetworkMovementMode(CharacterOwner->GetReplicatedMovementMode(), Mode, CustomMode, GroundMode);
+	return Mode == MOVE_Custom && CustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll);
+}
+
+void UIMGCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
+{
+	if (!HasRagdollNetworkMovementMode())
+	{
+		Super::SimulatedTick(DeltaSeconds);
+		return;
+	}
+	if (bNetworkMovementModeChanged && CharacterOwner)
+	{
+		ApplyNetworkMovementMode(CharacterOwner->GetReplicatedMovementMode());
+		bNetworkMovementModeChanged = false;
+	}
+	if (!HasValidData()) { return; }
+	if (!IsRagdollMovementMode())
+	{
+		Super::SimulatedTick(DeltaSeconds);
+		return;
+	}
+	// Presentation root motion cannot replace the authoritative ragdoll capsule stream.
+	CharacterOwner->RootMotionRepMoves.Reset();
+	CurrentRootMotion.Clear();
+	RootMotionParams.Clear();
+	bWasSimulatingRootMotion = false;
+	if (CharacterOwner->IsReplicatingMovement() && UpdatedComponent)
+	{
+		USkeletalMeshComponent* Mesh = CharacterOwner->GetMesh();
+		const FVector SavedMeshLocation = Mesh ? Mesh->GetRelativeLocation() : FVector::ZeroVector;
+		const FQuat SavedRotation = UpdatedComponent->GetComponentQuat();
+		const bool bPreventMeshMovement = !bNetworkSmoothingComplete;
+		{
+			const FScopedPreventAttachedComponentMove PreventMeshMovement(bPreventMeshMovement ? Mesh : nullptr);
+			SimulateMovement(DeltaSeconds);
+		}
+		if (HasValidData() && bPreventMeshMovement && NetworkSmoothingMode == ENetworkSmoothingMode::Linear
+			&& Mesh == CharacterOwner->GetMesh() && ClientPredictionData)
+		{
+			const FQuat Rotation = UpdatedComponent->GetComponentQuat();
+			if (!Rotation.Equals(SavedRotation, 1e-6f))
+			{
+				const FQuat RotationDelta = Rotation - SavedRotation;
+				ClientPredictionData->MeshRotationTarget += RotationDelta;
+				ClientPredictionData->OriginalMeshRotationOffset += RotationDelta;
+				ClientPredictionData->MeshRotationOffset = Rotation;
+				if (Mesh) { Mesh->SetRelativeLocationAndRotation(SavedMeshLocation, CharacterOwner->GetBaseRotationOffset()); }
+			}
+		}
+	}
+	if (HasValidData() && !bNetworkSmoothingComplete) { SmoothClientPosition(DeltaSeconds); }
+}
+
+FIMGRagdollMovementInput UIMGCharacterMovementComponent::CaptureRagdollInput() const
+{
+	return ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && RagdollInputSource.IsValid()
+		&& SubmittedRagdollInput.Session == ActiveRagdollState.Session ? SubmittedRagdollInput : FIMGRagdollMovementInput();
+}
+
+const FIMGRagdollMovementInput& UIMGCharacterMovementComponent::GetRagdollMovementInput() const
+{
+	return RagdollMode.Input;
+}
+
+void UIMGCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
+{
+	if (IsRagdollMovementMode())
+	{
+		RagdollMode.Simulate(*this, DeltaTime);
+		return;
+	}
+	Super::PhysCustom(DeltaTime, Iterations);
+}
+
+void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
+{
+	const bool bWasTransitioning = bRagdollTransitioning;
+	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	const bool bWasRagdoll = PreviousMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll);
+	const bool bIsRagdoll = IsRagdollMovementMode();
+	if (bWasRagdoll && !bIsRagdoll)
+	{
+		RagdollMode.Exit(*this);
+	}
+	else if (!bWasRagdoll && bIsRagdoll)
+	{
+		RagdollMode.Enter(*this);
+	}
+	if (!HasValidData())
+	{
+		return;
+	}
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+	if (!HasValidData()) { return; }
+	if (!bWasTransitioning && CharacterOwner->HasAuthority() && ActiveRagdollState.Phase != EIMGRagdollPhase::Inactive
+		&& ((ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode())
+			|| (IsRagdollRecovering() && MovementMode != MOVE_Walking)))
+	{
+		FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
+	}
+	if (!HasValidData()) { return; }
+	if (!CharacterOwner->bClientUpdating && (bWasRagdoll != bIsRagdoll || IsRagdollRecovering())) { OnRagdollMovementUpdated.Broadcast(); }
+	if (!HasValidData()) { return; }
+}
+
+void UIMGCharacterMovementComponent::PhysicsRotation(float DeltaTime)
+{
+	if (!IsRagdollMovementMode() && !IsRagdollRecovering())
+	{
+		Super::PhysicsRotation(DeltaTime);
+	}
+}
+
+void UIMGCharacterMovementComponent::MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel)
+{
+	if (const FCharacterNetworkMoveData* Data = GetCurrentNetworkMoveData())
+	{
+		RagdollMode.Input = static_cast<const FIMGCharacterNetworkMoveData*>(Data)->RagdollInput;
+	}
+	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAccel);
+}
+
+void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
+{
+	const FIMGCharacterMoveResponseDataContainer& Response = static_cast<const FIMGCharacterMoveResponseDataContainer&>(MoveResponse);
+	if (Response.bHasRagdollState)
+	{
+		ReceiveRagdollMovementState(Response.RagdollState);
+	}
+	Super::ClientHandleMoveResponse(MoveResponse);
+}
+
+bool UIMGCharacterMovementComponent::FindRagdollRecoveryTransform(FTransform& OutTransform) const
+{
+	return IsRagdollMovementMode() && RagdollMode.FindRecoveryTransform(*this, OutTransform);
+}
+
+void UIMGCharacterMovementComponent::ApplyRagdollRecoveryTransform(const FTransform& Transform)
+{
+	if (!HasValidData() || (!IsRagdollMovementMode() && !IsWalking() && !IsFalling()) || Transform.ContainsNaN()) { return; }
+	RagdollRecoveryAppliedSession = ActiveRagdollState.Session;
+	RagdollMode.ApplyRecoveryTransform(*this, Transform);
+}
+
+void UIMGCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UIMGCharacterMovementComponent, ReplicatedRagdollState);
+}
+
+const FIMGRagdollRepState& UIMGCharacterMovementComponent::GetRagdollMovementState() const
+{
+	return ActiveRagdollState;
+}
+
+bool UIMGCharacterMovementComponent::IsRagdollRecovering() const
+{
+	return ActiveRagdollState.Phase == EIMGRagdollPhase::Recovering;
+}
+
+bool UIMGCharacterMovementComponent::IsRagdollRecoveryReady() const
+{
+	return IsRagdollRecovering() && HasValidData() && IsWalking()
+		&& (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy || RagdollRecoveryAppliedSession == ActiveRagdollState.Session);
+}
+
+bool UIMGCharacterMovementComponent::StartRagdollMovement(const FIMGRagdollSettings& Settings, FVector AdditionalVelocity)
+{
+	if (bRagdollTransitioning || !HasValidData() || !CharacterOwner->HasAuthority() || !IsRegistered() || !IsActive()
+		|| IsBeingDestroyed() || CharacterOwner->IsActorBeingDestroyed() || UpdatedComponent != CharacterOwner->GetCapsuleComponent()
+		|| MovementMode == MOVE_None || UpdatedComponent->IsSimulatingPhysics() || !Settings.IsValid()
+		|| AdditionalVelocity.ContainsNaN() || (Velocity + AdditionalVelocity).ContainsNaN()) { return false; }
+	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating) { return IsRagdollMovementMode(); }
+	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	const uint16 Revision = ActiveRagdollState.Revision;
+	uint16 Session = ActiveRagdollState.Session + 1;
+	if (Session == 0) { ++Session; }
+	ActiveRagdollState = FIMGRagdollRepState();
+	ActiveRagdollState.Revision = Revision;
+	ActiveRagdollState.Session = Session;
+	ActiveRagdollState.Settings = Settings;
+	ActiveRagdollState.Phase = EIMGRagdollPhase::Simulating;
+	ActiveRagdollState.AnchorLocation = FRepMovement::RebaseOntoZeroOrigin(CharacterOwner->GetActorLocation(), this);
+	ActiveRagdollState.InitialVelocity = Velocity + AdditionalVelocity;
+	ActiveRagdollState.FacingYaw = FRotator::CompressAxisToShort(CharacterOwner->GetActorRotation().Yaw);
+	SubmittedRagdollInput = FIMGRagdollMovementInput();
+	RagdollInputSource.Reset();
+	RagdollRecoveryAppliedSession = 0;
+	PublishRagdollMovementState();
+	SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+	if (HasValidData() && !IsRagdollMovementMode()) { FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false); }
+	if (HasValidData() && !CharacterOwner->bClientUpdating) { OnRagdollMovementUpdated.Broadcast(); }
+	return HasValidData() && ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating;
+}
+
+bool UIMGCharacterMovementComponent::SubmitRagdollFollowTarget(const FTransform& Target, bool bFaceUp, UObject* InputSource)
+{
+	if (!HasValidData() || ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating || Target.ContainsNaN()
+		|| !IsValid(InputSource) || (CharacterOwner->GetLocalRole() != ROLE_AutonomousProxy && !CharacterOwner->HasAuthority())) { return false; }
+	const FVector Position = FRepMovement::RebaseOntoZeroOrigin(Target.GetLocation(), this);
+	SubmittedRagdollInput.Session = ActiveRagdollState.Session;
+	SubmittedRagdollInput.PelvisLocation = FVector(FMath::RoundToDouble(Position.X * 10.0) / 10.0,
+		FMath::RoundToDouble(Position.Y * 10.0) / 10.0, FMath::RoundToDouble(Position.Z * 10.0) / 10.0);
+	SubmittedRagdollInput.FacingYaw = FRotator::CompressAxisToShort(Target.Rotator().Yaw);
+	SubmittedRagdollInput.bFaceUp = bFaceUp;
+	RagdollInputSource = InputSource;
+	return true;
+}
+
+void UIMGCharacterMovementComponent::ClearRagdollFollowTarget(const UObject* InputSource)
+{
+	if (RagdollInputSource.Get() == InputSource)
+	{
+		SubmittedRagdollInput = FIMGRagdollMovementInput();
+		RagdollInputSource.Reset();
+	}
+}
+
+bool UIMGCharacterMovementComponent::RecoverRagdollMovement(int32 ExpectedSession)
+{
+	if (bRagdollTransitioning || !HasValidData() || !CharacterOwner->HasAuthority() || !IsActive() || !IsRagdollMovementMode()
+		|| ExpectedSession == 0 || ExpectedSession != ActiveRagdollState.Session
+		|| ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating) { return false; }
+	const FIMGRagdollSettings& Settings = ActiveRagdollState.Settings;
+	if (Settings.MaxRecoverySpeed > 0.0f && Velocity.SizeSquared() > FMath::Square(Settings.MaxRecoverySpeed)) { return false; }
+	FTransform RecoveryTransform;
+	if (!FindRagdollRecoveryTransform(RecoveryTransform)) { return false; }
+	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	ActiveRagdollState.Phase = EIMGRagdollPhase::Recovering;
+	ActiveRagdollState.bHasRecovery = true;
+	ActiveRagdollState.bFaceUp = RagdollMode.Input.Session == ActiveRagdollState.Session ? RagdollMode.Input.bFaceUp : SubmittedRagdollInput.bFaceUp;
+	ActiveRagdollState.AnchorLocation = FRepMovement::RebaseOntoZeroOrigin(RecoveryTransform.GetLocation(), this);
+	ActiveRagdollState.FacingYaw = FRotator::CompressAxisToShort(RecoveryTransform.Rotator().Yaw);
+	SubmittedRagdollInput = FIMGRagdollMovementInput();
+	RagdollInputSource.Reset();
+	PublishRagdollMovementState();
+	ApplyRagdollRecoveryTransform(RecoveryTransform);
+	if (HasValidData() && MovementMode != MOVE_Walking) { FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false); }
+	if (HasValidData() && !CharacterOwner->bClientUpdating) { OnRagdollMovementUpdated.Broadcast(); }
+	return HasValidData() && ActiveRagdollState.Session == ExpectedSession
+		&& (ActiveRagdollState.Phase == EIMGRagdollPhase::Recovering
+			|| (ActiveRagdollState.Phase == EIMGRagdollPhase::Inactive && ActiveRagdollState.EndReason == EIMGRagdollEndReason::Recovered));
+}
+
+void UIMGCharacterMovementComponent::StopRagdollMovement(EIMGRagdollEndReason Reason, int32 ExpectedSession)
+{
+	if (GetOwner() && GetOwner()->HasAuthority() && (ExpectedSession == 0 || ExpectedSession == ActiveRagdollState.Session))
+	{
+		FinishRagdollMovement(Reason, true);
+	}
+}
+
+void UIMGCharacterMovementComponent::CompleteRagdollRecovery(int32 ExpectedSession, bool bInterrupted)
+{
+	if (GetOwner() && GetOwner()->HasAuthority() && ExpectedSession != 0 && ExpectedSession == ActiveRagdollState.Session && IsRagdollRecovering())
+	{
+		FinishRagdollMovement(bInterrupted ? EIMGRagdollEndReason::Interrupted : EIMGRagdollEndReason::Recovered, false);
+	}
+}
+
+void UIMGCharacterMovementComponent::FinishRagdollMovement(EIMGRagdollEndReason Reason, bool bLeaveMode)
+{
+	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Inactive)
+	{
+		if (bLeaveMode && IsRagdollMovementMode()) { SetMovementMode(MOVE_Falling); }
+		return;
+	}
+	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	ActiveRagdollState.Phase = EIMGRagdollPhase::Inactive;
+	ActiveRagdollState.EndReason = Reason;
+	if (Reason != EIMGRagdollEndReason::Recovered)
+	{
+		ActiveRagdollState.bHasRecovery = false;
+	}
+	SubmittedRagdollInput = FIMGRagdollMovementInput();
+	RagdollInputSource.Reset();
+	PublishRagdollMovementState();
+	if (bLeaveMode && IsRagdollMovementMode()) { SetMovementMode(MOVE_Falling); }
+	RagdollMode.ReleaseOrientation(*this);
+	if (!CharacterOwner || !CharacterOwner->bClientUpdating) { OnRagdollMovementUpdated.Broadcast(); }
+}
+
+void UIMGCharacterMovementComponent::PublishRagdollMovementState()
+{
+	++ActiveRagdollState.Revision;
+	if (ActiveRagdollState.Revision == 0) { ++ActiveRagdollState.Revision; }
+	ReplicatedRagdollState = ActiveRagdollState;
+	if (GetOwner()) { GetOwner()->ForceNetUpdate(); }
+	ForceReplicationUpdate();
+}
+
+void UIMGCharacterMovementComponent::OnRep_RagdollMovementState()
+{
+	ReceiveRagdollMovementState(ReplicatedRagdollState);
+}
+
+void UIMGCharacterMovementComponent::ReceiveRagdollMovementState(const FIMGRagdollRepState& State)
+{
+	if (State.Revision == 0 || (ActiveRagdollState.Revision != 0 && State.Revision != ActiveRagdollState.Revision
+		&& static_cast<int16>(State.Revision - ActiveRagdollState.Revision) <= 0)) { return; }
+	if (State.Revision == ActiveRagdollState.Revision) { return; }
+	if (State.Session != ActiveRagdollState.Session || State.Phase != EIMGRagdollPhase::Simulating)
+	{
+		SubmittedRagdollInput = FIMGRagdollMovementInput();
+		RagdollInputSource.Reset();
+	}
+	if (State.Session != ActiveRagdollState.Session) { RagdollRecoveryAppliedSession = 0; }
+	ActiveRagdollState = State;
+	if (IsActive() && IsRegistered() && IsRagdollRecovering()) { RagdollMode.AcquireOrientation(*this); }
+	if ((!IsActive() || !IsRegistered()) || (State.Phase == EIMGRagdollPhase::Inactive && !IsRagdollMovementMode())) { RagdollMode.ReleaseOrientation(*this); }
+	if (!CharacterOwner || !CharacterOwner->bClientUpdating) { OnRagdollMovementUpdated.Broadcast(); }
+}
+
+void UIMGCharacterMovementComponent::UpdateRagdollMovementState()
+{
+	if (!HasValidData() || CharacterOwner->bClientUpdating || bRagdollTransitioning) { return; }
+	if (!IsRegistered() || !IsActive()) { return; }
+	if (CharacterOwner->HasAuthority() && ActiveRagdollState.Phase != EIMGRagdollPhase::Inactive)
+	{
+		if (MovementMode == MOVE_None || UpdatedComponent != CharacterOwner->GetCapsuleComponent() || UpdatedComponent->IsSimulatingPhysics())
+		{
+			FinishRagdollMovement(EIMGRagdollEndReason::Unavailable, true);
+		}
+		else if (IsRagdollRecovering() && MovementMode != MOVE_Walking) { FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false); }
+	}
+	if (!HasValidData()) { return; }
+	if (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy && MovementMode != MOVE_None)
+	{
+		if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating) { SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll)); }
+		else if (ActiveRagdollState.Revision != 0)
+		{
+			if (ActiveRagdollState.bHasRecovery && (IsRagdollMovementMode()
+				|| (IsRagdollRecovering() && RagdollRecoveryAppliedSession != ActiveRagdollState.Session && (IsWalking() || IsFalling()))))
+			{
+				const FVector Up = -GetGravityDirection();
+				const FVector Facing = FVector::VectorPlaneProject(FRotator(0.0f, FRotator::DecompressAxisFromShort(ActiveRagdollState.FacingYaw), 0.0f).Vector(), Up).GetSafeNormal();
+				const FQuat Rotation = Facing.IsNearlyZero() ? UpdatedComponent->GetComponentQuat() : FRotationMatrix::MakeFromXZ(Facing, Up).ToQuat();
+				ApplyRagdollRecoveryTransform(FTransform(Rotation, FRepMovement::RebaseOntoLocalOrigin(ActiveRagdollState.AnchorLocation, this)));
+			}
+			else if (IsRagdollMovementMode()) { SetMovementMode(MOVE_Falling); }
+		}
+	}
+}
+
+void UIMGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	UpdateRagdollMovementState();
+	if (IsBeingDestroyed() || !IsRegistered()) { return; }
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+}
+
+void UIMGCharacterMovementComponent::Deactivate()
+{
+	StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
+	Super::Deactivate();
+}
+
+void UIMGCharacterMovementComponent::OnUnregister()
+{
+	StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
+	if (IsRagdollMovementMode() && HasValidData()) { SetMovementMode(MOVE_Falling); }
+	RagdollMode.Exit(*this);
+	RagdollMode.ReleaseOrientation(*this);
+	SubmittedRagdollInput = FIMGRagdollMovementInput();
+	RagdollInputSource.Reset();
+	Super::OnUnregister();
+}
+
+void UIMGCharacterMovementComponent::OnRep_IsActive()
+{
+	Super::OnRep_IsActive();
+	if (!IsActive())
+	{
+		if (IsRagdollMovementMode() && HasValidData()) { SetMovementMode(MOVE_Falling); }
+		RagdollMode.Exit(*this);
+		RagdollMode.ReleaseOrientation(*this);
+		SubmittedRagdollInput = FIMGRagdollMovementInput();
+		RagdollInputSource.Reset();
+		OnRagdollMovementUpdated.Broadcast();
+	}
 }

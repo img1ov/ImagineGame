@@ -51,6 +51,7 @@ FVector GetTraversalMovementIntent(const AIMGCharacter& Character, EIMGTraversal
 UIMGTraversalComponent::UIMGTraversalComponent(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	SetIsReplicatedByDefault(true);
+	bAutoActivate = true;
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
@@ -309,8 +310,49 @@ const FIMGTraversalWarpWindow* UIMGTraversalComponent::FindTranslationWindow(
 void UIMGTraversalComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	InitializeBindings();
+}
+
+void UIMGTraversalComponent::OnRegister()
+{
+	Super::OnRegister();
+	if (HasBegunPlay()) { InitializeBindings(); }
+}
+
+void UIMGTraversalComponent::OnUnregister()
+{
+	ReleaseBindings();
+	Super::OnUnregister();
+}
+
+void UIMGTraversalComponent::Activate(bool bReset)
+{
+	Super::Activate(bReset);
+	if (HasBegunPlay()) { InitializeBindings(); }
+}
+
+void UIMGTraversalComponent::Deactivate()
+{
+	ReleaseBindings();
+	Super::Deactivate();
+}
+
+void UIMGTraversalComponent::OnRep_IsActive()
+{
+	Super::OnRep_IsActive();
+	if (IsActive() && HasBegunPlay()) { InitializeBindings(); }
+	else if (!IsActive()) { ReleaseBindings(); }
+}
+
+void UIMGTraversalComponent::InitializeBindings()
+{
+	if (bReleasingBindings || !IsRegistered() || !IsActive() || IsBeingDestroyed() || !GetOwner() || GetOwner()->IsActorBeingDestroyed()) { return; }
 	if (UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
 	{
+		if (BoundMotionWarpingComponent.IsValid() && BoundMotionWarpingComponent != Warping)
+		{
+			BoundMotionWarpingComponent->OnPreUpdate.RemoveDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
+		}
 		BoundMotionWarpingComponent = Warping;
 		Warping->OnPreUpdate.AddUniqueDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
 	}
@@ -318,12 +360,17 @@ void UIMGTraversalComponent::BeginPlay()
 	{
 		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())
 		{
+			if (BoundMovement.IsValid() && BoundMovement != Movement) { BoundMovement->RemoveTickPrerequisiteComponent(this); }
+			BoundMovement = Movement;
 			// Proxy collision restoration must precede CMC floor queries, even without a root-motion update.
 			Movement->AddTickPrerequisiteComponent(this);
 		}
 	}
 	if (UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
 	{
+		if (BoundPawnExtension == Extension) { return; }
+		if (BoundPawnExtension.IsValid()) { BoundPawnExtension->UnregisterAbilitySystemDelegates(this); }
+		BoundPawnExtension = Extension;
 		Extension->OnAbilitySystemUninitialized_Register(
 		    FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
 		Extension->OnAbilitySystemInitialized_RegisterAndCall(
@@ -374,6 +421,7 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets)
 {
+	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
 	ActiveState = FIMGTraversalRepState();
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
 	ActiveState.Action = Selection.Action;
@@ -435,6 +483,7 @@ void UIMGTraversalComponent::EndTraversal()
 
 void UIMGTraversalComponent::OnRep_TraversalState()
 {
+	if (bReleasingBindings || !HasBegunPlay() || !IsRegistered() || !IsActive()) { return; }
 	if (!ReplicatedState.bActive && ShouldDeferSimulatedEnd())
 	{
 		if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
@@ -539,6 +588,7 @@ void UIMGTraversalComponent::HandleMotionWarpingPreUpdate(UMotionWarpingComponen
 
 void UIMGTraversalComponent::HandleAbilitySystemInitialized()
 {
+	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
 	HandleAbilitySystemUninitialized();
 	if (!GetOwner() || GetOwner()->GetLocalRole() != ROLE_SimulatedProxy)
 	{
@@ -684,7 +734,7 @@ void UIMGTraversalComponent::RefreshWarpTargets()
 
 void UIMGTraversalComponent::RemoveWarpTargets()
 {
-	if (UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
+	if (UMotionWarpingComponent* Warping = BoundMotionWarpingComponent.Get())
 	{
 		for (const FIMGTraversalWarpTarget& Target : ActiveState.WarpTargets)
 		{
@@ -701,6 +751,7 @@ void UIMGTraversalComponent::TickComponent(
     float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
 	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy && ActiveState.bActive &&
 	    !ReplicatedState.bActive && !ShouldDeferSimulatedEnd())
 	{
@@ -719,25 +770,44 @@ void UIMGTraversalComponent::TickComponent(
 
 void UIMGTraversalComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ReleaseBindings();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UIMGTraversalComponent::ReleaseBindings()
+{
+	if (bReleasingBindings) { return; }
+	TGuardValue<bool> Releasing(bReleasingBindings, true);
+	const bool bWasActive = ActiveState.bActive;
+	const TWeakObjectPtr<UIMGCharacterMovementComponent> ExecutionMovement = BoundMovement;
+	SetComponentTickEnabled(false);
 	if (UMotionWarpingComponent* Warping = BoundMotionWarpingComponent.Get())
 	{
 		Warping->OnPreUpdate.RemoveDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
 	}
-	BoundMotionWarpingComponent.Reset();
-	if (UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
+	if (UIMGPawnExtensionComponent* Extension = BoundPawnExtension.Get())
 	{
 		Extension->UnregisterAbilitySystemDelegates(this);
 	}
+	BoundPawnExtension.Reset();
 	HandleAbilitySystemUninitialized();
-	if (const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner()))
+	if (UIMGCharacterMovementComponent* Movement = BoundMovement.Get())
 	{
-		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())
+		Movement->RemoveTickPrerequisiteComponent(this);
+	}
+	BoundMovement.Reset();
+	EndTraversal();
+	BoundMotionWarpingComponent.Reset();
+	if (bWasActive && ExecutionMovement.IsValid() && GetOwner() && GetOwner()->GetLocalRole() != ROLE_SimulatedProxy
+		&& !GetOwner()->IsActorBeingDestroyed() && ExecutionMovement->IsFlying() && ExecutionMovement->UpdatedComponent)
+	{
+		FFindFloorResult Floor;
+		ExecutionMovement->FindFloor(ExecutionMovement->UpdatedComponent->GetComponentLocation(), Floor, false);
+		if (ExecutionMovement.IsValid() && ExecutionMovement->IsFlying())
 		{
-			Movement->RemoveTickPrerequisiteComponent(this);
+			ExecutionMovement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
 		}
 	}
-	EndTraversal();
-	Super::EndPlay(EndPlayReason);
 }
 
 void UIMGTraversalComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

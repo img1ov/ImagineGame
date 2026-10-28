@@ -3,6 +3,8 @@
 
 #include "NativeGameplayTags.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/CharacterMovementReplication.h"
+#include "Character/Ragdoll/IMGCustomMovementMode_Ragdoll.h"
 
 #include "IMGCharacterMovementComponent.generated.h"
 
@@ -11,7 +13,37 @@
 class UObject;
 struct FFrame;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
+
 IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_MovementStopped);
+
+UENUM(BlueprintType)
+enum class EIMGCustomMovementMode : uint8
+{
+	None,
+	Ragdoll
+};
+
+struct IMAGINEGAME_API FIMGCharacterNetworkMoveData : FCharacterNetworkMoveData
+{
+	FIMGRagdollMovementInput RagdollInput;
+	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType) override;
+	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType) override;
+};
+
+struct IMAGINEGAME_API FIMGCharacterNetworkMoveDataContainer : FCharacterNetworkMoveDataContainer
+{
+	FIMGCharacterNetworkMoveDataContainer();
+	FIMGCharacterNetworkMoveData Moves[3];
+};
+
+struct IMAGINEGAME_API FIMGCharacterMoveResponseDataContainer : FCharacterMoveResponseDataContainer
+{
+	bool bHasRagdollState = false;
+	FIMGRagdollRepState RagdollState;
+	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
+	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
+};
 
 UENUM(BlueprintType)
 enum class EIMGStance : uint8
@@ -98,6 +130,7 @@ public:
 	
 	//~UMovementComponent interface
 	UE_API virtual void SimulateMovement(float DeltaTime) override;
+	UE_API virtual void SimulatedTick(float DeltaSeconds) override;
 	UE_API virtual FRotator GetDeltaRotation(float DeltaTime) const override;
 	UE_API virtual FRotator ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const override;
 	
@@ -108,6 +141,48 @@ public:
 	UE_API virtual void UpdateCharacterStateAfterMovement(float DeltaSeconds) override;
 	UE_API virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	UE_API virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+	UE_API virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
+	UE_API virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+	UE_API virtual void PhysicsRotation(float DeltaTime) override;
+	UE_API virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
+	UE_API virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
+
+	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement")
+	UE_API bool IsRagdollMovementMode() const;
+	UE_API bool HasRagdollNetworkMovementMode() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool StartRagdollMovement(const FIMGRagdollSettings& Settings, FVector AdditionalVelocity = FVector::ZeroVector);
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool RecoverRagdollMovement(int32 ExpectedSession);
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API void StopRagdollMovement(EIMGRagdollEndReason Reason = EIMGRagdollEndReason::Interrupted, int32 ExpectedSession = 0);
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API void CompleteRagdollRecovery(int32 ExpectedSession, bool bInterrupted = false);
+	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement|Ragdoll", meta = (DefaultToSelf = "InputSource"))
+	UE_API bool SubmitRagdollFollowTarget(const FTransform& Target, bool bFaceUp, UObject* InputSource);
+	UE_API void ClearRagdollFollowTarget(const UObject* InputSource);
+	UE_API bool IsRagdollRecovering() const;
+	UE_API bool IsRagdollRecoveryReady() const;
+	UE_API const FIMGRagdollRepState& GetRagdollMovementState() const;
+	UE_API void ReceiveRagdollMovementState(const FIMGRagdollRepState& State);
+	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
+	EIMGRagdollPhase GetRagdollMovementPhase() const { return ActiveRagdollState.Phase; }
+	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
+	int32 GetRagdollMovementSession() const { return ActiveRagdollState.Session; }
+	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
+	FVector GetRagdollInitialVelocity() const { return ActiveRagdollState.InitialVelocity; }
+	UPROPERTY(BlueprintAssignable, Category = "IMG|CharacterMovement|Ragdoll")
+	FIMGRagdollMovementEvent OnRagdollMovementUpdated;
+	UE_API FIMGRagdollMovementInput CaptureRagdollInput() const;
+	UE_API const FIMGRagdollMovementInput& GetRagdollMovementInput() const;
+	UE_API bool FindRagdollRecoveryTransform(FTransform& OutTransform) const;
+	UE_API void ApplyRagdollRecoveryTransform(const FTransform& Transform);
+	UE_API virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	UE_API virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	UE_API virtual void Deactivate() override;
+	UE_API virtual void OnRep_IsActive() override;
+	UE_API virtual void OnUnregister() override;
 
 	UE_API bool RequestStance(EIMGStance NewStance);
 	UE_API EIMGStance GetDesiredStance() const;
@@ -153,6 +228,24 @@ protected:
 
 	friend class FSavedMove_IMG;
 	friend struct FIMGStanceStateMachine;
+	friend class FIMGCustomMovementMode_Ragdoll;
+
+	FIMGCustomMovementMode_Ragdoll RagdollMode;
+	FIMGCharacterNetworkMoveDataContainer IMGNetworkMoveData;
+	FIMGCharacterMoveResponseDataContainer IMGMoveResponseData;
+	UPROPERTY(ReplicatedUsing = OnRep_RagdollMovementState)
+	FIMGRagdollRepState ReplicatedRagdollState;
+	UPROPERTY(Transient)
+	FIMGRagdollRepState ActiveRagdollState;
+	FIMGRagdollMovementInput SubmittedRagdollInput;
+	TWeakObjectPtr<UObject> RagdollInputSource;
+	bool bRagdollTransitioning = false;
+	uint16 RagdollRecoveryAppliedSession = 0;
+	UFUNCTION()
+	void OnRep_RagdollMovementState();
+	void PublishRagdollMovementState();
+	void FinishRagdollMovement(EIMGRagdollEndReason Reason, bool bLeaveMode);
+	void UpdateRagdollMovementState();
 	
 	// Cached ground info for the character.  Do not access this directly!  It's only updated when accessed via GetGroundInfo().
 	FIMGCharacterGroundInfo CachedGroundInfo;

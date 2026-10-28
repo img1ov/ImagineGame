@@ -55,6 +55,7 @@ namespace IMGGameplayTags
 	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Flying);
 
 	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Custom);
+	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Custom_Ragdoll);
 
 	// These are mappings from MovementMode enums to GameplayTags associated with those enums (below)
 	IMAGINEGAME_API extern const TMap<uint8, FGameplayTag> MovementModeTagMap;

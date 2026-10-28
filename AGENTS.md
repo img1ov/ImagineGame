@@ -62,6 +62,20 @@
 - 业务事件为 OnLocomotionReady、OnLocomotionAttributeChanged、OnLocomotionUnavailable；统一更新事件继承自基类，C++ 覆写 UpdateLocomotionPreCMC_Implementation。GetIMGCharacter、GetIMGCharacterMovementComponent、GetIMGAbilitySystemComponent 返回具体 IMG 类型；IsMovementPrerequisiteReady 查询调度，IsLocomotionReady 查询 IMG 业务门槛，不能混用。Unavailable 时 ASC/Set 已清空，CMC 在对象有效时仍可用于清理。
 - 蓝图保留监听 GA 意图 Tag、读取属性及在 PreCMC 计算并写入最终 CMC 参数的职责；不把 Tag 规则搬入 C++，不重复维护意图或速度。Foley/OnLanded 与 ABP 转发不属于该组件，CMC 不增加 Locomotion 专用委托或 Tick 逻辑。
 
+### Ragdoll：可插拔调度与独立移动
+
+- 源码：`Source/ImagineGame/{Public,Private}/Character/Ragdoll`，属于 ImagineGame 模块，仅保留 `IMGRagdollComponent`、`IMGCustomMovementMode_Ragdoll`、`IMGRagdollTypes` 三组文件。GASP 的 Mode 移到原生 Mode，角色里的调度收进可插拔组件；不提供表现组件或表现查询 Interface，不操作 Mesh 物理、碰撞、附着、姿势快照、AnimInstance 或蒙太奇。
+- AIMGCharacter 不默认创建或持有 RagdollComponent；IMGCMC 和 Mode 不包含、查找或引用该组件。Component 负责进入/恢复/退出请求、跟随目标采样、事件和注册/停用/销毁清理；IMGCMC 负责装配分派、单一移动快照及 CMC 网络接入；Mode 负责实际胶囊跟随、地面抬升、位移/距离限制、移动碰撞与 Controller 朝向接管、恢复净空和安全落位。胶囊不模拟物理。
+- Component 的权威入口为 `StartRagdoll` → `BeginRecovery(ExpectedSession)` → `CompleteRecovery(ExpectedSession)`，取消使用 `AbortRagdoll(ExpectedSession)`。事件 OnRagdollStarted / OnRecoveryStarted / OnRagdollEnded 携带 Session，晚到回调须传原会话。BeginRecovery 失败不启动恢复；成功后退出 Custom Mode 并锁定普通移动输入、跳跃、主动姿态切换和 Controller 朝向，允许正常 CMC Root Motion；完成或中断由调用者显式通知，不设自动恢复计时，不选择/复制/播放动画。
+- 无协调组件时，权威系统可直接调用 IMGCMC.StartRagdollMovement / RecoverRagdollMovement(Session) / CompleteRagdollRecovery(Session) / StopRagdollMovement，并由移动所有者持续 SubmitRagdollFollowTarget（世界空间 Transform、正反面和有效 InputSource）。CMC 的 Phase/Session/Revision 仅表示移动配置、跟随会话和恢复输入锁，不承担 GA 业务或动画状态机；可监听 OnRagdollMovementUpdated。
+- Component 默认在 PostPhysics、CMC 和缓存 Mesh 之后只读采样已模拟物理的 pelvis/spine_05，缺少有效物理骨骼则提供当前胶囊目标。可覆写 BlueprintNativeEvent `GetRagdollFollowTarget` 提供自定义目标，返回 false 清除本组件输入。PelvisBone / OrientationBone / FaceUpAxis 由组件复制；移动参数随 CMC 同一快照复制，服务端动态配置不依赖客户端 CDO 一致。
+- 服务端动态创建并注册可复制组件，客户端等待复制，避免重复添加。FindRagdollComponent 返回已注册、活动且已绑定 CMC 的协调器；同一角色只绑定一个。晚添加/重新激活/注册从 CMC 当前快照补齐，事件按会话去重。停用、注销、销毁退订并移除精确缓存的 Tick 依赖、清除自己的输入源，只终止由自己发起且仍匹配的会话；其他调用者发起的移动不因组件移除而终止。组件没有第二份权威复制状态或独立请求 RPC。
+- 开始、恢复和完成目前均由服务端批准；自主代理在批准后预测胶囊移动。量化后的目标/朝向/Session 进入 SavedMove 与 Packed MoveData，采样不合并，重放只消费历史输入；坐标遵循 UE 零原点约定。单一移动快照通过 CMC 属性和 MoveResponse 到达各端，Revision 拒绝重复/旧版本，服务端复核 Session、有限数值、目标距离、每步位移速度和恢复支撑/完整胶囊净空；不回滚或复制逐骨骼物理。
+- 模拟代理只消费 CMC 权威位置、速度、朝向和模式，不采样本机身体反向驱动胶囊。生命周期快照与移动模式可以乱序：恢复通知等待 Walking，结束通知等待胶囊退出 Ragdoll；完成快照保留批准的恢复落位，允许恢复/完成合并复制。Character 的 OnRep_ReplicatedMovement 和 CMC 的 SimulatedTick 仅在 Ragdoll 胶囊通道接管，外部 Root Motion 不替代此通道；退出后恢复正常 CMC 路径。Movement.Mode.Custom.Ragdoll 复用角色 Tag 映射。
+- 静态收尾覆盖配置消费、进入/重复调用、权威/自主/模拟代理、SavedMove 重放、快照乱序与晚装配、恢复失败、显式完成/取消、死亡 MOVE_None、外部模式切换及组件/CMC 停用注销销毁。恢复清掉寻路 RequestedVelocity 并限制普通移动速度，事件在 CMC/角色模式更新后发出；回调重入后复核对象、会话及模式。MOVE_None 保留死亡禁碰撞，Traversal 清理不覆盖后来的 Ragdoll/None。无 Controller 仍遵循原生 bRunPhysicsWithNoController；AI/无自主代理角色需要服务端物理或自定义目标。
+- 待做：Ragdoll GA 的业务校验、Commit/取消、调用上述组件接口，以及 PhysicsControlComponent / PhysicsControlAsset 的启动、结束与表现接入；起身由 Motion Matching/Pose Matching 选 Montage，再用 GAS 播放/复制并按原 Session 通知完成，失败/能力取消/ASC 解绑须结束对应会话。进入/恢复的 GAS 预测与失败回滚、模拟代理身体整体纠偏及动画接口亦待 GA/表现接入验证。本轮不新增 GA，不实现这些业务或表现；车辆撞击、拖拽及其网络状态另行设计。
+- 不新增 Mover、PhysicsControl、Chooser/PoseSearch 或 GAS 构建依赖。已核对 UE 5.8 本地 CMC/Character/ActorComponent 接口与源码；未编译、未运行 PIE/测试/网络模拟，未调查 Content，静态收尾不等于实机网络或表现验证。
+
 ### Traversal：目录与职责
 
 - 源码：`Source/ImagineGame/{Public,Private}/Character/Traversal`，仍属 ImagineGame 模块。Detector 无状态同步检测几何；Component 管配置、Warp Target、临时碰撞忽略与代理快照；GA 管检测→选择→校验/Commit→播放→退出；Types/TargetData 分别定义数据与客户端请求，Debug 留在 Private 同目录。
@@ -78,6 +92,7 @@
 - 正常完成、中断、取消、死亡、目标失效与ASC解绑沿GA/Component既有出口幂等清理Target、碰撞忽略、委托及计时器；正常BlendOut不提前结束，退出在恢复碰撞后按脚下支撑切Walking/Falling，不覆盖后续非Flying移动模式。PawnExt解绑先取消能力、清输入/Cue，再清Avatar并广播生命周期。
 - 模拟代理消费COND_SkipOwner快照、GAS蒙太奇与CMC，按Montage/PlayInstanceId等待引用、Target、碰撞忽略和Flying；结束快照先到时保留本机实例至退出（含BlendOut），同实例引用补齐不反复拆建。既有Target恢复历史来自权威快照；权威非Flying到达后须先恢复碰撞，让CMC查到支撑。
 - 保持来源组件→Traversal→CMC顺序，组件仅活动时Tick，MotionWarping.OnPreUpdate在实际Warp采样前刷新Target；默认0.05秒复核载体、500 cm/s和85 deg/s运动上限、候选时效0.25秒。局部Target跟随不等于完整支持动态平台；BasedMovement/动态Bone、输入历史/退出延迟、异步检测、悬挂/Shimmy/梯子另行设计，不直接Attach绕过CMC预测。
+- 组件BeginPlay/激活/重新注册建立MotionWarping、PawnExt/ASC与精确缓存的CMC依赖；停用/注销/EndPlay释放绑定、Target及碰撞忽略，清理期间IsTraversalAvailable=false，非活动组件的晚到快照不重启执行；仅在本组件仍有活动Traversal且CMC仍Flying时恢复移动。动画拒绝缺少Root Motion或非正/非有限RateScale，并校验检测通道。
 - 本次速度策略收尾覆盖配置消费、Manual/Automatic/AI、本地预测、服务端重检、选择/Commit前后复核及正常/失败/取消/死亡/解绑清理；行为修改位于InitiationSettings/CanInitiate，核心搜索、分组、手点、深度/净空及落点算法未改，不新增状态、RPC、Tick或构建依赖。未编译、未测试、未调查Content；外部CHT/蓝图可自行按Speed筛选，字段删除的资产兼容及实机网络表现仍需运行确认。
 
 ### Traversal：调试与参考定位

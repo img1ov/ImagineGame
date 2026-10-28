@@ -88,7 +88,7 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(ActorInfo->AvatarActor.Get());
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(Character);
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
-	return Component && Component->IsRegistered() && !Component->IsTraversalActive() &&
+	return Component && Component->IsTraversalAvailable() && !Component->IsTraversalActive() &&
 	    IsValid(Component->GetMotionWarpingComponent()) && Component->GetMotionWarpingComponent()->IsRegistered() &&
 	    Character->GetIMGMovementComponent() && (!Health || !Health->IsDeadOrDying());
 }
@@ -436,7 +436,7 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 		    Selection.StartTime, Selection.PlayRate, *Reason), bRemoteRequest);
 		return false;
 	};
-	if (!Traversal || !Traversal->IsRegistered() || Traversal->IsTraversalActive() ||
+	if (!Traversal || !Traversal->IsTraversalAvailable() || Traversal->IsTraversalActive() ||
 	    !IsValid(Traversal->GetMotionWarpingComponent()) || !Traversal->GetMotionWarpingComponent()->IsRegistered() ||
 	    !Movement || Character->GetStance() != EIMGStance::Stand ||
 	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
@@ -510,7 +510,9 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	}
 	if (!IsValid(Selection.Montage) || !FMath::IsFinite(Selection.StartTime) || Selection.StartTime < 0.f ||
 	    !(Selection.StartTime < Selection.Montage->GetPlayLength()) || !FMath::IsFinite(Selection.PlayRate) ||
-	    Selection.PlayRate < Settings->MinPlayRate || Selection.PlayRate > Settings->MaxPlayRate)
+	    Selection.PlayRate < Settings->MinPlayRate || Selection.PlayRate > Settings->MaxPlayRate ||
+	    !FMath::IsFinite(Selection.Montage->RateScale) || Selection.Montage->RateScale <= 0.f ||
+	    !Selection.Montage->HasRootMotion())
 	{
 		return Reject(FString::Printf(TEXT("Invalid montage/timing: PlayRateMin=%.3f Max=%.3f"), Settings->MinPlayRate, Settings->MaxPlayRate));
 	}
@@ -874,7 +876,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		K2_EndAbility();
 		return;
 	}
-	if (!IsValid(Component) || !Component->IsRegistered() || !World || !IsValid(Character) ||
+	if (!IsValid(Component) || !Component->IsTraversalAvailable() || !World || !IsValid(Character) ||
 	    Component->GetOwner() != Character || !IsValid(Component->GetMotionWarpingComponent()) ||
 	    !Component->GetMotionWarpingComponent()->IsRegistered() ||
 	    !Character->GetIMGMovementComponent() || !Character->GetIMGMovementComponent()->IsFlying() ||

@@ -9,6 +9,8 @@
 class UMotionWarpingComponent;
 class UAnimMontage;
 class UIMGAbilitySystemComponent;
+class UIMGPawnExtensionComponent;
+class UIMGCharacterMovementComponent;
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -52,10 +54,17 @@ public:
 	{
 		return ActiveState.bActive;
 	}
+	bool IsTraversalAvailable() const
+	{
+		return IsRegistered() && IsActive() && !bReleasingBindings && !IsBeingDestroyed();
+	}
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void TickComponent(
 	    float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void Activate(bool bReset = false) override;
+	virtual void Deactivate() override;
+	virtual void OnRep_IsActive() override;
 
 protected:
 	/** 几何搜索与安全限制；Automatic 专属参数由本次请求来源选择，组件不自行触发 GA。 */
@@ -100,6 +109,8 @@ protected:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
 
 private:
 	UFUNCTION()
@@ -109,6 +120,8 @@ private:
 	void HandleMotionWarpingPreUpdate(UMotionWarpingComponent* Warping);
 
 	void RefreshWarpTargets();
+	void InitializeBindings();
+	void ReleaseBindings();
 	void RemoveWarpTargets();
 	void RefreshMovementIgnores();
 	void RestoreMovementIgnores();
@@ -131,4 +144,7 @@ private:
 	TSet<TWeakObjectPtr<UPrimitiveComponent>> TargetTickPrerequisites;
 
 	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundAbilitySystemComponent;
+	TWeakObjectPtr<UIMGPawnExtensionComponent> BoundPawnExtension;
+	TWeakObjectPtr<UIMGCharacterMovementComponent> BoundMovement;
+	bool bReleasingBindings = false;
 };
