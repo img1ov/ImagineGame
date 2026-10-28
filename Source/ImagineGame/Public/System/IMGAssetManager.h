@@ -89,7 +89,7 @@ protected:
 	UPROPERTY(Transient)
 	TMap<TObjectPtr<UClass>, TObjectPtr<UPrimaryDataAsset>> GameDataMap;
 
-	// Pawn data used when spawning player pawns if there isn't one set on the player state.
+	// Last fallback after the PlayerState, bot selection and experience default.
 	UPROPERTY(Config)
 	TSoftObjectPtr<UIMGPawnData> DefaultPawnData;
 	

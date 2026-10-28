@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "Blueprint/UserWidgetPool.h"
@@ -7,6 +5,8 @@
 #include "GameSettingDetailView.generated.h"
 
 #define UE_API GAMESETTINGS_API
+
+enum class EGameSettingChangeReason : uint8;
 
 class UCommonRichTextBlock;
 class UCommonTextBlock;
@@ -35,6 +35,7 @@ public:
 
 protected:
 	UE_API virtual void NativeConstruct() override;
+	UE_API virtual void NativeDestruct() override;
 	UE_API virtual void NativeOnInitialized() override;
 
 	UE_API void CreateDetailsExtension(UGameSetting* InSetting, TSubclassOf<UGameSettingDetailExtension> ExtensionClass);
@@ -50,6 +51,10 @@ protected:
 	TObjectPtr<UGameSetting> CurrentSetting;
 
 	TSharedPtr<FStreamableHandle> StreamingHandle;
+
+private:
+	void RefreshSettingDetails(UGameSetting* InSetting);
+	void HandleCurrentSettingChanged(UGameSetting* InSetting, EGameSettingChangeReason Reason);
 
 private:	// Bound Widgets
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional, BlueprintProtected = true, AllowPrivateAccess = true))

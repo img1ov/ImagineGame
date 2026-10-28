@@ -3,6 +3,7 @@
 
 #include "ModularCharacter.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayCueInterface.h"
 #include "GameplayTagAssetInterface.h"
 #include "Teams/IMGTeamAgentInterface.h"
 #include "Character/IMGCharacterMovementComponent.h"
@@ -89,7 +90,7 @@ struct TStructOpsTypeTraits<FSharedRepMovement> : public TStructOpsTypeTraitsBas
  *	New behavior should be added via pawn components when possible.
  */
 UCLASS(MinimalAPI, Config = Game, Meta = (ShortTooltip = "The base character pawn class used by this project."))
-class AIMGCharacter : public AModularCharacter, public IAbilitySystemInterface, public IGameplayTagAssetInterface, public IIMGTeamAgentInterface
+class AIMGCharacter : public AModularCharacter, public IAbilitySystemInterface, public IGameplayCueInterface, public IGameplayTagAssetInterface, public IIMGTeamAgentInterface
 {
 	GENERATED_BODY()
 	friend class UIMGCharacterMovementComponent;

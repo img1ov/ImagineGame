@@ -224,7 +224,7 @@ void UIMGExperienceManagerComponent::StartExperienceLoad()
 	//@TODO: Centralize this client/server handling in IMGAssetManager.
 	const ENetMode OwnerNetMode = GetOwner()->GetNetMode();
 	const bool bLoadClient = GIsEditor || (OwnerNetMode != NM_DedicatedServer);
-	const bool bLoadServer = GIsEditor || (OwnerNetMode == NM_Client);
+	const bool bLoadServer = GIsEditor || (OwnerNetMode != NM_Client);
 	if (bLoadClient)
 	{
 		BundlesToLoad.Add(UGameFeaturesSubsystemSettings::LoadStateClient);
@@ -301,7 +301,7 @@ void UIMGExperienceManagerComponent::OnExperienceLoadComplete()
 			FString PluginURL;
 			if (UGameFeaturesSubsystem::Get().GetPluginURLByName(PluginName, /*out*/ PluginURL))
 			{
-				This->GameFeaturePluginURLs.Add(PluginURL);
+				This->GameFeaturePluginURLs.AddUnique(PluginURL);
 			}
 			else
 			{

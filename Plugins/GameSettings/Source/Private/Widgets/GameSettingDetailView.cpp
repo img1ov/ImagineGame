@@ -1,6 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-
 #include "Widgets/GameSettingDetailView.h"
 
 #include "CommonRichTextBlock.h"
@@ -27,6 +24,12 @@ void UGameSettingDetailView::ReleaseSlateResources(bool bReleaseChildren)
 {
 	Super::ReleaseSlateResources(bReleaseChildren);
 
+	if (StreamingHandle.IsValid())
+	{
+		StreamingHandle->CancelHandle();
+		StreamingHandle.Reset();
+	}
+
 	ExtensionWidgetPool.ReleaseAllSlateResources();
 }
 
@@ -43,6 +46,48 @@ void UGameSettingDetailView::NativeOnInitialized()
 void UGameSettingDetailView::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	RefreshSettingDetails(CurrentSetting);
+}
+
+void UGameSettingDetailView::NativeDestruct()
+{
+	Super::NativeDestruct();
+
+	if (CurrentSetting)
+	{
+		CurrentSetting->OnSettingChangedEvent.RemoveAll(this);
+	}
+
+	if (StreamingHandle.IsValid())
+	{
+		StreamingHandle->CancelHandle();
+		StreamingHandle.Reset();
+	}
+}
+
+void UGameSettingDetailView::HandleCurrentSettingChanged(UGameSetting* InSetting, EGameSettingChangeReason)
+{
+	if (!InSetting || InSetting != CurrentSetting)
+	{
+		return;
+	}
+
+	if (RichText_Description)
+	{
+		RichText_Description->SetText(InSetting->GetDescriptionRichText());
+	}
+
+	if (RichText_DynamicDetails)
+	{
+		const FText DynamicDetails = InSetting->GetDynamicDetails();
+		if (InSetting != CurrentSetting)
+		{
+			return;
+		}
+		RichText_DynamicDetails->SetText(DynamicDetails);
+		RichText_DynamicDetails->SetVisibility(DynamicDetails.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
 }
 
 void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
@@ -53,7 +98,28 @@ void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
 		return;
 	}
 
+	RefreshSettingDetails(InSetting);
+}
+
+void UGameSettingDetailView::RefreshSettingDetails(UGameSetting* InSetting)
+{
+	if (StreamingHandle.IsValid())
+	{
+		StreamingHandle->CancelHandle();
+		StreamingHandle.Reset();
+	}
+
+	if (CurrentSetting)
+	{
+		CurrentSetting->OnSettingChangedEvent.RemoveAll(this);
+	}
+
 	CurrentSetting = InSetting;
+
+	if (CurrentSetting)
+	{
+		CurrentSetting->OnSettingChangedEvent.AddUObject(this, &ThisClass::HandleCurrentSettingChanged);
+	}
 
 	if (Text_SettingName)
 	{
@@ -68,6 +134,10 @@ void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
 	if (RichText_DynamicDetails)
 	{
 		const FText DynamicDetails = InSetting ? InSetting->GetDynamicDetails() : FText::GetEmpty();
+		if (InSetting != CurrentSetting)
+		{
+			return;
+		}
 		RichText_DynamicDetails->SetText(DynamicDetails);
 		RichText_DynamicDetails->SetVisibility(DynamicDetails.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 	}
@@ -133,11 +203,6 @@ void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
 				ExtensionClassPtrs = VisualData->GatherDetailExtensions(InSetting);
 			}
 			
-			if (StreamingHandle.IsValid())
-			{
-				StreamingHandle->CancelHandle();
-			}
-
 			bool bEverythingAlreadyLoaded = true;
 
 			TArray<FSoftObjectPath> ExtensionPaths;
@@ -164,6 +229,11 @@ void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
 				StreamingHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
 					MoveTemp(ExtensionPaths),
 					FStreamableDelegate::CreateWeakLambda(this, [this, SettingPtr, ExtensionClassPtrs] {
+						if (!SettingPtr.IsValid() || SettingPtr.Get() != CurrentSetting)
+						{
+							return;
+						}
+
 						for (TSoftClassPtr<UGameSettingDetailExtension> SoftClassPtr : ExtensionClassPtrs)
 						{
 							CreateDetailsExtension(SettingPtr.Get(), SoftClassPtr.Get());
@@ -179,11 +249,16 @@ void UGameSettingDetailView::FillSettingDetails(UGameSetting* InSetting)
 
 void UGameSettingDetailView::CreateDetailsExtension(UGameSetting* InSetting, TSubclassOf<UGameSettingDetailExtension> ExtensionClass)
 {
-	if (InSetting && ExtensionClass)
+	if (IsValid(InSetting) && InSetting == CurrentSetting && Box_DetailsExtension && ExtensionClass)
 	{
 		if (UGameSettingDetailExtension* Extension = ExtensionWidgetPool.GetOrCreateInstance(ExtensionClass))
 		{
 			Extension->SetSetting(InSetting);
+			if (!IsValid(InSetting) || InSetting != CurrentSetting || !Box_DetailsExtension)
+			{
+				ExtensionWidgetPool.Release(Extension, true);
+				return;
+			}
 			UVerticalBoxSlot* ExtensionSlot = Box_DetailsExtension->AddChildToVerticalBox(Extension);
 			ExtensionSlot->SetHorizontalAlignment(HAlign_Fill);
 		}

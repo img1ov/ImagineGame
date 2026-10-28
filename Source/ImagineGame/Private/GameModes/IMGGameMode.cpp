@@ -23,6 +23,10 @@
 #include "Player/IMGPlayerState.h"
 #include "System/IMGAssetManager.h"
 
+#if WITH_EDITOR
+#include "Development/IMGDeveloperSettings.h"
+#endif
+
 class UIMGPlayerSpawningManagerComponent;
 
 AIMGGameMode::AIMGGameMode(const FObjectInitializer& ObjectInitializer)
@@ -66,7 +70,7 @@ const UIMGPawnData* AIMGGameMode::GetPawnDataForController(const AController* In
 				return PawnData;
 			}
 
-			UE_LOG(LogIMGExperience, Warning, TEXT("Bot controller [%s] returned no PawnData from GetPawnData; falling back to experience [%s] DefaultPawnData [%s]."),
+			UE_LOG(LogIMGExperience, Warning, TEXT("Bot controller [%s] returned no PawnData from GetPawnData; falling back to experience [%s] DefaultPawnData [%s], then the asset manager default."),
 				*GetPathNameSafe(BotController), *GetNameSafe(Experience), *GetNameSafe(Experience->DefaultPawnData));
 		}
 
@@ -74,6 +78,8 @@ const UIMGPawnData* AIMGGameMode::GetPawnDataForController(const AController* In
 		{
 			return Experience->DefaultPawnData;
 		}
+
+		return UIMGAssetManager::Get().GetDefaultPawnData();
 	}
 
 	// Experience not loaded yet, so there is no pawn data to be had
@@ -110,11 +116,13 @@ void AIMGGameMode::HandleMatchAssignmentIfNotExpectingOne()
 		ExperienceIdSource = TEXT("OptionsString");
 	}
 
-	/*if (!ExperienceId.IsValid() && World->IsPlayInEditor())
+#if WITH_EDITOR
+	if (!ExperienceId.IsValid() && World->IsPlayInEditor())
 	{
 		ExperienceId = GetDefault<UIMGDeveloperSettings>()->ExperienceOverride;
 		ExperienceIdSource = TEXT("DeveloperSettings");
-	}*/
+	}
+#endif
 
 	// see if the command line wants to set the experience
 	if (!ExperienceId.IsValid())

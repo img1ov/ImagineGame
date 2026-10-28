@@ -4,6 +4,8 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "AbilitySystem/IMGAbilitySystemComponent.h"
+#include "Character/IMGPawnExtensionComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
 #include "GameModes/IMGGameMode.h"
@@ -177,7 +179,15 @@ void AIMGPlayerBotController::OnUnPossess()
 		{
 			if (ASC->GetAvatarActor() == PawnBeingUnpossessed)
 			{
-				ASC->SetAvatarActor(nullptr);
+				UIMGPawnExtensionComponent* PawnExtension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(PawnBeingUnpossessed);
+				if (PawnExtension && PawnExtension->GetIMGAbilitySystemComponent() == ASC)
+				{
+					PawnExtension->UninitializeAbilitySystem();
+				}
+				else
+				{
+					ASC->SetAvatarActor(nullptr);
+				}
 			}
 		}
 	}

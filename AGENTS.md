@@ -19,6 +19,16 @@
 - `Source/ImagineGame` 是共享运行时，`Source/ImagineEditor` 是编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则，依赖 ImagineGame。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展现有核心职责，玩法规则放对应 Game Feature。
 
+### Lyra 核心源码移植状态
+- 参考工程：`D:/Application/UnrealProjects/LyraStarterGame`。2026-10-28 对照 Source、项目插件 Source 与构建源码，补齐已确认的核心功能差异；保留本工程移动、Bot、Traversal 等扩展。文件对应不代表行为完全一致；本次未编译、未运行测试、未调查 Content。
+- GameSettings 的 `UGameSettingDetailView` 已补 `HandleCurrentSettingChanged`，消费当前 Setting 的变更事件以刷新描述及动态详情；切换/清空 Setting、NativeDestruct 时退订，NativeConstruct 保留当前选中项并重建详情/扩展。切换或清空、关闭、释放 Slate 均取消并清空扩展异步加载句柄；完成回调与扩展装配复核当前 Setting，避免旧请求或蓝图回调重入回填过期控件。DLC Registry 的定时 OnSettingChangedEvent 可沿此路径更新详情，不另建轮询。
+- `UIMGDeveloperSettings.ExperienceOverride` 已接回 GameMode 的 WITH_EDITOR/PIE 分支，优先级为 URL Options → PIE 开发设置 → 命令行 → World Settings → 专服/默认 Experience。PawnData 在 Experience 就绪后按 PlayerState 已认领 → Bot 同步选择 → Experience.DefaultPawnData → AssetManager.DefaultPawnData 查询；全局回退仍走既有同步加载/保活接口，缺失时返回空并记录日志，不新增授予或复制入口。
+- `AIMGCharacter` 已恢复 `IGameplayCueInterface`，支持角色蓝图直接处理 Cue 事件；独立 Notify 继续由 UE 5.8 GameplayCueManager 的全局 CueSet 分发。玩家/Bot Controller.OnUnPossess 在 ASC 仍以旧 Pawn 为 Avatar 且与 PawnExt 绑定一致时，先由 PawnExt::UninitializeAbilitySystem 取消能力、清输入/Cue 并通知生命周期监听者，再清 Avatar；缺少匹配 PawnExt 时保留原生清 Avatar 路径。旧 Pawn 不得解绑已切到新 Pawn 的 ASC。不新增 RPC、复制状态或 Tick；具体 Cue 资产与联机表现需运行确认。
+- ExperienceManager 的资源包筛选已纠正为非客户端加载 Server Bundle，PIE 同时加载两端；Standalone/Listen Server 两端、Dedicated Server 仅服务端、Client 仅客户端。同一 Experience/ActionSets 中的 GameFeature URL 去重，再按唯一 URL 计数激活/退出，保留跨 PIE World 的既有请求计数。
+- ImagineGame、ImagineEditor、ShooterCoreRuntime 的 Build.cs 对照后未发现缺失的参考模块依赖；本次所用 GameplayAbilities、DeveloperSettings、Engine 与 GameSettings 的 UMG/CommonUI 已有覆盖，无需新增依赖。
+- 本次范围为核心功能代码；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。当前仅有 Game/Editor Target，独立 Client/Server、渠道 Target 及共享构建策略留给对应打包需求；已有编辑器 Validator/ContentValidationCommandlet。
+- 收尾已静态复核本轮全部代码修改及其配置、初始化/复制、重生/ASC 解绑、UI 事件与异步请求上下游，补修资源包筛选、插件去重、Controller 解绑顺序和 UI 过期请求；Build.cs 无新增依赖。既有 Experience 加载状态机仍未完整处理插件失败、加载中 EndPlay 与异步 Action 退出；本轮未重构该状态机，不将正常加载路径的复核等同于这些失败边界已受支持。未编译、未运行测试、未核实 Content/Cook 或实机网络表现。
+
 ## 生命周期与 AI
 - `AIMGGameMode` 选择 Experience，`UIMGExperienceManagerComponent` 加载；`UIMGAbilitySet` 授予能力、Effect 和 AttributeSet。`AIMGPlayerState` 持有 ASC/属性，`UIMGPawnExtensionComponent` 绑定 Pawn Avatar；`UIMGHeroComponent` 在 DataInitialized 阶段初始化 ASC 和本地输入。
 - `UIMGBotCreationComponent` 在 Experience 加载后由服务端生成 Bot；重生分派只支持玩家控制器和 `AIMGPlayerBotController` 派生类。当前无 StateTree 运行时代码；依赖待实现时加到所属模块。
@@ -26,7 +36,7 @@
 
 ### 持久 Bot：PawnData 与初始化
 - BotCreation 配置 BotControllerClass，保留 Controller → PlayerState → Pawn 的生成顺序及通用初始化、分队和出生点规则，不新增 PawnData 配置。`AIMGPlayerBotController` 开启 bWantsPlayerState，每个 Bot 有独立 PlayerState/ASC；共享 PawnData 资产不共享能力运行状态或属性值。
-- GameMode::GetPawnDataForController 优先返回 PlayerState 已认领的数据；尚未认领且 Experience 就绪时，查询持久 Bot 的 `AIMGPlayerBotController::GetPawnData`。该入口为 BlueprintNativeEvent/BlueprintPure，支持 C++/蓝图覆写；默认返回空，GameMode 输出 LogIMGExperience Warning 并回退 Experience.DefaultPawnData。普通玩家保留原默认来源，未就绪时不调用 Bot 查询。
+- GameMode::GetPawnDataForController 优先返回 PlayerState 已认领的数据；尚未认领且 Experience 就绪时，查询持久 Bot 的 `AIMGPlayerBotController::GetPawnData`。该入口为 BlueprintNativeEvent/BlueprintPure，支持 C++/蓝图覆写；默认返回空，GameMode 输出 LogIMGExperience Warning 并依次回退 Experience.DefaultPawnData、AssetManager.DefaultPawnData。普通玩家使用相同默认来源，未就绪时不调用 Bot 查询或加载全局默认。
 - GetPawnData 只同步返回配置，不负责授予能力或生成 Pawn；查询应无副作用，首次认领前保持选择稳定。首次查询可能早于 Controller.BeginPlay、PlayerState 成员赋值、分队和 Possess，选择依据必须提前可用。空值表示回退默认配置，不表示等待异步注入。BotController 已导出，可供其他运行时模块派生。
 - PlayerState 在 Experience 回调中认领数据，仅服务端首次 SetPawnData 授予 AbilitySets。已加载时注册会立即回调，普通 SpawnActor 返回后再覆盖已太晚；同一 PlayerState 的后续生成、出生点体型检查及重生复用已认领配置与能力。切换不同 PawnData 不属于此查询入口，不能直接覆盖只写一次的数据。
 - GameMode 按 PawnData.PawnClass 生成 Pawn，在 FinishSpawning 前将同一数据写入 PawnExt；所选 Pawn 仍须装配 PawnExt/Hero 及所需组件。依赖满足后沿 Spawned → DataAvailable → DataInitialized → GameplayReady 绑定 PlayerState ASC，Bot 仅跳过玩家输入要求及绑定，不跳过状态条件。

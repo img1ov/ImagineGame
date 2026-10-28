@@ -32,7 +32,7 @@ public:
 	/**
 	 * Synchronous server query; may run before BeginPlay, PlayerState assignment and possession.
 	 * Keep the selection stable and free of side effects until the PlayerState claims it.
-	 * Return null to use the experience default. The PlayerState retains the first resolved data.
+	 * Return null to use the experience default, then the asset manager default. The PlayerState retains the first resolved data.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "IMG|Pawn")
 	const UIMGPawnData* GetPawnData() const;

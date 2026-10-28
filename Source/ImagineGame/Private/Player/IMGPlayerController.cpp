@@ -15,6 +15,7 @@
 #include "GameMapsSettings.h"
 #include "Camera/IMGPlayerCameraManager.h"
 #include "Character/IMGHeroComponent.h"
+#include "Character/IMGPawnExtensionComponent.h"
 #include "Components/PrimitiveComponent.h"
 
 #include "CommonInputSubsystem.h"
@@ -118,7 +119,15 @@ void AIMGPlayerController::OnUnPossess()
 			{
 				if (ASC->GetAvatarActor() == PawnBeingUnpossessed)
 				{
-					ASC->SetAvatarActor(nullptr);
+					UIMGPawnExtensionComponent* PawnExtension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(PawnBeingUnpossessed);
+					if (PawnExtension && PawnExtension->GetIMGAbilitySystemComponent() == ASC)
+					{
+						PawnExtension->UninitializeAbilitySystem();
+					}
+					else
+					{
+						ASC->SetAvatarActor(nullptr);
+					}
 				}
 			}
 		}
