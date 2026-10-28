@@ -1,4 +1,4 @@
-#include "Traversal/IMGTraversalComponent.h"
+#include "Character/Traversal/IMGTraversalComponent.h"
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
@@ -15,7 +15,7 @@
 #include "Navigation/PathFollowingComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "RootMotionModifier.h"
-#include "Traversal/IMGTraversalDetector.h"
+#include "Character/Traversal/IMGTraversalDetector.h"
 
 #if ENABLE_DRAW_DEBUG
 #include "IMGTraversalDebug.h"
@@ -109,9 +109,8 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 	{
 		return true;
 	}
-	const float Distances[] = {Settings.ManualMaxDistance, Settings.StandingMaxDistance, Settings.AutomaticMinDistance,
-	    Settings.AutomaticMaxDistance, Settings.AutomaticMinSpeed, Settings.ServerDistanceTolerance,
-	    Settings.ServerSpeedTolerance};
+	const float Distances[] = {Settings.ManualMaxDistance, Settings.StandingMaxDistance,
+	    Settings.AutomaticMaxDistance, Settings.ServerDistanceTolerance};
 	for (float Value : Distances)
 	{
 		if (!FMath::IsFinite(Value) || Value < 0.f)
@@ -119,13 +118,11 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 			return false;
 		}
 	}
-	if (!FMath::IsFinite(Settings.SpeedForMaxAutomaticDistance) || Settings.SpeedForMaxAutomaticDistance <= 0.f ||
-	    Settings.AutomaticMinDistance > Settings.AutomaticMaxDistance ||
-	    !FMath::IsFinite(Settings.ManualMovementDirectionDot) ||
+	if (!FMath::IsFinite(Settings.ManualMovementDirectionDot) ||
 	    FMath::Abs(Settings.ManualMovementDirectionDot) > 1.f ||
 	    !FMath::IsFinite(Settings.AutomaticMovementDirectionDot) ||
 	    FMath::Abs(Settings.AutomaticMovementDirectionDot) > 1.f || !FMath::IsFinite(Candidate.PlanarDistanceToLedge) ||
-	    Candidate.PlanarDistanceToLedge < 0.f || Movement->Velocity.ContainsNaN())
+	    Candidate.PlanarDistanceToLedge < 0.f)
 	{
 		return false;
 	}
@@ -143,16 +140,12 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 	float AllowedDistance = 0.f;
 	if (bAutomatic)
 	{
-		const float ApproachSpeed = FMath::Max(FVector::DotProduct(Movement->Velocity, ToLedge), 0.f);
-		const float SpeedTolerance = bRemoteRequest ? Settings.ServerSpeedTolerance : 0.f;
 		if ((!Settings.bAllowAutomaticInAir && !Movement->IsMovingOnGround()) || Intent.IsNearlyZero() ||
-		    FVector::DotProduct(Intent, ToLedge) < Settings.AutomaticMovementDirectionDot ||
-		    ApproachSpeed + SpeedTolerance < Settings.AutomaticMinSpeed)
+		    FVector::DotProduct(Intent, ToLedge) < Settings.AutomaticMovementDirectionDot)
 		{
 			return false;
 		}
-		AllowedDistance = FMath::Lerp(Settings.AutomaticMinDistance, Settings.AutomaticMaxDistance,
-		    FMath::Clamp(ApproachSpeed / Settings.SpeedForMaxAutomaticDistance, 0.f, 1.f));
+		AllowedDistance = Settings.AutomaticMaxDistance;
 	}
 	else
 	{
@@ -176,8 +169,8 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 	if (!bAllowed)
 	{
 		IMGTraversalDebug::String(GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-		    FString::Printf(TEXT("Initiation: planar %.0f > %.0f | speed %.0f"), Candidate.PlanarDistanceToLedge,
-		        AllowedDistance + DistanceTolerance, Movement->Velocity.Size2D()),
+		    FString::Printf(TEXT("Initiation: planar %.0f > %.0f"), Candidate.PlanarDistanceToLedge,
+		        AllowedDistance + DistanceTolerance),
 		    FColor::Yellow, 2);
 	}
 #endif

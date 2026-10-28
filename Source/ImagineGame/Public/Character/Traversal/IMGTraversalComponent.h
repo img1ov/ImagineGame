@@ -2,7 +2,7 @@
 
 #include "Components/PawnComponent.h"
 #include "RootMotionModifier.h"
-#include "Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/IMGTraversalTypes.h"
 
 #include "IMGTraversalComponent.generated.h"
 

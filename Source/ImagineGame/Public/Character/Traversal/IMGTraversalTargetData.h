@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Abilities/GameplayAbilityTargetTypes.h"
-#include "Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/IMGTraversalTypes.h"
 
 #include "IMGTraversalTargetData.generated.h"
 

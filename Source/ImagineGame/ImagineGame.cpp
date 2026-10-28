@@ -1,6 +1,6 @@
 ﻿#include "ImagineGame.h"
 #include "Modules/ModuleManager.h"
-#include "Private/Traversal/IMGTraversalDebug.h"
+#include "Private/Character/Traversal/IMGTraversalDebug.h"
 
 class FIMGGameModule : public FDefaultGameModuleImpl
 {

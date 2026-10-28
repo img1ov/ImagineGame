@@ -72,7 +72,7 @@ struct FIMGTraversalInitiationSettings
 {
 	GENERATED_BODY()
 
-	/** 启用本组发起限制；关闭仅跳过这些限制，几何检测仍执行，也不会关闭或开启自动触发。 */
+	/** Enables initiation limits only; geometry detection and external triggering remain independent. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bEnabled = true;
 
@@ -85,21 +85,9 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float StandingMaxDistance = 150.f;
 
-	/** Automatic 允许距离上限的低速映射起值（cm），不是必须保持的最小间距；更近仍可发起。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
-	float AutomaticMinDistance = 75.f;
-
-	/** Automatic 达到 SpeedForMaxAutomaticDistance 时的允许距离上限（cm）；实际仍须检测命中。 */
+	/** Fixed Automatic initiation limit (cm); character speed changes search length, not this acceptance limit. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float AutomaticMaxDistance = 150.f;
-
-	/** 朝向前沿的水平速度达到此值（cm/s）时使用最大允许距离；这是项目速度映射，非 GTA 的移动混合比。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
-	float SpeedForMaxAutomaticDistance = 600.f;
-
-	/** Optional Automatic approach-speed gate (cm/s). Zero allows movement intent to initiate while blocked or starting. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
-	float AutomaticMinSpeed = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
 	float ManualMovementDirectionDot = 0.3f;
@@ -114,9 +102,6 @@ struct FIMGTraversalInitiationSettings
 	/** Allow for movement/ability messages arriving on different server ticks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float ServerDistanceTolerance = 15.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
-	float ServerSpeedTolerance = 25.f;
 };
 
 /** Persistent geometry, safety and validation settings shared by prediction and authority. */
@@ -211,9 +196,11 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height")
 	bool bUseGroundPositionForHeight = false;
 
+	/** Obstacle/carrier linear speed limit (cm/s), not the traversing character's speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxMovingSpeed = 500.f;
 
+	/** Obstacle/carrier angular speed limit (degrees/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxAngularSpeedDegrees = 85.f;
 

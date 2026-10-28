@@ -1,4 +1,4 @@
-#include "Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/IMGTraversalTypes.h"
 
 FIMGTraversalAnimationSettings::FIMGTraversalAnimationSettings()
 {

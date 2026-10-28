@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AbilitySystem/Abilities/IMGGameplayAbility.h"
-#include "Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/IMGTraversalTypes.h"
 #include "TimerManager.h"
 
 #include "IMGGameplayAbility_Traversal.generated.h"
@@ -43,28 +43,10 @@ protected:
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 
 	/**
-
-	 * Selects detection and initiation rules for player requests. External logic controls activation timing, attempt
-
-	 * frequency and retries. Each activation makes one attempt and ends on failure; this setting is independent of
-
-	 * ActivationPolicy and does not enable continuous detection. Manual uses common geometry and manual initiation
-
-	 * rules, allowing stationary initiation by default. Automatic adds automatic-only geometry limits and, when
-
-	 * InitiationSettings is enabled, checks movement intent, approach speed, direction and distance. Both modes
-
-	 * check detection and initiation before SelectTraversalAnimation/CHT selects an animation, then validate
-
-	 * execution. For example, input logic may activate Manual for stationary or low-speed traversal; movement logic
-
-	 * may activate Automatic, which requires movement intent but permits blocked/zero-speed and falling attempts by
-	 * default. AutomaticMinSpeed optionally restores an approach-speed gate; speed also scales allowed distance.
-
-	 * Server-controlled AI always uses the AI source; remote player requests must match this setting on the server
-
-	 * GA.
-
+	 * Selects player detection/initiation rules, independently of activation timing and retries.
+	 * Manual allows standing by default; Automatic requires movement intent and a fixed distance limit,
+	 * with falling allowed by default. Character speed scales search length, not initiation acceptance.
+	 * Server-controlled AI uses AI rules; remote player requests must match this source on the authority GA.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Detection")
 	EIMGTraversalRequestSource RequestSource = EIMGTraversalRequestSource::Manual;

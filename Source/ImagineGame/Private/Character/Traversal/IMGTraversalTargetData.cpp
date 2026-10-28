@@ -1,4 +1,4 @@
-#include "Traversal/IMGTraversalTargetData.h"
+#include "Character/Traversal/IMGTraversalTargetData.h"
 
 #include "Animation/AnimMontage.h"
 #include "Engine/PackageMapClient.h"

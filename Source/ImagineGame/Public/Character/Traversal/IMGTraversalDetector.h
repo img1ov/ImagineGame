@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/IMGTraversalTypes.h"
 
 /** Synchronous geometry query shared by player, AI and server validation. */
 class IMAGINEGAME_API FIMGTraversalDetector

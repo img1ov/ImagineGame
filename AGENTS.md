@@ -62,57 +62,29 @@
 - 业务事件为 OnLocomotionReady、OnLocomotionAttributeChanged、OnLocomotionUnavailable；统一更新事件继承自基类，C++ 覆写 UpdateLocomotionPreCMC_Implementation。GetIMGCharacter、GetIMGCharacterMovementComponent、GetIMGAbilitySystemComponent 返回具体 IMG 类型；IsMovementPrerequisiteReady 查询调度，IsLocomotionReady 查询 IMG 业务门槛，不能混用。Unavailable 时 ASC/Set 已清空，CMC 在对象有效时仍可用于清理。
 - 蓝图保留监听 GA 意图 Tag、读取属性及在 PreCMC 计算并写入最终 CMC 参数的职责；不把 Tag 规则搬入 C++，不重复维护意图或速度。Foley/OnLanded 与 ABP 转发不属于该组件，CMC 不增加 Locomotion 专用委托或 Tick 逻辑。
 
-### Traversal：架构与接入
-- 源码位于 `Source/ImagineGame/{Public,Private}/Traversal`，仍为单蒙太奇执行。角色蓝图装配 Traversal/MotionWarping 组件，AbilitySet 授予 GA；输入决策独立，蓝图负责 CHT/PoseMatch，专用服务器需要不依赖 PoseHistory 的后备选择。
-- `IMGTraversalTypes.h` 统一声明设置、请求、Candidate、动画执行配置和复制快照；Detector 是无状态同步几何源；Component 持有检测、发起与动画配置、动态 Warp Target、临时碰撞忽略和代理快照；GA 负责检测、选择、Commit、播放和退出。
+### Traversal：目录与职责
 
-### Traversal：检测与动画配置
-- 主要 Candidate 输出和 CHT 接口保留。检测以 GTA 人形几何为基础，补多命中、单侧手点、方向重试、真实首点深度与坡面净空；`Supports` 只表达必要几何，GTA 动画组合表仅作 RecommendedAction 参考，最终动画覆盖交给 CHT。
-- `DetectorSettings` 暴露探针、边缘分组、评分、坡面、安全范围和 Surface Policy；原有数值默认保留，搜索/动画覆盖上限仍为 250 cm，高度默认仍以胶囊脚底计算，可切换 GroundPos 基准。检测及 GA 落点复核共享 Traversal 通道和表面许可。
-- 前向各层实际搜索长度可按 CMC 水平速度缩放；`SearchDistance` 为统一上限，Automatic 各层上限参考 250/150 cm，速度缩放是项目扩展，不是 GTA 原生探针公式。起点、球半径和层距不随速度改变；调试图及未命中净空使用实际扫掠长度。零速是否调用检测仍由 GA/蓝图控制。
-- `InitiationSettings` 独立控制允许发起距离，GA 在选择前和服务端重检后消费；读取 CMC 速度/加速度与移动输入，使用新增 PlanarDistanceToLedge，原 DistanceToLedge 的 Mesh 三维距离含义不变。Manual 默认允许 150 cm 内站立发起；Automatic 需移动意图及朝向障碍的速度，默认距离 75–150 cm，速度映射可配。WhileInputActive 不等于 Automatic，请求来源由 GA 配置；CHT 继续决定动画覆盖。
-- Query/GA 区分 Manual、Automatic、AI。表面许可用组件/Actor Tag；Automatic 的开放高位、深度和楼梯策略不应被误当作所有请求的通用动画门槛。AutoVault 输入、历史抑制和延迟不属于 Detector。
-- Component 的 `ActionSettings` 为动作默认值，`MontageSettings` 按 Action/Montage 完整覆盖。WarpBindings 配置名字、Front/Back Ledge/BackFloor 几何锚点及偏移，RequiredTargets 配置必要接触；名字默认仍为 FrontLedge/BackLedge/BackFloor，前沿默认上移 0.5 cm。
-- 同名 Warp Window 可重复，项目不限制数量；Notify 继续负责窗口时间和 UE Modifier 参数。Landing 配置选择无落点、检测地面或曲线落点，并配置曲线名、锚点/落地窗口序号（-1 为最后一个可用平移窗口）；默认 Hurdle 使用 Distance_From_Ledge，BackLedge 缺失时回退 FrontLedge。过期的显式窗口序号不能自动移到下一个窗口。
-- 最终落点仍校验可走地面、表面许可、最大落差和完整胶囊；直线扫掠为可选保守策略，默认关闭，不能把直线弦当作动画弧线。位移由 Root Motion、PoseSearch StartTime 与 UE MotionWarping 负责，不叠加 GTA Task 的手动速度补偿。
-- 净空按 `ImpactPoint` 的表面接触点计算，扫掠球心 `Location` 只用于调试体积；未命中返回的净空上限必须被实际扫掠覆盖，水平长度计入后移和坡度。后沿细化围绕最后有效顶面高度；深度扫掠初始穿透仅停止后续深度采样，保留此前已验证的前沿/支撑/后沿，不新增后沿或落差，也不直接拒绝整个候选；接近路径与净空仍须通过。未确认后沿时 ObstacleDepth 只表示已采样顶面范围（可为0），不能当作完整障碍厚度。面方向重试按实际使用的请求方向判断，失败候选不发布。
-- CHT 预选接收 Detector 几何；GA 选定动画后可重解 BackFloor/DropHeight/BackLedgeHeight，OnTraversalStarted 接收该执行结果。DistanceToLedge 保留 Mesh 世界位置到前沿的三维距离，PlanarDistanceToLedge 为 Actor 到前沿的 XY 距离。BackLedge 是跌落前支撑，BackFloor 是采样/动画落点，必须按各自存在标志消费。
+- 源码：`Source/ImagineGame/{Public,Private}/Character/Traversal`，仍属 ImagineGame 模块。Detector 无状态同步检测几何；Component 管配置、Warp Target、临时碰撞忽略与代理快照；GA 管检测→选择→校验/Commit→播放→退出；Types/TargetData 分别定义数据与客户端请求，Debug 留在 Private 同目录。
+- 每次 GA 激活只作一次尝试，失败即结束；外部逻辑决定输入、自动触发与重试频率，`RequestSource` 与 ActivationPolicy 独立。角色装配 Traversal/MotionWarping 并授予 GA；CHT/PoseMatch 经 PreSelectTraversalAnimation/SelectTraversalAnimation 选择单个蒙太奇，无 PoseHistory 的服务端需后备选择。
+- `InitiationSettings` 在检测后、动画选择前及 GA 校验/服务端重检时消费；关闭 bEnabled 仅跳过本组发起限制，不跳过几何、动画合同或改变触发频率。Manual 默认允许150 cm内站立发起；Automatic 默认允许 Falling，但要求朝向前沿的有效输入意图，方向阈值0.8，固定使用 AutomaticMaxDistance（默认150 cm），不以角色实际速度设门槛或二次缩短距离。
+- 意图优先待消费输入，再回退 CMC Acceleration；AI 复用 Manual 发起规则，在两者为空时可读有效且 Moving 的 PathFollowing 当前段目标，不用实际 Velocity 充当意图。普通玩家按 GA.RequestSource，服务端控制 AI 强制使用 AI 来源；AI 检测方向与发起判断共用该意图，无意图时仍可按手动站立规则向角色前方尝试。
+- 已删除 AutomaticMinSpeed、ServerSpeedTolerance、AutomaticMinDistance、SpeedForMaxAutomaticDistance，不保留无消费者的兼容字段；蓝图若显式引用旧字段需刷新节点。ServerDistanceTolerance 只补偿远端发起距离误差。角色速度缩放保留于 Detector 搜索长度；Candidate.Speed/RunningSpeedThreshold 仅提供动作选择信息与建议，不限制原生 Supports。MaxMovingSpeed/MaxAngularSpeedDegrees 检查障碍/载体运动，检测、落点与执行复核继续消费。
+- Detector 的搜索/几何/坡面/净空及必要动作支持与最终动画覆盖分开；Automatic 的深度、高位开放接近及楼梯过滤仅用于 Automatic，不是所有动画的通用门槛。ActionSettings 提供动作默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点和必要接触，Notify 管窗口，Landing 管曲线/检测落点。最终复核表面、落差、可走支撑与完整胶囊，由 Root Motion/MotionWarping 执行位移。
+- GTA 人形搜索仅绕Z定向，多层球扫保持水平，坡面为后置筛选；SearchForHandHold 的探针长度来自固定层值/覆写值，GetClimbDetectorParam 的 MBR 插值影响发起范围，JumpVault 另有步态门槛，AutoVault 结合摇杆、受阻降步态与冷却且纯自动路径要求落地。本工程的速度搜索缩放、固定发起范围及默认允许空中均是项目策略，不声称与 GTA 相同。
 
-### Traversal：执行与网络
-- 继续按校验→Commit→建立 Target/碰撞忽略→Flying→蒙太奇启动→提交 TargetData/发布快照执行。Component 统一管理临时碰撞忽略；完成、中断、取消、死亡或载体失效时幂等恢复。GA 不在正常 BlendOut 提前结束，退出按脚下地面恢复 Walking/Falling；模拟代理收到权威非 Flying 模式后先恢复碰撞，使 CMC 地面查询看到支撑，Target 仍可保留至本机实例退出。
-- 现有载体逻辑保存局部 Target，并建立载体组件 → Traversal → CMC 的 Tick 依赖；默认每 0.05 秒复核存活、物理许可和速度，默认 500 cm/s、85 deg/s，Candidate 时效 0.25 秒。这不保证载体 Actor Tick 或物理驱动的完整更新时序，也不代表动态平台已受支持；不要直接 Attach 绕过 CMC 网络预测。
-- Tick 依赖保留：载体组件先更新变换，Traversal 刷新 Target/碰撞忽略，CMC 再移动与查地；模拟代理结束时必须在 CMC 查地前恢复障碍碰撞。Traversal 组件仅在活动期间开启 Tick，用于代理引用晚到、蒙太奇重试和延后结束；GA 不新增 Tick。MotionWarping.OnPreUpdate 在实际 Warp 采样前再次刷新 Target。添加依赖本身不要求 Flying；BeginTraversal 建立状态后才切 Flying，代理蒙太奇启动门槛另行检查 Flying。
-- 保留 LocalPredicted、启动成功后提交请求、启动前单次取消和服务端按方向重检；请求来源必须与服务端 GA 配置一致。远端仍验证 Action、时间、PlayRate、动画合同和可选 AllowedMontages，不接受客户端几何。
-- 代理仅消费 COND_SkipOwner 快照、CMC 与 GAS 蒙太奇；匹配 Montage/PlayInstanceId，并等待 Target、障碍碰撞忽略与 CMC Flying 就绪。OnPreUpdate 在 Warp 采样前重建当前 Target，既有 Target 的恢复历史随权威快照传输，不在代理捕获乱序的原生复制值；结束快照先到时保留当前动画到本机实例退出（含 BlendOut），同实例引用补齐不反复拆建。
-- ASC 保留 Position 复制、StartTime 下界、资产 BlendIn 和 GAS 原生纠偏；已移除固定 0.075 秒起播落后量。社区参考：`https://forums.unrealengine.com/t/motionwarping-warp-targets-and-data-caching/2678223`（Target 与蒙太奇的独立复制时序），不是固定落后量的依据。
+### Traversal：执行约束与边界
 
-### Traversal：Debug 对照与排查
-- 仅调试当前 Traversal 实际执行的检测/输出/动画消费，不移植 GTA 网络或画未接入的异步批次、IK/平台体积。对照 `ClimbDetector` 的 Search/Intersections/Compute/Validate、`TestCapsule` 和 `ClimbHandHoldDetected::Render/DumpToLog`；绘图代码受 ENABLE_DRAW_DEBUG 保护，绘图控制台项为 Cheat，默认关闭。
-- `IMG.Traversal.DebugDraw`：0关闭，1几何/执行输出及活动 Target，2增加搜索/评分/失败/重试，3全部探针。`IMG.Traversal.DebugStages` 为组合掩码：搜索1、命中2、手点4、体积8、输出16、执行32，默认63；例24只看体积与输出、48看输出与执行，等级和掩码同时生效。
-- `IMG.Traversal.DebugDuration` 默认2秒，仅控制启动成功后的快照；`IMG.Traversal.DebugProcessDuration` 默认0（单帧），设3可保留失败/重试过程，对照 GTA 的3000ms历史。连续自动检测会叠图，宜单次手动触发或暂停查看。活动 Target 始终单帧、不进入过程快照；失败候选不混入成功快照。
-- 搜索分层为不同蓝色，显示真实起终点/半径/实际长度/高度/命中数；紫色 edge 连接真实最低/最高命中，显示编号、Score、Span、Drift。命中显示首次/次级、组件、接触点和外法线；青色小球为可进入分组，红色大球与文字说明表面策略、穿透、水平面或同坡面排除。
-- 手点为黄色中央/左右/单侧/附加探针，显示法线阈值、宽度支持、高度容差、投影/调整及请求/面方向重试。体积用青色接近路径、绿色深度 support/rise/drop/missing 与最高支撑、橙色后沿细化/后脸、洋红水平双层净空、黄色垂直净空；并画坡面投影、攀爬角与近身/Automatic 拒绝原因。
-- `IMG.Traversal.DebugLineScale` 默认1，线宽/箭头头部为此前1/3设置的3倍；`IMG.Traversal.DebugSphereScale` 默认仍为1/3，控制调试球半径/点标记，设为1时球半径等于真实探针半径。只影响绘制，标签R、查询参数、球心/接触点坐标和胶囊边界保持真实值。
-- 本机文字通过 UE DebugDrawService 按各视口投影自动避让，移位时画细引线；`IMG.Traversal.DebugTextScale` 默认0.65。汇总合成多行块，原始几何→执行结果更新同一角色的汇总；活动 Target 按角色/名字更新，同帧过程与快照重放的相同标签合并并延长寿命，不重复叠字。文字过长自动折行，空间不足优先保留汇总和低等级信息，底部提示筛选 DebugStages 或查 DebugLog；专服转发仍沿 UE 原生 DrawDebugString。
-- 调试文字仅持有 World/Actor 弱引用，过期/失效时清理，关闭 Draw 清队列；惰性注册的绘制委托在 ImagineGame 模块 Shutdown 注销，不新增 Tick、计时器或 Actor。
-- 球扫两端显示探针球（默认按上述比例缩小）；红球为停止时的球心 Location，小接触点/法线为 ImpactPoint/ImpactNormal，白线连接两者。红球只表示接触，拒绝看文字。输出用厘米标尺画高度、XY深度、前沿落差、后沿高度和净空；净空未命中表示已扫范围的有限上限，非无限空间。EdgeSpan 不是左右手点的最高/最低Z，两者分别显示。
-- Detector 输出标记 pre-selection，启动后显示执行 Action/Montage/Start/Rate；CHT 原始 BackFloor 与动画解析后的结果可能不同。执行图包括曲线窗口、重新查地、Binding/WarpPoint 偏移、完整胶囊、实际脚下支撑、可选直线路径及锚点→Target。活动 Target 标明角色名、网络角色、当前 CMC Mode 和本系统 AddedIgnore 数量；模拟代理通常只消费执行状态，不跑 Detector。
-- `IMG.Traversal.DebugLog`：0关闭，1在 LogIMG 的 [Traversal] 记录输出坐标、法线、尺寸/距离/角度及网络角色，2额外记录所选阶段文字和拒绝原因；仍需开启 DebugDraw 与对应阶段。活动 Target 不持续写日志，成功快照重放不重复写日志，动画合同失败沿现有 LogIMGTraversal。
-- 预测/执行日志独立于 DebugDraw：`LogIMGAbilitySystem` 的 Warning `[PredictionRejected]` 记录服务端拒绝激活，在引擎回滚前输出 Ability/Avatar/Spec/PredictionKey；Verbose `[ActivationFailed]` 记录激活失败 Tag 与当前 ScopedPredKey。`LogIMGTraversal` 的 Warning 记录服务端来源/方向/检测/选择拒绝、Warp 合同、Commit、快照发布及执行中止；Verbose 记录本地正常检测失败、请求提交/取消、等待、启动与结束。控制台分别执行 `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose`，两端按 Avatar/Spec/PredKey 对照，查完以 `Log LogIMGTraversal Log`、`Log LogIMGAbilitySystem Log` 恢复。服务端 TargetData 重检失败发生在激活之后，不等于激活 PredictionKey 被拒绝；`AuthorityEndedPredictedTraversal` 只说明权威实例先结束，不能单凭该日志认定预测错误。未新增日志 RPC、Tick、计时器或复制状态。
-- 完整观察可依次设置 `IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`。单进程 PIE 共享 CVar，多进程分别设置；图和日志需按角色/网络角色区分。优先对照平顶遮挡接触点、斜顶后沿、上坡/后移后的净空范围、方向失败重试、后方独立障碍、偏移后胶囊支撑及各代理结束清理；静态审查与 Debug 覆盖不替代资产和联机运行验证。
+- 保留 GAS LocalPredicted；校验→Commit→建立Target/碰撞忽略→Flying→蒙太奇启动→提交TargetData/发布快照。启动前单次取消，服务端按方向重新检测并校验来源、Action、时间/倍率、Warp合同及可选AllowedMontages，不接受客户端几何。CHT前拒绝不启动执行，Commit后的回调重入与动画启动失败仍走既有退出路径。
+- 正常完成、中断、取消、死亡、目标失效与ASC解绑沿GA/Component既有出口幂等清理Target、碰撞忽略、委托及计时器；正常BlendOut不提前结束，退出在恢复碰撞后按脚下支撑切Walking/Falling，不覆盖后续非Flying移动模式。PawnExt解绑先取消能力、清输入/Cue，再清Avatar并广播生命周期。
+- 模拟代理消费COND_SkipOwner快照、GAS蒙太奇与CMC，按Montage/PlayInstanceId等待引用、Target、碰撞忽略和Flying；结束快照先到时保留本机实例至退出（含BlendOut），同实例引用补齐不反复拆建。既有Target恢复历史来自权威快照；权威非Flying到达后须先恢复碰撞，让CMC查到支撑。
+- 保持来源组件→Traversal→CMC顺序，组件仅活动时Tick，MotionWarping.OnPreUpdate在实际Warp采样前刷新Target；默认0.05秒复核载体、500 cm/s和85 deg/s运动上限、候选时效0.25秒。局部Target跟随不等于完整支持动态平台；BasedMovement/动态Bone、输入历史/退出延迟、异步检测、悬挂/Shimmy/梯子另行设计，不直接Attach绕过CMC预测。
+- 本次速度策略收尾覆盖配置消费、Manual/Automatic/AI、本地预测、服务端重检、选择/Commit前后复核及正常/失败/取消/死亡/解绑清理；行为修改位于InitiationSettings/CanInitiate，核心搜索、分组、手点、深度/净空及落点算法未改，不新增状态、RPC、Tick或构建依赖。未编译、未测试、未调查Content；外部CHT/蓝图可自行按Speed筛选，字段删除的资产兼容及实机网络表现仍需运行确认。
 
-### Traversal：GTA 参考与映射边界
-- 参考根目录：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`。几何/手点：`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`；发起：`task/Default/TaskPlayer.cpp`（CTaskPlayerOnFoot）；Jump/Vault 分流：`task/Movement/Jumping/TaskJump.*`；执行/载体/清理：`task/Movement/Climbing/TaskVault.*`。
-- 网络使用本工程现有 GAS LocalPredicted、TargetData、蒙太奇复制、CMC 与 Traversal Target 快照，不移植 GTA 网络协议。GTA 的 `task/System/TaskFsmClone.*`、`Peds/QueriableInterface.cpp`、`network/Objects/Entities/NetObjPed.cpp` 仅作职责边界参考；Detector/Candidate、CHT、GA、Component 分别承担几何、动作选择、执行和代理状态，未复制 GTA Task FSM。
-- GTA 出口表服务于其动画库；GroundPositionAtDrop 是跌落前支撑点，非最终落地。项目按自身动画覆盖配置门槛，以 UE Warp/地面复核映射执行；GTA 实体类型、动画组合与手动位移不能机械硬搬。
-- GTA 也依赖执行顺序：`CTaskVault::ProcessPreFSM` 请求 PhysicsTasks/PostMovement，`CPedIntelligence`/`CTaskTree` 调用 `ProcessPhysics` 与 `ProcessPostMovement`；Vault 对物理载体使用 Attach，`scene/world/GameWorld.cpp::ProcessAttachmentAfterAllMovement` 在移动之后处理附件，`scene/Physical.cpp::ProcessAllAttachments` 按父→子递归更新（`Physical.h` 有对应约束）。本工程的 Tick 依赖保留同类先更新来源、再消费变换/碰撞的约束，调度机制与 GTA 不相同，不能据此声称完整支持动态平台。
-- GTA Detector 通用搜索回退为 5 m，但 TaskPlayer::GetClimbDetectorParam 的普通玩家覆写为 2.5 m；项目 250 cm 默认有该调用链依据。检测在边缘分组前过滤水平面与同地面坡面，并保留近身上半身遮挡检查；低障碍按请求朝向验证时同步调整手点。Automatic 的面朝向/朝向手点阈值默认 0.8，Manual/AI 默认 0.3；移动意图阈值仍由 InitiationSettings 独立控制。
-- 本轮以 Detector/探测逻辑为主，也复核 GA 执行、GAS 取消握手及自主/模拟代理生命周期；不改用 GTA 网络。Automatic 楼梯下行过滤使用楼梯标签与 CMC 地面法线，不能等同 GTA 独立的 slope-normal 数据源。动画落点复核 WarpPoint/Binding 偏移后的胶囊脚下支撑；曲线锚点仅在主目标没有平移窗口时使用备用名字。ASC 解绑清理代理临时状态，重绑重建权威快照。
-- 后续边界：输入历史与楼梯退出延迟、异步 broad phase 缓存、完整 BasedMovement/动态 Bone、悬挂/Shimmy/梯子等仍属独立工作，不应宣称本次已完整等价。
+### Traversal：调试与参考定位
 
-### Traversal：待做——动态平台
-- 本轮只收尾静态障碍检测与执行，不扩展平台移动支持；已撤回本轮新增的载体 Actor Tick 前置依赖及运动载体落点特判。既有局部 Target 跟随不代表动态平台已受支持。
-- 后续需围绕本工程 GAS 预测、服务端重检、CMC BasedMovement/根运动、载体变换复制及更新顺序统一设计，并验证平台平移/旋转、开始/结束乱序、引用晚到和中断清理；不能仅增加 Tick 依赖、Attach 或套用 GTA 执行/同步套路。
+- 绘图默认关闭，受ENABLE_DRAW_DEBUG保护。DebugDraw为0关/1输出与活动Target/2搜索失败/3全部探针；DebugStages掩码为搜索1/命中2/手点4/体积8/输出16/执行32。完整观察依次用`IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`；`IMG.Traversal.DebugLog 2`记录启用阶段，需同时开启绘图。按角色/网络角色区分，几何标记pre-selection，执行输出在动画落点解析后更新。
+- 预测/执行日志独立于绘图：`Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose`，两端按Avatar/Spec/PredKey对照，查完恢复Log。PredictionRejected是激活拒绝；TargetData重检失败发生在激活后；AuthorityEndedPredictedTraversal仅说明权威先结束，不能单凭该日志认定预测错误。静态审查及调试图不替代资产与联机验证。
+- GTA参考根目录：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`。检测/手点在`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`，发起在`task/Default/TaskPlayer.cpp`，Jump/Vault分流在`task/Movement/Jumping/TaskJump.*`，执行/清理在`task/Movement/Climbing/TaskVault.*`。保留本工程GAS/CMC网络体系，不机械移植其动画表、手动位移或网络协议。
 
 ## 装备、背包与射击
 - 装备、背包、快捷栏、远程追踪和武器生成器基类保持原职责；快捷栏与物品实例仅补跨模块导出。装备授予能力后，快捷栏再为装备实例关联物品。

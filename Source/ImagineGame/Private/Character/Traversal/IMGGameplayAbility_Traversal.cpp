@@ -1,4 +1,4 @@
-#include "Traversal/IMGGameplayAbility_Traversal.h"
+#include "Character/Traversal/IMGGameplayAbility_Traversal.h"
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "AbilitySystemComponent.h"
@@ -15,9 +15,9 @@
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "MotionWarpingComponent.h"
-#include "Traversal/IMGTraversalComponent.h"
-#include "Traversal/IMGTraversalDetector.h"
-#include "Traversal/IMGTraversalTargetData.h"
+#include "Character/Traversal/IMGTraversalComponent.h"
+#include "Character/Traversal/IMGTraversalDetector.h"
+#include "Character/Traversal/IMGTraversalTargetData.h"
 
 #if ENABLE_DRAW_DEBUG
 #include "IMGTraversalDebug.h"

@@ -1,4 +1,4 @@
-#include "Traversal/IMGTraversalDetector.h"
+#include "Character/Traversal/IMGTraversalDetector.h"
 
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
