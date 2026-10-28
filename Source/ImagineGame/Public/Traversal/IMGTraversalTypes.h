@@ -11,11 +11,15 @@ class UAnimMontage;
 class UPrimitiveComponent;
 class URootMotionModifier_Warp;
 
+/** 本次请求的规则分类，不控制 GA 的激活时机、尝试频率或输入绑定。 */
 UENUM(BlueprintType)
 enum class EIMGTraversalRequestSource : uint8
 {
+	/** 手动请求：使用通用检测及手动发起条件，默认允许站立发起。 */
 	Manual,
+	/** 外部自动决策发起的请求：应用自动专属限制，持续尝试仍由调用方驱动。 */
 	Automatic,
+	/** AI 请求：发起条件复用手动分支，移动意图缺失时可用速度方向补充。 */
 	AI
 };
 
@@ -68,6 +72,7 @@ struct FIMGTraversalInitiationSettings
 {
 	GENERATED_BODY()
 
+	/** 启用本组发起限制；关闭仅跳过这些限制，几何检测仍执行，也不会关闭或开启自动触发。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bEnabled = true;
 
@@ -80,16 +85,19 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float StandingMaxDistance = 150.f;
 
+	/** Automatic 允许距离上限的低速映射起值（cm），不是必须保持的最小间距；更近仍可发起。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float AutomaticMinDistance = 75.f;
 
+	/** Automatic 达到 SpeedForMaxAutomaticDistance 时的允许距离上限（cm）；实际仍须检测命中。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float AutomaticMaxDistance = 150.f;
 
-	/** Project speed mapping; the reference's movement blend ratio is not a physical velocity. */
+	/** 朝向前沿的水平速度达到此值（cm/s）时使用最大允许距离；这是项目速度映射，非 GTA 的移动混合比。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
 	float SpeedForMaxAutomaticDistance = 600.f;
 
+	/** Automatic 的最低接近速度（cm/s），使用朝向前沿的水平速度分量，不是总速度。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float AutomaticMinSpeed = 190.f;
 

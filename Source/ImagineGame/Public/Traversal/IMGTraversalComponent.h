@@ -57,9 +57,11 @@ public:
 	    float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected:
+	/** 几何搜索与安全限制；Automatic 专属参数由本次请求来源选择，组件不自行触发 GA。 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Detection")
 	FIMGTraversalDetectorSettings DetectorSettings;
 
+	/** 检测成功后的发起条件，在选动画前及服务端重检时消费；触发时机和重试由外部处理。 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Initiation")
 	FIMGTraversalInitiationSettings InitiationSettings;
 
