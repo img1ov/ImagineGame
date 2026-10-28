@@ -10,7 +10,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "GameFramework/Controller.h"
 #include "MotionWarpingComponent.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "RootMotionModifier.h"
 #include "Traversal/IMGTraversalDetector.h"
@@ -20,6 +22,31 @@
 #endif
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTraversalComponent)
+
+namespace
+{
+FVector GetTraversalMovementIntent(const AIMGCharacter& Character, EIMGTraversalRequestSource Source)
+{
+	FVector Intent = Character.GetPendingMovementInputVector().GetSafeNormal2D();
+	if (Intent.IsNearlyZero())
+	{
+		const UIMGCharacterMovementComponent* Movement = Character.GetIMGMovementComponent();
+		Intent = Movement ? Movement->GetCurrentAcceleration().GetSafeNormal2D() : FVector::ZeroVector;
+	}
+	if (Intent.IsNearlyZero() && Source == EIMGTraversalRequestSource::AI)
+	{
+		const AController* Controller = Character.GetController();
+		const UPathFollowingComponent* PathFollowing =
+		    IsValid(Controller) ? Controller->FindComponentByClass<UPathFollowingComponent>() : nullptr;
+		// Direct-velocity path following need not populate CMC acceleration, even while pushing into a wall.
+		if (IsValid(PathFollowing) && PathFollowing->GetStatus() == EPathFollowingStatus::Moving && PathFollowing->HasValidPath())
+		{
+			Intent = PathFollowing->GetCurrentTargetLocation() - Character.GetActorLocation();
+		}
+	}
+	return Intent.ContainsNaN() ? FVector::ZeroVector : Intent.GetSafeNormal2D();
+}
+} // namespace
 
 UIMGTraversalComponent::UIMGTraversalComponent(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -54,6 +81,10 @@ bool UIMGTraversalComponent::Detect(FIMGTraversalCandidate& OutCandidate, EIMGTr
 	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	FIMGTraversalQuery Query;
 	Query.Character = Character;
+	if (Direction.IsNearlyZero() && Character && Source == EIMGTraversalRequestSource::AI)
+	{
+		Direction = GetTraversalMovementIntent(*Character, Source);
+	}
 	Query.Direction = Direction.IsNearlyZero() && Character ? Character->GetActorForwardVector() : Direction;
 	Query.Source = Source;
 	Query.Settings = DetectorSettings;
@@ -106,15 +137,7 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 	{
 		return false;
 	}
-	FVector Intent = Character->GetPendingMovementInputVector().GetSafeNormal2D();
-	if (Intent.IsNearlyZero())
-	{
-		Intent = Movement->GetCurrentAcceleration().GetSafeNormal2D();
-	}
-	if (Intent.IsNearlyZero() && Candidate.RequestSource == EIMGTraversalRequestSource::AI)
-	{
-		Intent = Movement->Velocity.GetSafeNormal2D();
-	}
+	const FVector Intent = GetTraversalMovementIntent(*Character, Candidate.RequestSource);
 	const bool bAutomatic = Candidate.RequestSource == EIMGTraversalRequestSource::Automatic;
 	const float DistanceTolerance = bRemoteRequest ? Settings.ServerDistanceTolerance : 0.f;
 	float AllowedDistance = 0.f;

@@ -19,7 +19,7 @@ enum class EIMGTraversalRequestSource : uint8
 	Manual,
 	/** 外部自动决策发起的请求：应用自动专属限制，持续尝试仍由调用方驱动。 */
 	Automatic,
-	/** AI 请求：发起条件复用手动分支，移动意图缺失时可用速度方向补充。 */
+	/** AI request: reuses manual initiation conditions and may use an active path target when input/acceleration is unavailable. */
 	AI
 };
 
@@ -97,9 +97,9 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
 	float SpeedForMaxAutomaticDistance = 600.f;
 
-	/** Automatic 的最低接近速度（cm/s），使用朝向前沿的水平速度分量，不是总速度。 */
+	/** Optional Automatic approach-speed gate (cm/s). Zero allows movement intent to initiate while blocked or starting. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
-	float AutomaticMinSpeed = 190.f;
+	float AutomaticMinSpeed = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
 	float ManualMovementDirectionDot = 0.3f;
@@ -107,8 +107,9 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
 	float AutomaticMovementDirectionDot = 0.8f;
 
+	/** Falling requests still require movement intent and valid geometry/animation coverage. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bAllowAutomaticInAir = false;
+	bool bAllowAutomaticInAir = true;
 
 	/** Allow for movement/ability messages arriving on different server ticks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))

@@ -22,6 +22,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "IMG|Traversal", meta = (DefaultToSelf = "Actor"))
 	static UIMGTraversalComponent* Get(const AActor* Actor);
 
+	/** Zero direction uses actor facing for Manual/Automatic, or input/acceleration/active path intent for AI. */
 	UFUNCTION(BlueprintCallable, Category = "IMG|Traversal")
 	bool Detect(FIMGTraversalCandidate& OutCandidate, EIMGTraversalFailure& OutFailure, FVector Direction,
 	    EIMGTraversalRequestSource Source = EIMGTraversalRequestSource::Manual) const;
