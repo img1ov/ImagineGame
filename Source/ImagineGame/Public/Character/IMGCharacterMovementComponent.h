@@ -1,7 +1,6 @@
 
 #pragma once
 
-#include "NativeGameplayTags.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/CharacterMovementReplication.h"
 #include "Character/Ragdoll/IMGCustomMovementMode_Ragdoll.h"
@@ -14,8 +13,6 @@ class UObject;
 struct FFrame;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
-
-IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_MovementStopped);
 
 UENUM(BlueprintType)
 enum class EIMGCustomMovementMode : uint8
@@ -133,7 +130,6 @@ public:
 	//~UMovementComponent interface
 	UE_API virtual void SimulateMovement(float DeltaTime) override;
 	UE_API virtual void SimulatedTick(float DeltaSeconds) override;
-	UE_API virtual FRotator GetDeltaRotation(float DeltaTime) const override;
 	UE_API virtual FRotator ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const override;
 	
 	UE_API virtual float GetMaxSpeed() const override;

@@ -16,6 +16,7 @@
 #include "Net/UnrealNetwork.h"
 #include "RootMotionModifier.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
+#include "IMGLogChannels.h"
 
 #if ENABLE_DRAW_DEBUG
 #include "IMGTraversalDebug.h"
@@ -181,6 +182,7 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 const FIMGTraversalAnimationSettings* UIMGTraversalComponent::FindAnimationSettings(
     EIMGTraversalAction Action, const UAnimMontage* Montage) const
 {
+	if (!ReplicatedMontages.IsEmpty() && !IsListedReplicatedMontage(Montage)) { return nullptr; }
 	const FIMGTraversalAnimationSettings* Result = nullptr;
 	for (const FIMGTraversalMontageSettings& Entry : MontageSettings)
 	{
@@ -464,11 +466,15 @@ void UIMGTraversalComponent::EndTraversal()
 		return;
 	}
 	const uint16 NextSequence = ReplicatedState.Sequence + 1;
+	FIMGTraversalRepState EndState;
+	EndState.Sequence = NextSequence;
+	// A terminal snapshot must identify the instance even if its start snapshot was never received.
+	EndState.Montage = ActiveState.Montage;
+	EndState.MontagePlayInstanceId = ActiveState.MontagePlayInstanceId;
 	SetTargetTickPrerequisites(false);
 	RestoreMovementIgnores();
 	RemoveWarpTargets();
-	ActiveState = FIMGTraversalRepState();
-	ActiveState.Sequence = NextSequence;
+	ActiveState = MoveTemp(EndState);
 	SetComponentTickEnabled(false);
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
@@ -600,9 +606,14 @@ void UIMGTraversalComponent::HandleAbilitySystemInitialized()
 	{
 		return;
 	}
+	MontagePrerequisiteHandle = ASC->RegisterReplicatedMontagePrerequisite(GetOwner(), TEXT("Traversal"),
+	    FIMGReplicatedMontagePrerequisite::CreateUObject(this, &ThisClass::CheckReplicatedMontagePrerequisite));
+	if (!MontagePrerequisiteHandle.IsValid())
+	{
+		UE_LOG(LogIMGAbilitySystem, Error, TEXT("Traversal failed to register montage prerequisites for [%s]."), *GetNameSafe(GetOwner()));
+		return;
+	}
 	BoundAbilitySystemComponent = ASC;
-	ASC->SetReplicatedMontageReadyDelegate(
-	    FIMGReplicatedMontageReadyDelegate::CreateUObject(this, &ThisClass::IsReplicatedMontageReady));
 	OnRep_TraversalState();
 }
 
@@ -610,8 +621,9 @@ void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 {
 	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
 	{
-		ASC->ClearReplicatedMontageReadyDelegate(this);
+		ASC->UnregisterReplicatedMontagePrerequisite(MontagePrerequisiteHandle);
 	}
+	MontagePrerequisiteHandle.Reset();
 	BoundAbilitySystemComponent.Reset();
 	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
 	{
@@ -619,22 +631,29 @@ void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 	}
 }
 
-bool UIMGTraversalComponent::IsReplicatedMontageReady(
-    const UAnimMontage* Montage, uint8 MontagePlayInstanceId, bool bIsStopped, float& OutLogicalStartTime) const
+bool UIMGTraversalComponent::IsListedReplicatedMontage(const UAnimMontage* Montage) const
 {
-	OutLogicalStartTime = -1.f;
-	if (!Montage || bIsStopped)
+	return Montage && (ReplicatedMontages.Contains(Montage) || MontageSettings.ContainsByPredicate(
+	    [Montage](const FIMGTraversalMontageSettings& Entry) { return Entry.Montage == Montage; }));
+}
+
+FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedMontagePrerequisite(
+    const UAnimMontage* Montage, uint8 MontagePlayInstanceId) const
+{
+	if (!Montage) { return {}; }
+	if (!ReplicatedState.bActive && ReplicatedState.Montage == Montage &&
+	    ReplicatedState.MontagePlayInstanceId == MontagePlayInstanceId && !ShouldDeferSimulatedEnd())
 	{
-		return true;
+		return {EIMGReplicatedMontageReadiness::Discard, -1.f, TEXT("TraversalEnded")};
 	}
 	if (!ActiveState.bActive || ActiveState.Montage != Montage ||
 	    ActiveState.MontagePlayInstanceId != MontagePlayInstanceId)
 	{
-		if (MontageSettings.ContainsByPredicate(
-		        [Montage](const FIMGTraversalMontageSettings& Entry) { return Entry.Montage == Montage; }))
+		if (IsListedReplicatedMontage(Montage))
 		{
-			return false;
+			return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalSnapshot")};
 		}
+		if (!ReplicatedMontages.IsEmpty()) { return {}; }
 		TArray<FIMGTraversalWarpWindow> Windows;
 		GetWarpWindows(Montage, Windows);
 		for (const EIMGTraversalAction Action :
@@ -650,11 +669,11 @@ bool UIMGTraversalComponent::IsReplicatedMontageReady(
 				if (Settings->WarpBindings.ContainsByPredicate([&Window](const FIMGTraversalWarpBinding& Binding)
 				        { return Binding.TargetName == Window.Modifier->WarpTargetName; }))
 				{
-					return false;
+					return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalSnapshot")};
 				}
 			}
 		}
-		return true;
+		return {};
 	}
 	const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
@@ -662,13 +681,13 @@ bool UIMGTraversalComponent::IsReplicatedMontageReady(
 	// Movement mode and GAS montage arrive through different actors; do not start with falling Z constraints.
 	if (!Warping || !Character || !Character->GetCapsuleComponent() || !Movement || !Movement->IsFlying())
 	{
-		return false;
+		return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalMovementMode")};
 	}
 	for (UPrimitiveComponent* Obstacle : ActiveState.ObstacleComponents)
 	{
 		if (!IsValid(Obstacle) || !Character->GetCapsuleComponent()->GetMoveIgnoreComponents().Contains(Obstacle))
 		{
-			return false;
+			return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalCollisionIgnores")};
 		}
 	}
 	for (const FIMGTraversalWarpTarget& Target : ActiveState.WarpTargets)
@@ -676,11 +695,10 @@ bool UIMGTraversalComponent::IsReplicatedMontageReady(
 		const FMotionWarpingTarget* Resolved = Warping->FindWarpTarget(Target.Name);
 		if (!IsValid(Target.Component) || !Resolved || !Resolved->GetTargetTrasform().IsValid())
 		{
-			return false;
+			return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalWarpTargets")};
 		}
 	}
-	OutLogicalStartTime = ActiveState.MontageStartTime;
-	return true;
+	return {EIMGReplicatedMontageReadiness::Ready, ActiveState.MontageStartTime, NAME_None};
 }
 
 void UIMGTraversalComponent::RefreshWarpTargets()

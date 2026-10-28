@@ -1,8 +1,6 @@
 
 #include "Character/IMGCharacterMovementComponent.h"
 
-#include "AbilitySystemComponent.h"
-#include "AbilitySystemGlobals.h"
 #include "Character/IMGCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -13,8 +11,6 @@
 #include "IMGLogChannels.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCharacterMovementComponent)
-
-UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_MovementStopped, "Gameplay.MovementStopped");
 
 class FSavedMove_IMG final : public FSavedMove_Character
 {
@@ -609,19 +605,6 @@ void UIMGCharacterMovementComponent::SetReplicatedAcceleration(const FVector& In
 	Acceleration = InAcceleration;
 }
 
-FRotator UIMGCharacterMovementComponent::GetDeltaRotation(float DeltaTime) const
-{
-	if (const UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner()))
-	{
-		if (ASC->HasMatchingGameplayTag(TAG_Gameplay_MovementStopped))
-		{
-			return FRotator(0,0,0);
-		}
-	}
-
-	return Super::GetDeltaRotation(DeltaTime);
-}
-
 FRotator UIMGCharacterMovementComponent::ComputeOrientToMovementRotation(
 	const FRotator& CurrentRotation,
 	float DeltaTime,
@@ -653,14 +636,6 @@ FRotator UIMGCharacterMovementComponent::ComputeOrientToMovementRotation(
 float UIMGCharacterMovementComponent::GetMaxSpeed() const
 {
 	if (IsRagdollRecovering()) { return 0.0f; }
-	if (const UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner()))
-	{
-		if (ASC->HasMatchingGameplayTag(TAG_Gameplay_MovementStopped))
-		{
-			return 0;
-		}
-	}
-
 	const float MaxSpeed = Super::GetMaxSpeed();
 	return IsCrawling() && IsMovingOnGround() ? FMath::Min(MaxSpeed, MaxCrawlSpeed) : MaxSpeed;
 }

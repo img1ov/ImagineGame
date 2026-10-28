@@ -37,6 +37,13 @@
 - 玩家/Bot Controller.OnUnPossess 仅在 ASC Avatar 和 PawnExt 仍匹配旧 Pawn 时调用 PawnExt.UninitializeAbilitySystem；其顺序为取消能力、清输入/Cue → 清 Avatar/ActorInfo → 广播解绑 → 清组件 ASC 引用。取消保留 SurvivesDeath 能力；缺少匹配 PawnExt 时保留原生清 Avatar 路径，旧 Pawn 不得解绑新 Pawn 的 ASC。
 - `UIMGHealthComponent` 发死亡事件，已授予的 `UIMGGameplayAbility_Death` 控制开始/结束，Character 在结束后销毁；自动重生能力位于 `ShooterCoreRuntime/GameModes`。
 
+### 复制 Montage 前置条件
+
+- ASC 的 `RegisterReplicatedMontagePrerequisite(Avatar, Name, Delegate)` 返回注册句柄；委托须弱绑定 UObject，只接受当前 Avatar。相同对象/Name 重复注册复用句柄，不同步执行回调；注册后、前置数据变化后调用 `RetryReplicatedMontage`。检查返回 NotApplicable、Waiting、Ready 或 Discard，业务 Session/Sequence 由提供者自行核对，不复制第二套播放阶段。
+- 所有适用条件 Ready 才放行；只有所属表现系统提供非负 LogicalStartTime，其他条件返回 -1。多个起点提供者或非法起点保留等待并诊断，不以注册顺序/优先级覆盖。非所属 Montage 必须返回 NotApplicable；沿用原生 GAS 的 Montage/PlayInstanceId、播放/停止与位置同步，不能据此前置门控认定自主代理预测/重放已满足。
+- `UnregisterReplicatedMontagePrerequisite` 按句柄精确注销，默认丢弃本对象参与阻塞的待播放实例；只有明确交接前置职责时才传 false。Discard 仅抑制当前 Avatar/Montage/PlayInstanceId 的本机表现，不改变权威能力或移动阶段。新实例不继承旧丢弃；结束先到不创建已停止的新实例，已播放实例保留原生停止路径。
+- 门控/Retry 只作用于非权威、非本地控制角色；重试合并至下一 Tick 并防重入，回调后复核注册版本和实例。Avatar 切换、ClearActorInfo、EndPlay 释放注册、起点缓存和计时器；ASC 临时注销暂停处理/释放计时器，保留弱注册并在重新注册后重试。失效提供者不能释放已放弃的实例。等待原因变化输出 Verbose，连续等待5秒输出一次 Warning并复核，不因超时自动放行；`Log LogIMGAbilitySystem Verbose` 查看 Avatar/Montage/Instance/Reason。
+
 ### 持久 Bot 与 PawnData
 
 - `UIMGBotCreationComponent` 在 Experience 就绪后由服务端按 Controller → PlayerState → Pawn 生成 Bot，配置 BotControllerClass并保留分队/出生点规则。重生分派支持玩家控制器及 `AIMGPlayerBotController` 派生类；当前无 StateTree 运行时代码。
@@ -148,7 +155,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 静态落位不证明完整动画空间；持续 Root Motion与手脚空间由动画合同和正常 CMC 扫掠验证。客户端选片限定 Spec/Activation/Avatar/Session，复用 GAS TargetData/取消通道；服务端按允许资产、时长、倍率/起点及受信匹配点配置重建/重检，不直接信任客户端位置/任意偏移。专服无 PoseHistory/资产未就绪时须有后备选择或明确拒绝。
 - 同 Session OnRecoveryStarted 且 Walking/落位就绪后，权威和自主代理按同一批准合同各自启动 GAS PlayMontageAndWait并检查成功；绑定完成/中断/取消，复用 GAS Montage复制和 Root Motion。OnBlendOut 不提前完成；仅权威 OnCompleted 调 CompleteRecovery(Session)，中断用 CompleteRecovery(Session, true)，拥有者本地结束仍等权威生命周期。
 - UE 5.8 OnRep_ReplicatedAnimMontage 不为本地控制的自主代理播放；批准选片、时间和 Session 须经 GAS/表现合同传给拥有者。模拟代理不选片/判稳定/提交目标，按 Session 与 Montage/PlayInstanceId 关联等待模式/引用，乱序补齐一次，结束先到不得重启旧表现；该关联不成为第二套移动阶段。
-- 接入前置：ASC.SetReplicatedMontageReadyDelegate 当前仅单绑定，Traversal 在模拟代理上占用，门控/Retry 仅作用于非本地控制角色。应在 ASC 通用职责提供可组合前置条件，或由独立适配层协调唯一入口；不得覆盖 Traversal 委托或互相查询，也不得给 RagdollComponent/CMC 引入 ASC/Traversal 依赖。
+- 后续动画适配可独立注册 ASC 复制 Montage 前置条件，按自己的 Session 与 Montage/PlayInstanceId 判断，不查询 Traversal 或覆盖其他提供者。公共合同见“复制 Montage 前置条件”；不向 RagdollComponent/CMC 引入 ASC/Traversal 依赖。
 
 ### 失败、结束与验收范围
 
@@ -178,6 +185,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - GAS LocalPredicted：校验 → Commit → 建立 Target/碰撞忽略 → Flying → Montage启动 → 提交 TargetData/发布快照。启动前单次取消；服务端按方向重查来源、Action、时间/倍率、Warp合同和可选 AllowedMontages，不接受客户端几何。CHT 前拒绝不启动执行，Commit 后重入/播放失败走既有退出。
 - 完成/中断/取消/死亡/目标失效/ASC解绑幂等清理 Target、碰撞忽略、委托、计时器；正常 BlendOut 不提前结束。恢复碰撞后按支撑切 Walking/Falling，仅恢复仍 Flying 的执行，不覆盖后来的模式；PawnExt 解绑顺序见 ASC 生命周期。
 - 模拟代理消费 COND_SkipOwner 快照、GAS Montage和 CMC，按 Montage/PlayInstanceId 等待引用、Target、碰撞忽略和 Flying。结束快照先到保留本机实例至退出（含 BlendOut），同实例引用补齐不反复拆建；Target 恢复历史来自权威，非 Flying 到达后先恢复碰撞再查支撑。
+- Traversal 通过独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 非空时，选片与复制归属仅接受此列表及 MontageSettings 中的资产，仍可复用 ActionSettings，不再按 Target 同名推断；空列表保留现有推断以兼容装配，多 Warp 系统应配置各端一致的明确列表。结束快照保留 Montage/PlayInstanceId，开始被合并或结束先到且尚未播放时丢弃该次表现，不能被晚引用重新启动。
 - 来源组件 → Traversal → CMC，组件仅活动时 Tick；MotionWarping.OnPreUpdate 在实际采样前刷新 Target。默认0.05秒复核载体，运动上限500 cm/s、85 deg/s，候选时效0.25秒。局部 Target 跟随不等于完整支持动态平台；BasedMovement/动态 Bone、输入历史/退出延迟、异步检测、悬挂/Shimmy/梯子另行设计。
 - BeginPlay/激活/重新注册建立 MotionWarping、PawnExt/ASC及精确 CMC 依赖；停用/注销/EndPlay 释放绑定、Target、碰撞忽略，清理期间 IsTraversalAvailable=false，非活动时晚快照不重启执行。只有本组件仍有活动 Traversal且 CMC Flying 时恢复移动；拒绝缺少 Root Motion、非正/非有限 RateScale，检测通道须有效。
 

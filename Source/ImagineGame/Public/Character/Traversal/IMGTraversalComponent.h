@@ -11,6 +11,7 @@ class UAnimMontage;
 class UIMGAbilitySystemComponent;
 class UIMGPawnExtensionComponent;
 class UIMGCharacterMovementComponent;
+struct FIMGReplicatedMontagePrerequisiteResult;
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -104,6 +105,10 @@ protected:
 	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Animation", meta = (TitleProperty = "Montage"))
 	TArray<FIMGTraversalMontageSettings> MontageSettings;
 
+	/** Nonempty: restrict selection and replication ownership to this list plus MontageSettings, without target-name inference. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Networking")
+	TArray<TObjectPtr<UAnimMontage>> ReplicatedMontages;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (ClampMin = "0.01"))
 	float TargetValidationInterval = 0.05f;
 
@@ -129,8 +134,9 @@ private:
 	void SetTargetTickPrerequisites(bool bAdd);
 	void HandleAbilitySystemInitialized();
 	void HandleAbilitySystemUninitialized();
-	bool IsReplicatedMontageReady(
-	    const UAnimMontage* Montage, uint8 MontagePlayInstanceId, bool bIsStopped, float& OutLogicalStartTime) const;
+	bool IsListedReplicatedMontage(const UAnimMontage* Montage) const;
+	FIMGReplicatedMontagePrerequisiteResult CheckReplicatedMontagePrerequisite(
+	    const UAnimMontage* Montage, uint8 MontagePlayInstanceId) const;
 
 	UPROPERTY(ReplicatedUsing = OnRep_TraversalState)
 	FIMGTraversalRepState ReplicatedState;
@@ -144,6 +150,7 @@ private:
 	TSet<TWeakObjectPtr<UPrimitiveComponent>> TargetTickPrerequisites;
 
 	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundAbilitySystemComponent;
+	FDelegateHandle MontagePrerequisiteHandle;
 	TWeakObjectPtr<UIMGPawnExtensionComponent> BoundPawnExtension;
 	TWeakObjectPtr<UIMGCharacterMovementComponent> BoundMovement;
 	bool bReleasingBindings = false;

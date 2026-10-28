@@ -567,9 +567,7 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 		IMGController->SetIsAutoRunning(false);
 	}
 
-	// Preserve the existing all-or-nothing movement strength; this layer shapes
-	// direction only and must not introduce a separate analog-speed policy.
-	const FVector2D MoveInput = InputActionValue.Get<FVector2D>().GetSafeNormal();
+	const FVector2D MoveInput = InputActionValue.Get<FVector2D>();
 	const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
 
 	// Input mapping ends here. The shared movement-intent entry point owns all

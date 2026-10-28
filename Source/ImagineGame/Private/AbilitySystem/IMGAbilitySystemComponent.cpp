@@ -30,6 +30,26 @@ UIMGAbilitySystemComponent::UIMGAbilitySystemComponent(const FObjectInitializer&
 
 UIMGAbilitySystemComponent::~UIMGAbilitySystemComponent() = default;
 
+void UIMGAbilitySystemComponent::OnRegister()
+{
+	Super::OnRegister();
+	bSuspendingReplicatedMontage = false;
+	RetryReplicatedMontage();
+}
+
+void UIMGAbilitySystemComponent::OnUnregister()
+{
+	bSuspendingReplicatedMontage = true;
+	++ReplicatedMontageAvatarGeneration;
+	++ReplicatedMontagePrerequisiteRevision;
+	ReadyReplicatedMontage = FReplicatedMontageInstance();
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	ClearReplicatedMontageWait();
+	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(ReplicatedMontageRetryTimer); }
+	ReplicatedMontageRetryTimer.Invalidate();
+	Super::OnUnregister();
+}
+
 void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)
 {
 	FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
@@ -37,6 +57,13 @@ void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	check(InOwnerActor);
 
 	const bool bHasNewPawnAvatar = Cast<APawn>(InAvatarActor) && (InAvatarActor != ActorInfo->AvatarActor);
+	if (InAvatarActor != ActorInfo->AvatarActor)
+	{
+		const bool bLeavingAvatar = !ActorInfo->AvatarActor.IsExplicitlyNull();
+		ResetReplicatedMontagePrerequisites();
+		// Keep data received before the first avatar, but never carry a previous avatar's pending playback across the handoff.
+		if (bLeavingAvatar) { bPendingMontageRep = false; }
+	}
 	const bool bShouldDeferReplicatedMontage = InAvatarActor
 		&& InAvatarActor->GetLocalRole() == ROLE_SimulatedProxy;
 
@@ -48,10 +75,7 @@ void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	SetMontageRepAnimPositionMethod(ERepAnimPositionMethod::Position);
 	if (bShouldDeferReplicatedMontage && bPendingMontageRep)
 	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::RetryReplicatedMontage);
-		}
+		RetryReplicatedMontage();
 	}
 
 	if (bHasNewPawnAvatar)
@@ -90,34 +114,205 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 }
 
-void UIMGAbilitySystemComponent::SetReplicatedMontageReadyDelegate(FIMGReplicatedMontageReadyDelegate Delegate)
+bool UIMGAbilitySystemComponent::FReplicatedMontageInstance::Matches(
+	const AActor* InAvatar, const UAnimMontage* InMontage, uint8 InPlayInstanceId) const
 {
-	if (!ensureMsgf(!ReplicatedMontageReadyDelegate.IsBound()
-		|| ReplicatedMontageReadyDelegate.GetUObject() == Delegate.GetUObject(),
-		TEXT("Only one avatar-side replicated montage prerequisite is supported per ASC.")))
-	{
-		return;
-	}
-	ReplicatedMontageReadyDelegate = MoveTemp(Delegate);
-	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	return InAvatar && InMontage && Avatar.Get() == InAvatar && Montage.Get() == InMontage
+		&& PlayInstanceId == InPlayInstanceId;
 }
 
-void UIMGAbilitySystemComponent::ClearReplicatedMontageReadyDelegate(const UObject* Listener)
+void UIMGAbilitySystemComponent::ClearActorInfo()
 {
-	if (ReplicatedMontageReadyDelegate.IsBoundToObject(Listener))
+	ResetReplicatedMontagePrerequisites();
+	bPendingMontageRep = false;
+	Super::ClearActorInfo();
+}
+
+FDelegateHandle UIMGAbilitySystemComponent::RegisterReplicatedMontagePrerequisite(
+	AActor* Avatar, FName Name, FIMGReplicatedMontagePrerequisite Prerequisite)
+{
+	if (bEndingReplicatedMontage || !IsValid(Avatar) || Avatar->IsActorBeingDestroyed() || Avatar != GetAvatarActor()
+		|| Name.IsNone() || !Prerequisite.IsBound() || !IsValid(Prerequisite.GetUObject()))
 	{
-		ReplicatedMontageReadyDelegate.Unbind();
-		ReadyReplicatedMontageLogicalStartTime = -1.f;
+		return FDelegateHandle();
 	}
+	for (FReplicatedMontagePrerequisiteEntry& Entry : ReplicatedMontagePrerequisites)
+	{
+		if (Entry.Avatar == Avatar && Entry.Name == Name && Entry.Callback.GetUObject() == Prerequisite.GetUObject())
+		{
+			Entry.Callback = MoveTemp(Prerequisite);
+			++ReplicatedMontagePrerequisiteRevision;
+			return Entry.Handle;
+		}
+	}
+	FReplicatedMontagePrerequisiteEntry& Entry = ReplicatedMontagePrerequisites.AddDefaulted_GetRef();
+	Entry.Handle = FDelegateHandle(FDelegateHandle::GenerateNewHandle);
+	Entry.Avatar = Avatar;
+	Entry.Name = Name;
+	Entry.Callback = MoveTemp(Prerequisite);
+	++ReplicatedMontagePrerequisiteRevision;
+	return Entry.Handle;
+}
+
+void UIMGAbilitySystemComponent::UnregisterReplicatedMontagePrerequisite(FDelegateHandle Handle, bool bDiscardPendingInstance)
+{
+	const int32 Index = ReplicatedMontagePrerequisites.IndexOfByPredicate(
+		[Handle](const FReplicatedMontagePrerequisiteEntry& Entry) { return Entry.Handle == Handle; });
+	if (Index == INDEX_NONE) { return; }
+	const FReplicatedMontagePrerequisiteEntry Removed = ReplicatedMontagePrerequisites[Index];
+	ReplicatedMontagePrerequisites.RemoveAt(Index);
+	++ReplicatedMontagePrerequisiteRevision;
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	const FReplicatedMontageInstance Instance{GetAvatarActor(), RepMontage.GetAnimMontage(), RepMontage.PlayInstanceId};
+	const uint32 Generation = ReplicatedMontageAvatarGeneration;
+	if (bDiscardPendingInstance && !bEndingReplicatedMontage && IsValid(GetAvatarActor())
+		&& (bPendingMontageRep || bProcessingReplicatedMontage) && Removed.Avatar == GetAvatarActor())
+	{
+		bool bApplicable = Removed.LastApplicableInstance.Matches(GetAvatarActor(), Instance.Montage.Get(), Instance.PlayInstanceId);
+		if (!bApplicable && Removed.Callback.IsBound() && Instance.Montage.IsValid())
+		{
+			// Native OnRep does not query readiness until the AnimInstance exists. Classify before releasing that pending start.
+			TGuardValue<bool> Processing(bProcessingReplicatedMontage, true);
+			bApplicable = Removed.Callback.Execute(Instance.Montage.Get(), Instance.PlayInstanceId).Readiness
+				!= EIMGReplicatedMontageReadiness::NotApplicable;
+		}
+		if (bApplicable && Generation == ReplicatedMontageAvatarGeneration
+			&& Instance.Matches(GetAvatarActor(), GetRepAnimMontageInfo().GetAnimMontage(), GetRepAnimMontageInfo().PlayInstanceId))
+		{
+			DiscardedReplicatedMontage = Instance;
+		}
+	}
+	RetryReplicatedMontage();
+}
+
+bool UIMGAbilitySystemComponent::CanRetryReplicatedMontage() const
+{
+	return !bEndingReplicatedMontage && !bSuspendingReplicatedMontage && IsValid(GetAvatarActor())
+		&& !GetAvatarActor()->IsActorBeingDestroyed() && !IsOwnerActorAuthoritative()
+		&& AbilityActorInfo.IsValid() && !AbilityActorInfo->IsLocallyControlled();
 }
 
 void UIMGAbilitySystemComponent::RetryReplicatedMontage()
 {
-	if (bPendingMontageRep && !IsOwnerActorAuthoritative()
-		&& AbilityActorInfo.IsValid() && !AbilityActorInfo->IsLocallyControlled())
+	if ((!bPendingMontageRep && !bProcessingReplicatedMontage) || !CanRetryReplicatedMontage()
+		|| ReplicatedMontageRetryTimer.IsValid()) { return; }
+	if (UWorld* World = GetWorld())
 	{
-		OnRep_ReplicatedAnimMontage();
+		const uint32 Generation = ReplicatedMontageAvatarGeneration;
+		ReplicatedMontageRetryTimer = World->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateWeakLambda(this, [this, Generation]()
+			{
+				if (Generation != ReplicatedMontageAvatarGeneration) { return; }
+				ReplicatedMontageRetryTimer.Invalidate();
+				if (bPendingMontageRep && CanRetryReplicatedMontage()) { OnRep_ReplicatedAnimMontage(); }
+			}));
 	}
+}
+
+void UIMGAbilitySystemComponent::ClearReplicatedMontageWait()
+{
+	WaitingReplicatedMontage = FReplicatedMontageInstance();
+	ReplicatedMontageWaitReason = NAME_None;
+	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(ReplicatedMontageWaitTimer); }
+	ReplicatedMontageWaitTimer.Invalidate();
+}
+
+void UIMGAbilitySystemComponent::WaitForReplicatedMontage(const FReplicatedMontageInstance& Instance, FName Reason)
+{
+	if (WaitingReplicatedMontage.Matches(Instance.Avatar.Get(), Instance.Montage.Get(), Instance.PlayInstanceId)
+		&& ReplicatedMontageWaitReason == Reason) { return; }
+	ClearReplicatedMontageWait();
+	WaitingReplicatedMontage = Instance;
+	ReplicatedMontageWaitReason = Reason;
+	UE_LOG(LogIMGAbilitySystem, Verbose, TEXT("Montage prerequisite waiting: Avatar=[%s] Montage=[%s] Instance=%u Reason=%s"),
+		*GetNameSafe(Instance.Avatar.Get()), *GetNameSafe(Instance.Montage.Get()), Instance.PlayInstanceId, *Reason.ToString());
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(ReplicatedMontageWaitTimer, this,
+			&ThisClass::ReportReplicatedMontageWait, 5.f, false);
+	}
+}
+
+void UIMGAbilitySystemComponent::ReportReplicatedMontageWait()
+{
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	if (bPendingMontageRep && CanRetryReplicatedMontage() && WaitingReplicatedMontage.Matches(
+		GetAvatarActor(), RepMontage.GetAnimMontage(), RepMontage.PlayInstanceId))
+	{
+		UE_LOG(LogIMGAbilitySystem, Warning, TEXT("Montage prerequisite still waiting after 5s: Avatar=[%s] Montage=[%s] Instance=%u Reason=%s"),
+			*GetNameSafe(GetAvatarActor()), *GetNameSafe(RepMontage.GetAnimMontage()),
+			RepMontage.PlayInstanceId, *ReplicatedMontageWaitReason.ToString());
+		RetryReplicatedMontage();
+	}
+}
+
+void UIMGAbilitySystemComponent::ResetReplicatedMontagePrerequisites()
+{
+	++ReplicatedMontageAvatarGeneration;
+	++ReplicatedMontagePrerequisiteRevision;
+	ReplicatedMontagePrerequisites.Reset();
+	ReadyReplicatedMontage = FReplicatedMontageInstance();
+	DiscardedReplicatedMontage = FReplicatedMontageInstance();
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	ClearReplicatedMontageWait();
+	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(ReplicatedMontageRetryTimer); }
+	ReplicatedMontageRetryTimer.Invalidate();
+}
+
+void UIMGAbilitySystemComponent::OnRep_ReplicatedAnimMontage()
+{
+	if (bEndingReplicatedMontage) { return; }
+	if (bSuspendingReplicatedMontage)
+	{
+		bPendingMontageRep = true;
+		return;
+	}
+	if (bProcessingReplicatedMontage)
+	{
+		bPendingMontageRep = true;
+		RetryReplicatedMontage();
+		return;
+	}
+	TGuardValue<bool> Processing(bProcessingReplicatedMontage, true);
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	const UAnimMontage* Montage = RepMontage.GetAnimMontage();
+	if (!DiscardedReplicatedMontage.Matches(GetAvatarActor(), Montage, RepMontage.PlayInstanceId))
+	{
+		DiscardedReplicatedMontage = FReplicatedMontageInstance();
+	}
+	if (CanRetryReplicatedMontage() && Montage &&
+		(DiscardedReplicatedMontage.Matches(GetAvatarActor(), Montage, RepMontage.PlayInstanceId)
+		|| (RepMontage.IsStopped && (LocalAnimMontageInfo.AnimMontage != Montage
+			|| LocalAnimMontageInfo.PlayInstanceId != RepMontage.PlayInstanceId))))
+	{
+		// Native OnRep can start a new instance before processing its stop bit. Never start a terminal instance.
+		DiscardedReplicatedMontage = {GetAvatarActor(), Montage, RepMontage.PlayInstanceId};
+		bPendingMontageRep = false;
+		ClearReplicatedMontageWait();
+		ReadyReplicatedMontage = FReplicatedMontageInstance();
+		ReadyReplicatedMontageLogicalStartTime = -1.f;
+		if (RepMontage.IsStopped) { CurrentMontageStop(RepMontage.BlendTime); }
+		return;
+	}
+	const uint32 Generation = ReplicatedMontageAvatarGeneration;
+	Super::OnRep_ReplicatedAnimMontage();
+	if (bEndingReplicatedMontage || Generation != ReplicatedMontageAvatarGeneration)
+	{
+		return;
+	}
+	if (DiscardedReplicatedMontage.Matches(GetAvatarActor(), RepMontage.GetAnimMontage(), RepMontage.PlayInstanceId))
+	{
+		bPendingMontageRep = false;
+		ClearReplicatedMontageWait();
+		if (LocalAnimMontageInfo.AnimMontage == RepMontage.GetAnimMontage()
+			&& LocalAnimMontageInfo.PlayInstanceId == RepMontage.PlayInstanceId)
+		{
+			CurrentMontageStop(RepMontage.BlendTime);
+		}
+	}
+	if (!bPendingMontageRep) { ClearReplicatedMontageWait(); }
+	ReadyReplicatedMontage = FReplicatedMontageInstance();
+	ReadyReplicatedMontageLogicalStartTime = -1.f;
 }
 
 bool UIMGAbilitySystemComponent::GetActiveReplicatedMontagePlayInstanceId(
@@ -135,12 +330,13 @@ bool UIMGAbilitySystemComponent::GetActiveReplicatedMontagePlayInstanceId(
 
 bool UIMGAbilitySystemComponent::IsReadyForReplicatedMontage()
 {
+	ReadyReplicatedMontage = FReplicatedMontageInstance();
 	ReadyReplicatedMontageLogicalStartTime = -1.f;
 	if (!Super::IsReadyForReplicatedMontage())
 	{
 		return false;
 	}
-	if (bDeferringReplicatedMontageForActorInfoInitialization)
+	if (bDeferringReplicatedMontageForActorInfoInitialization || bSuspendingReplicatedMontage)
 	{
 		return false;
 	}
@@ -150,25 +346,132 @@ bool UIMGAbilitySystemComponent::IsReadyForReplicatedMontage()
 	}
 
 	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
-	return !ReplicatedMontageReadyDelegate.IsBound()
-		|| ReplicatedMontageReadyDelegate.Execute(
-			RepMontage.GetAnimMontage(), RepMontage.PlayInstanceId, RepMontage.IsStopped != 0,
-			ReadyReplicatedMontageLogicalStartTime);
+	const UAnimMontage* Montage = RepMontage.GetAnimMontage();
+	if (!Montage || RepMontage.IsStopped) { return true; }
+	const FReplicatedMontageInstance Instance{GetAvatarActor(), Montage, RepMontage.PlayInstanceId};
+	if (!IsValid(GetAvatarActor()) || GetAvatarActor()->IsActorBeingDestroyed() || bEndingReplicatedMontage) { return false; }
+	if (DiscardedReplicatedMontage.Matches(Instance.Avatar.Get(), Montage, Instance.PlayInstanceId)) { return false; }
+
+	for (int32 Index = ReplicatedMontagePrerequisites.Num() - 1; Index >= 0; --Index)
+	{
+		const FReplicatedMontagePrerequisiteEntry& Entry = ReplicatedMontagePrerequisites[Index];
+		if (Entry.Avatar != GetAvatarActor() || !Entry.Callback.IsBound())
+		{
+			if (Entry.LastApplicableInstance.Matches(GetAvatarActor(), Montage, Instance.PlayInstanceId))
+			{
+				DiscardedReplicatedMontage = Instance;
+			}
+			ReplicatedMontagePrerequisites.RemoveAt(Index);
+			++ReplicatedMontagePrerequisiteRevision;
+		}
+	}
+	if (DiscardedReplicatedMontage.Matches(GetAvatarActor(), Montage, Instance.PlayInstanceId)) { return false; }
+
+	const uint32 Revision = ReplicatedMontagePrerequisiteRevision;
+	const TArray<FReplicatedMontagePrerequisiteEntry> Snapshot = ReplicatedMontagePrerequisites;
+	FName WaitingReason;
+	FName StartTimeProvider;
+	FName ConflictingProvider;
+	bool bInvalidStartTime = false;
+	float LogicalStartTime = -1.f;
+	for (const FReplicatedMontagePrerequisiteEntry& Entry : Snapshot)
+	{
+		if (!Entry.Callback.IsBound())
+		{
+			RetryReplicatedMontage();
+			return false;
+		}
+		// Teardown from inside a callback abandons this evaluation unless the caller explicitly hands it off.
+		if (FReplicatedMontagePrerequisiteEntry* Registered = ReplicatedMontagePrerequisites.FindByPredicate(
+			[&Entry](const FReplicatedMontagePrerequisiteEntry& Item) { return Item.Handle == Entry.Handle; }))
+		{
+			Registered->LastApplicableInstance = Instance;
+		}
+		const FIMGReplicatedMontagePrerequisiteResult Result = Entry.Callback.Execute(Montage, Instance.PlayInstanceId);
+		if (!CanRetryReplicatedMontage() || Revision != ReplicatedMontagePrerequisiteRevision
+			|| !Instance.Matches(GetAvatarActor(), GetRepAnimMontageInfo().GetAnimMontage(), GetRepAnimMontageInfo().PlayInstanceId)
+			|| GetRepAnimMontageInfo().IsStopped)
+		{
+			RetryReplicatedMontage();
+			return false;
+		}
+		if (FReplicatedMontagePrerequisiteEntry* Registered = ReplicatedMontagePrerequisites.FindByPredicate(
+			[&Entry](const FReplicatedMontagePrerequisiteEntry& Item) { return Item.Handle == Entry.Handle; }))
+		{
+			Registered->LastApplicableInstance = Result.Readiness == EIMGReplicatedMontageReadiness::NotApplicable
+				? FReplicatedMontageInstance() : Instance;
+		}
+		if (Result.Readiness == EIMGReplicatedMontageReadiness::NotApplicable) { continue; }
+		if (Result.Readiness == EIMGReplicatedMontageReadiness::Discard)
+		{
+			UE_LOG(LogIMGAbilitySystem, Verbose, TEXT("Montage prerequisite discarded: Provider=%s Avatar=[%s] Montage=[%s] Instance=%u Reason=%s"),
+				*Entry.Name.ToString(), *GetNameSafe(GetAvatarActor()), *GetNameSafe(Montage), Instance.PlayInstanceId, *Result.Reason.ToString());
+			DiscardedReplicatedMontage = Instance;
+			return false;
+		}
+		if (Result.Readiness != EIMGReplicatedMontageReadiness::Ready)
+		{
+			if (WaitingReason.IsNone()) { WaitingReason = Result.Reason.IsNone() ? Entry.Name : Result.Reason; }
+			continue;
+		}
+		if (Result.LogicalStartTime == -1.f) { continue; }
+		if (!FMath::IsFinite(Result.LogicalStartTime) || Result.LogicalStartTime < 0.f
+			|| Result.LogicalStartTime >= Montage->GetPlayLength())
+		{
+			bInvalidStartTime = true;
+			continue;
+		}
+		if (!StartTimeProvider.IsNone())
+		{
+			ConflictingProvider = Entry.Name;
+			continue;
+		}
+		StartTimeProvider = Entry.Name;
+		LogicalStartTime = Result.LogicalStartTime;
+	}
+	if (!ConflictingProvider.IsNone())
+	{
+		if (!WaitingReplicatedMontage.Matches(GetAvatarActor(), Montage, Instance.PlayInstanceId)
+			|| ReplicatedMontageWaitReason != TEXT("ConflictingStartTimeProviders"))
+		{
+			UE_LOG(LogIMGAbilitySystem, Error, TEXT("Conflicting montage start-time providers: %s and %s. Avatar=[%s] Montage=[%s] Instance=%u"),
+				*StartTimeProvider.ToString(), *ConflictingProvider.ToString(), *GetNameSafe(GetAvatarActor()), *GetNameSafe(Montage), Instance.PlayInstanceId);
+		}
+		WaitingReason = TEXT("ConflictingStartTimeProviders");
+	}
+	else if (bInvalidStartTime)
+	{
+		WaitingReason = TEXT("InvalidLogicalStartTime");
+	}
+	if (!WaitingReason.IsNone())
+	{
+		WaitForReplicatedMontage(Instance, WaitingReason);
+		return false;
+	}
+	ClearReplicatedMontageWait();
+	ReadyReplicatedMontage = Instance;
+	ReadyReplicatedMontageLogicalStartTime = LogicalStartTime;
+	return true;
 }
 
 bool UIMGAbilitySystemComponent::MatchesReplicatedMontageInstance(
 	const UAnimMontage* Montage, uint8 PlayInstanceId) const
 {
 	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
-	return Montage && RepMontage.GetAnimMontage() == Montage && RepMontage.PlayInstanceId == PlayInstanceId;
+	return Montage && RepMontage.GetAnimMontage() == Montage && RepMontage.PlayInstanceId == PlayInstanceId
+		&& LocalAnimMontageInfo.AnimMontage == Montage && LocalAnimMontageInfo.PlayInstanceId == PlayInstanceId;
 }
 
 float UIMGAbilitySystemComponent::PlayMontageSimulated(
 	UAnimMontage* Montage, const float InPlayRate, const FName StartSectionName)
 {
+	if (bEndingReplicatedMontage || bSuspendingReplicatedMontage) { return -1.f; }
 	const float LogicalStartTime = ReadyReplicatedMontageLogicalStartTime;
+	const bool bMatchingInstance = ReadyReplicatedMontage.Matches(
+		GetAvatarActor(), Montage, GetRepAnimMontageInfo().PlayInstanceId);
+	ReadyReplicatedMontage = FReplicatedMontageInstance();
 	ReadyReplicatedMontageLogicalStartTime = -1.f;
-	if (!FMath::IsFinite(LogicalStartTime) || LogicalStartTime < 0.f)
+	if (!bMatchingInstance || !FMath::IsFinite(LogicalStartTime) || LogicalStartTime < 0.f)
 	{
 		return Super::PlayMontageSimulated(Montage, InPlayRate, StartSectionName);
 	}
@@ -188,9 +491,10 @@ float UIMGAbilitySystemComponent::PlayMontageSimulated(
 		PresentationStartTime = RepMontage.Position;
 	}
 
+	const uint32 Generation = ReplicatedMontageAvatarGeneration;
 	const float Duration = AnimInstance->Montage_Play(Montage, InPlayRate,
 		EMontagePlayReturnType::MontageLength, PresentationStartTime);
-	if (Duration > 0.f)
+	if (Duration > 0.f && Generation == ReplicatedMontageAvatarGeneration && !bEndingReplicatedMontage)
 	{
 		LocalAnimMontageInfo.AnimMontage = Montage;
 	}
@@ -798,8 +1102,9 @@ void UIMGAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& 
 
 void UIMGAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	ReplicatedMontageReadyDelegate.Unbind();
-	ReadyReplicatedMontageLogicalStartTime = -1.f;
+	bEndingReplicatedMontage = true;
+	ResetReplicatedMontagePrerequisites();
+	bPendingMontageRep = false;
 	bDeferringReplicatedMontageForActorInfoInitialization = false;
 	if (UIMGGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UIMGGlobalAbilitySystem>(GetWorld()))
 	{
