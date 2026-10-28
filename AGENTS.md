@@ -168,7 +168,10 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - InitiationSettings 在检测后、选择前及 GA 校验/服务端重检消费；bEnabled=false 只跳过本组发起限制。Manual 默认允许150 cm内站立发起；Automatic 默认允许 Falling，要求朝向前沿的有效意图、方向阈值0.8，固定 AutomaticMaxDistance=150 cm，不以实际速度设门槛或二次缩距。
 - 意图优先待消费输入，再 CMC.Acceleration；AI 复用 Manual，在两者为空时可读 Moving 的 PathFollowing 当前段目标，不以实际 Velocity 替代意图。普通玩家按 GA.RequestSource，服务端 AI 强制 AI 来源；AI 检测/发起共用意图，无意图时可向前按手动站立规则尝试。
 - ServerDistanceTolerance 仅补偿远端发起距离。速度缩放用于 Detector 搜索长度；Candidate.Speed/RunningSpeedThreshold 仅供选择建议，不限制原生 Supports，外部 CHT/蓝图可另筛。MaxMovingSpeed/MaxAngularSpeedDegrees 用于障碍/载体运动，检测、落点和执行继续复核。
-- 几何/坡面/净空/动作支持与最终动画覆盖分开；Automatic 的深度、高位开放接近、楼梯过滤只用于 Automatic。ActionSettings 提供默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点/接触，Notify 管窗口，Landing 管曲线/落点。最终复核表面、落差、可走支撑和完整胶囊，Root Motion/MotionWarping 执行位移。
+- 几何/坡面/净空/动作支持与最终动画覆盖分开；自动深度安全限制、高位开放接近拒绝及楼梯下行方向限制仅用于 Automatic，楼梯轮廓过滤也用于 Manual/AI。ActionSettings 提供默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点/接触，Notify 管窗口，Landing 管曲线/落点。最终复核表面、落差、可走支撑和完整胶囊，Root Motion/MotionWarping 执行位移。
+- 低障碍在高度小于 DetectorSettings.UseRequestDirectionBelowHeight（默认80 cm）时优先保留请求方向，允许斜向越过边沿；该方向的候选失败后可重试墙面法线方向。设为0可关闭此分支；MinFacingDot（Manual/AI默认0.3）和 AutomaticMinFacingDot（默认0.8）限制接近角度。调试 Handhold: request heading 表示所用方向，HClear/VClear 为净空测量，不是动画轨迹。
+- 楼梯语义由 DetectorSettings.StairSurfaceTag 指定，默认 Traversal.Stairs；加在实际碰撞组件的 Component Tags 或所属 Actor 的 Tags，使用普通 FName 标签。命中前侧/顶部带标签，或角色在地面且脚下带标签时启用楼梯轮廓过滤；未标记不保证从几何识别楼梯。默认边缘采样垂直跨度至少22.5 cm，命中楼梯表面时至少30 cm；跨度小于40 cm且水平漂移大于10 cm也拒绝。Span不是台阶高度，Height默认相对胶囊底部；顶部平台为独立组件/Actor时须覆盖实际命中边缘，不能仅依赖下面阶梯的标签。
+- 表面策略在 Traversal组件类默认值的 DetectorSettings 中配置：AutomaticBlockedSurfaceTags 仅拒绝 Automatic，BlockedSurfaceTags 拒绝所有来源。例如给局部楼梯/顶部边缘加 Traversal.NoAuto，并将同名标签加入 AutomaticBlockedSurfaceTags，可禁止该表面自动翻越、保留手动检测；此自定义名字须显式加入列表才生效。Actor标签影响其全部碰撞组件，局部限制优先用 Component Tags；Traversal.Stairs 启用过滤，不等于禁止全部攀爬。
 
 ### 执行、网络与清理
 
