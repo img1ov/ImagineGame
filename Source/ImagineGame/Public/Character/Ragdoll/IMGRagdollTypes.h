@@ -23,6 +23,34 @@ enum class EIMGRagdollEndReason : uint8
 	Unavailable
 };
 
+UENUM(BlueprintType)
+enum class EIMGRagdollIssue : uint8
+{
+	None,
+	Unavailable,
+	SessionMismatch,
+	InvalidTarget,
+	MissingTarget,
+	ExpiredTarget,
+	TargetTooFar,
+	TargetPathBlocked,
+	InputSourceBusy,
+	RecoveryTooFast,
+	NoFloor,
+	UnwalkableFloor,
+	PlacementBlocked,
+	PlacementPathBlocked,
+	ExitBlocked
+};
+
+UENUM()
+enum class EIMGRagdollTargetStatus : uint8
+{
+	Missing,
+	Ready,
+	Expired
+};
+
 USTRUCT(BlueprintType)
 struct IMAGINEGAME_API FIMGRagdollSettings
 {
@@ -47,12 +75,28 @@ struct IMAGINEGAME_API FIMGRagdollSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Network", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float MaxTargetDistance = 500.0f;
 
+	/** Live capture/query age limit; saved input validity is preserved during replay. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Network", meta = (ClampMin = "0.01", ForceUnits = "s"))
+	float MaxTargetAge = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Network")
+	bool bValidateTargetPath = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recovery", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float RecoveryTraceDistance = 200.0f;
 
 	/** Zero permits recovery at any capsule speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recovery", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float MaxRecoverySpeed = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recovery", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float RecoverySearchRadius = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recovery", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 RecoverySearchRings = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recovery", meta = (ClampMin = "4", ClampMax = "16"))
+	int32 RecoverySearchSamples = 8;
 
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 	bool IsValid() const;
@@ -76,7 +120,10 @@ struct IMAGINEGAME_API FIMGRagdollMovementInput
 	UPROPERTY()
 	bool bFaceUp = false;
 
-	bool IsValid() const { return Session != 0 && !FVector(PelvisLocation).ContainsNaN(); }
+	UPROPERTY()
+	EIMGRagdollTargetStatus Status = EIMGRagdollTargetStatus::Missing;
+
+	bool IsValid() const { return Session != 0 && Status == EIMGRagdollTargetStatus::Ready && !FVector(PelvisLocation).ContainsNaN(); }
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 };
 
@@ -119,7 +166,7 @@ struct IMAGINEGAME_API FIMGRagdollRepState
 	UPROPERTY()
 	bool bFaceUp = false;
 
-	/** Retain the approved placement when recovery and completion coalesce in replication. */
+	/** Retain approved recovery/exit placement when lifecycle updates coalesce in replication. */
 	UPROPERTY()
 	bool bHasRecovery = false;
 

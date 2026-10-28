@@ -28,6 +28,7 @@ constexpr float NearObstructionCheckDistance = 75.f;
 constexpr float NearObstructionLedgeTolerance = 50.f;
 constexpr float MaxHandholdAdjustment = 50.f;
 constexpr float StairDownhillFacingDot = 0.70710678f;
+constexpr float AutomaticMaxVaultDepth = 75.f;
 
 bool HasSurfaceTag(const UPrimitiveComponent* Component, FName Tag)
 {
@@ -822,19 +823,6 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 			break;
 		}
 	}
-	if (Query.Source == EIMGTraversalRequestSource::Automatic &&
-	    ((bMissingDepth && MissingDepthIndex + 1 <= MinimumSamples) ||
-	        GroundLocation.Z - (FrontPoint.Z - MaximumDrop) > Settings.AutomaticMaxGroundDrop))
-	{
-		Failure = EIMGTraversalFailure::UnsafeTop;
-#if ENABLE_DRAW_DEBUG
-		IMGTraversalDebug::String(World, FirstInvalidPoint + Up * 12.f,
-		    FString::Printf(TEXT("Automatic depth rejected: missing %d/%d | ground drop %.1f max %.1f"),
-		        MissingDepthIndex + 1, MinimumSamples, GroundLocation.Z - FrontPoint.Z + MaximumDrop,
-		        Settings.AutomaticMaxGroundDrop), FColor::Red, 2, -2.f, EStage::Validate);
-#endif
-		return false;
-	}
 	if (bFoundEdge)
 	{
 		FVector ValidPoint = LastTopPoint;
@@ -1022,6 +1010,23 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::String(World, FrontPoint + Up * (HalfHeight + 38.f),
 		    FString::Printf(TEXT("BlockedPath: clearance <= %.0fcm"), Settings.MinHorizontalClearance), FColor::Red, 2, -2.f, EStage::Validate);
+#endif
+		return false;
+	}
+
+	// Rear drops constrain automatic crossing of shallow tops, not climbing onto deeper platforms.
+	if (Query.Source == EIMGTraversalRequestSource::Automatic &&
+	    Out.ObstacleDepth <= AutomaticMaxVaultDepth && HorizontalClearance > AutomaticMaxVaultDepth &&
+	    ((bMissingDepth && MissingDepthIndex + 1 <= MinimumSamples) ||
+	        GroundLocation.Z - (FrontPoint.Z - MaximumDrop) > Settings.AutomaticMaxGroundDrop))
+	{
+		Failure = EIMGTraversalFailure::UnsafeTop;
+#if ENABLE_DRAW_DEBUG
+		IMGTraversalDebug::String(World, FirstInvalidPoint + Up * 12.f,
+		    FString::Printf(TEXT("Automatic depth rejected: depth %.1f clearance %.1f | missing %d/%d | ground drop %.1f max %.1f"),
+		        Out.ObstacleDepth, HorizontalClearance, MissingDepthIndex + 1, MinimumSamples,
+		        GroundLocation.Z - FrontPoint.Z + MaximumDrop, Settings.AutomaticMaxGroundDrop),
+		    FColor::Red, 2, -2.f, EStage::Validate);
 #endif
 		return false;
 	}

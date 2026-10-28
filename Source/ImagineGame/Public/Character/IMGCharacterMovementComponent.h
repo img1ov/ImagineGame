@@ -40,6 +40,8 @@ struct IMAGINEGAME_API FIMGCharacterNetworkMoveDataContainer : FCharacterNetwork
 struct IMAGINEGAME_API FIMGCharacterMoveResponseDataContainer : FCharacterMoveResponseDataContainer
 {
 	bool bHasRagdollState = false;
+	/** Correlates the native result with placement, even if the snapshot changed before packing. */
+	bool bRagdollPlacementReflected = false;
 	FIMGRagdollRepState RagdollState;
 	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
@@ -146,6 +148,9 @@ public:
 	UE_API virtual void PhysicsRotation(float DeltaTime) override;
 	UE_API virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
 	UE_API virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
+	using Super::ServerMoveHandleClientError;
+	UE_API virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
+		FMovementBaseInterfaceData* ClientMovementBaseInterfaceData, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
 
 	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement")
 	UE_API bool IsRagdollMovementMode() const;
@@ -155,13 +160,18 @@ public:
 	UE_API bool StartRagdollMovement(const FIMGRagdollSettings& Settings, FVector AdditionalVelocity = FVector::ZeroVector);
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
 	UE_API bool RecoverRagdollMovement(int32 ExpectedSession);
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool QueryRagdollRecovery(int32 ExpectedSession, FTransform& OutTransform, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset = FVector::ZeroVector) const;
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
-	UE_API void StopRagdollMovement(EIMGRagdollEndReason Reason = EIMGRagdollEndReason::Interrupted, int32 ExpectedSession = 0);
+	UE_API bool RecoverRagdollMovementAt(int32 ExpectedSession, const FTransform& Transform, FVector BodyLocalOffset = FVector::ZeroVector);
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool StopRagdollMovement(EIMGRagdollEndReason Reason = EIMGRagdollEndReason::Interrupted, int32 ExpectedSession = 0);
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
 	UE_API void CompleteRagdollRecovery(int32 ExpectedSession, bool bInterrupted = false);
 	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement|Ragdoll", meta = (DefaultToSelf = "InputSource"))
-	UE_API bool SubmitRagdollFollowTarget(const FTransform& Target, bool bFaceUp, UObject* InputSource);
-	UE_API void ClearRagdollFollowTarget(const UObject* InputSource);
+	UE_API bool SubmitRagdollFollowTarget(const FTransform& Target, bool bFaceUp, UObject* InputSource, int32 ExpectedSession);
+	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API void ClearRagdollFollowTarget(const UObject* InputSource, int32 ExpectedSession);
 	UE_API bool IsRagdollRecovering() const;
 	UE_API bool IsRagdollRecoveryReady() const;
 	UE_API const FIMGRagdollRepState& GetRagdollMovementState() const;
@@ -172,15 +182,18 @@ public:
 	int32 GetRagdollMovementSession() const { return ActiveRagdollState.Session; }
 	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
 	FVector GetRagdollInitialVelocity() const { return ActiveRagdollState.InitialVelocity; }
+	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
+	EIMGRagdollIssue GetRagdollMovementIssue() const { return RagdollMovementIssue; }
 	UPROPERTY(BlueprintAssignable, Category = "IMG|CharacterMovement|Ragdoll")
 	FIMGRagdollMovementEvent OnRagdollMovementUpdated;
 	UE_API FIMGRagdollMovementInput CaptureRagdollInput() const;
-	UE_API const FIMGRagdollMovementInput& GetRagdollMovementInput() const;
+	/** Cached live input, or the saved historical input while replaying. Never samples the body. */
+	UE_API FIMGRagdollMovementInput GetRagdollMovementInput() const;
 	UE_API bool FindRagdollRecoveryTransform(FTransform& OutTransform) const;
-	UE_API void ApplyRagdollRecoveryTransform(const FTransform& Transform);
 	UE_API virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UE_API virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	UE_API virtual void Deactivate() override;
+	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	UE_API virtual void OnRep_IsActive() override;
 	UE_API virtual void OnUnregister() override;
 
@@ -227,6 +240,7 @@ protected:
 	void SetDesiredStanceFromMove(EIMGStance NewStance);
 
 	friend class FSavedMove_IMG;
+	friend struct FIMGCharacterMoveResponseDataContainer;
 	friend struct FIMGStanceStateMachine;
 	friend class FIMGCustomMovementMode_Ragdoll;
 
@@ -239,12 +253,21 @@ protected:
 	FIMGRagdollRepState ActiveRagdollState;
 	FIMGRagdollMovementInput SubmittedRagdollInput;
 	TWeakObjectPtr<UObject> RagdollInputSource;
+	double RagdollInputSampleTime = -1.0;
+	double RagdollRemoteInputTime = -1.0;
+	float RagdollAdjustmentTimeStamp = -1.0f;
+	uint16 RagdollAdjustmentPlacementSession = 0;
+	EIMGRagdollIssue RagdollMovementIssue = EIMGRagdollIssue::None;
 	bool bRagdollTransitioning = false;
 	uint16 RagdollRecoveryAppliedSession = 0;
 	UFUNCTION()
 	void OnRep_RagdollMovementState();
 	void PublishRagdollMovementState();
-	void FinishRagdollMovement(EIMGRagdollEndReason Reason, bool bLeaveMode);
+	void FinishRagdollMovement(EIMGRagdollEndReason Reason, bool bLeaveMode, bool bKeepPlacement = false);
+	void SetRagdollMovementIssue(EIMGRagdollIssue Issue);
+	void ClearRagdollMovementResources();
+	FTransform GetRagdollPlacementTransform() const;
+	void ApplyRagdollRecoveryTransform(const FTransform& Transform);
 	void UpdateRagdollMovementState();
 	
 	// Cached ground info for the character.  Do not access this directly!  It's only updated when accessed via GetGroundInfo().

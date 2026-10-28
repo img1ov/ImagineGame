@@ -110,14 +110,16 @@ void UIMGRagdollComponent::TearDown()
 	SetComponentTickEnabled(false);
 	if (Movement.IsValid())
 	{
+		const int32 InputSession = Movement->GetRagdollMovementSession();
 		Movement->OnRagdollMovementUpdated.RemoveDynamic(this, &ThisClass::HandleMovementUpdated);
-		Movement->ClearRagdollFollowTarget(this);
 		RemoveTickPrerequisiteComponent(Movement.Get());
 		// Removing a coordinator must not terminate a session started by another caller.
+		// Retain our cached target until the owned session has checked its safe exit.
 		if (GetOwner() && GetOwner()->HasAuthority() && OwnedSession != 0)
 		{
 			Movement->StopRagdollMovement(EIMGRagdollEndReason::Unavailable, OwnedSession);
 		}
+		if (Movement.IsValid()) { Movement->ClearRagdollFollowTarget(this, InputSession); }
 	}
 	OwnedSession = 0;
 	if (SampledMesh.IsValid()) { RemoveTickPrerequisiteComponent(SampledMesh.Get()); }
@@ -166,9 +168,24 @@ bool UIMGRagdollComponent::BeginRecovery(int32 ExpectedSession)
 	return Movement->RecoverRagdollMovement(ExpectedSession);
 }
 
-void UIMGRagdollComponent::AbortRagdoll(int32 ExpectedSession)
+bool UIMGRagdollComponent::QueryRecovery(int32 ExpectedSession, FTransform& OutTransform, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset) const
 {
-	if (ExpectedSession != 0 && Movement.IsValid()) { Movement->StopRagdollMovement(EIMGRagdollEndReason::Interrupted, ExpectedSession); }
+	OutTransform = FTransform::Identity;
+	OutIssue = EIMGRagdollIssue::Unavailable;
+	return IsRagdollAvailable() && Movement->QueryRagdollRecovery(ExpectedSession, OutTransform, OutIssue, BodyLocalOffset);
+}
+
+bool UIMGRagdollComponent::BeginRecoveryAt(int32 ExpectedSession, const FTransform& Transform, FVector BodyLocalOffset)
+{
+	if (bTransitioning || !IsRagdollAvailable() || !GetOwner()->HasAuthority()) { return false; }
+	TGuardValue<bool> Transition(bTransitioning, true);
+	return Movement->RecoverRagdollMovementAt(ExpectedSession, Transform, BodyLocalOffset);
+}
+
+bool UIMGRagdollComponent::AbortRagdoll(int32 ExpectedSession, bool bForce)
+{
+	return ExpectedSession != 0 && Movement.IsValid() && Movement->StopRagdollMovement(
+		bForce ? EIMGRagdollEndReason::Unavailable : EIMGRagdollEndReason::Interrupted, ExpectedSession);
 }
 
 void UIMGRagdollComponent::CompleteRecovery(int32 ExpectedSession, bool bInterrupted)
@@ -207,11 +224,12 @@ void UIMGRagdollComponent::ReconcileState()
 	if (bReconciling || bTearingDown || !Character.IsValid() || !Movement.IsValid() || Character->bClientUpdating) { return; }
 	TGuardValue<bool> ReconcileGuard(bReconciling, true);
 	TGuardValue<bool> Transition(bTransitioning, true);
-	if (LocalSession != ActiveState.Session && ActiveState.Phase != EIMGRagdollPhase::Inactive)
+	if (ActiveState.Phase == EIMGRagdollPhase::Inactive && Movement->IsRagdollMovementMode()) { return; }
+	if (LocalSession != ActiveState.Session)
 	{
 		EndLocalSession(EIMGRagdollEndReason::Interrupted);
 		if (bTearingDown || !Movement.IsValid() || !IsRegistered() || !IsActive()) { return; }
-		LocalSession = ActiveState.Session;
+		if (ActiveState.Phase != EIMGRagdollPhase::Inactive) { LocalSession = ActiveState.Session; }
 	}
 	if (ActiveState.Phase == EIMGRagdollPhase::Simulating && IsRagdollAvailable() && Movement->IsRagdollMovementMode() && !bStartedNotified)
 	{
@@ -227,8 +245,6 @@ void UIMGRagdollComponent::ReconcileState()
 	if (bTearingDown || !Movement.IsValid()) { return; }
 	if (ActiveState.Phase == EIMGRagdollPhase::Inactive)
 	{
-		// An end snapshot may precede the proxy's authoritative movement-mode update.
-		if (Movement->IsRagdollMovementMode()) { return; }
 		OwnedSession = 0;
 		EndLocalSession(ActiveState.EndReason);
 		SetComponentTickEnabled(false);
@@ -241,14 +257,27 @@ bool UIMGRagdollComponent::GetRagdollFollowTarget_Implementation(FTransform& Out
 	OutTarget = Character->GetActorTransform();
 	bFaceUp = false;
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
-	if (IsValid(Mesh) && Mesh->GetBoneIndex(PelvisBone) != INDEX_NONE && Mesh->GetBoneIndex(OrientationBone) != INDEX_NONE
-		&& Mesh->IsSimulatingPhysics(PelvisBone) && !FaceUpAxis.ContainsNaN())
+	if (IsValid(Mesh) && Mesh->GetNumComponentSpaceTransforms() > 0)
 	{
-		const FVector Pelvis = Mesh->GetSocketLocation(PelvisBone);
-		const FVector Up = -Movement->GetGravityDirection();
-		bFaceUp = FVector::DotProduct(Mesh->GetSocketQuaternion(OrientationBone).RotateVector(FaceUpAxis.GetSafeNormal()), Up) > 0.0f;
-		const FVector Facing = FVector::VectorPlaneProject(Mesh->GetSocketLocation(OrientationBone) - Pelvis, Up).GetSafeNormal();
-		OutTarget = FTransform(Facing.IsNearlyZero() ? Character->GetActorRotation() : Facing.Rotation(), Pelvis);
+		const int32 PelvisIndex = Mesh->GetBoneIndex(PelvisBone);
+		if (PelvisIndex != INDEX_NONE && Mesh->IsSimulatingPhysics(PelvisBone))
+		{
+			const FVector Pelvis = Mesh->GetBoneTransform(PelvisIndex).GetLocation();
+			OutTarget.SetLocation(Pelvis);
+			// An optional orientation bone must not disable a valid position sample.
+			const int32 OrientationIndex = Mesh->GetBoneIndex(OrientationBone);
+			if (OrientationIndex != INDEX_NONE)
+			{
+				const FTransform Orientation = Mesh->GetBoneTransform(OrientationIndex);
+				const FVector Up = -Movement->GetGravityDirection();
+				const FVector Facing = FVector::VectorPlaneProject(Orientation.GetLocation() - Pelvis, Up).GetSafeNormal();
+				if (!Facing.IsNearlyZero()) { OutTarget.SetRotation(Facing.Rotation().Quaternion()); }
+				if (!FaceUpAxis.ContainsNaN())
+				{
+					bFaceUp = FVector::DotProduct(Orientation.GetRotation().RotateVector(FaceUpAxis.GetSafeNormal()), Up) > 0.0f;
+				}
+			}
+		}
 	}
 	return true;
 }
@@ -263,14 +292,37 @@ void UIMGRagdollComponent::SampleTarget()
 	bool bFaceUp = false;
 	const bool bProvided = GetRagdollFollowTarget(Target, bFaceUp);
 	if (!IsRagdollAvailable() || ActiveState.Session != Session || ActiveState.Phase != EIMGRagdollPhase::Simulating) { return; }
-	if (!bProvided || !Movement->SubmitRagdollFollowTarget(Target, bFaceUp, this)) { Movement->ClearRagdollFollowTarget(this); }
+	if (!bProvided || !Movement->SubmitRagdollFollowTarget(Target, bFaceUp, this, Session)) { Movement->ClearRagdollFollowTarget(this, Session); }
+}
+
+bool UIMGRagdollComponent::GetRagdollBodyMotion_Implementation(FVector& OutLinearVelocity, FVector& OutAngularVelocityRadians) const
+{
+	OutLinearVelocity = FVector::ZeroVector;
+	OutAngularVelocityRadians = FVector::ZeroVector;
+	if (!IsRagdollAvailable()) { return false; }
+	const USkeletalMeshComponent* Mesh = Character->GetMesh();
+	if (!IsValid(Mesh) || Mesh->GetBoneIndex(PelvisBone) == INDEX_NONE || !Mesh->IsSimulatingPhysics(PelvisBone)) { return false; }
+	OutLinearVelocity = Mesh->GetPhysicsLinearVelocity(PelvisBone);
+	OutAngularVelocityRadians = Mesh->GetPhysicsAngularVelocityInRadians(PelvisBone);
+	if (OutLinearVelocity.ContainsNaN() || OutAngularVelocityRadians.ContainsNaN())
+	{
+		OutLinearVelocity = FVector::ZeroVector;
+		OutAngularVelocityRadians = FVector::ZeroVector;
+		return false;
+	}
+	return true;
+}
+
+EIMGRagdollIssue UIMGRagdollComponent::GetRagdollMovementIssue() const
+{
+	return Movement.IsValid() ? Movement->GetRagdollMovementIssue() : EIMGRagdollIssue::Unavailable;
 }
 
 bool UIMGRagdollComponent::IsFaceUp() const
 {
 	if (Movement.IsValid())
 	{
-		const FIMGRagdollMovementInput& Input = Movement->GetRagdollMovementInput();
+		const FIMGRagdollMovementInput Input = Movement->GetRagdollMovementInput();
 		if (Input.IsValid() && Input.Session == ActiveState.Session) { return Input.bFaceUp; }
 	}
 	return ActiveState.bFaceUp;

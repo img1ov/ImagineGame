@@ -30,12 +30,20 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|Ragdoll")
 	bool BeginRecovery(int32 ExpectedSession);
 
+	/** BodyLocalOffset locates the matched follow point in the proposed capsule's unit-scale space. */
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "IMG|Ragdoll")
+	bool QueryRecovery(int32 ExpectedSession, FTransform& OutTransform, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset = FVector::ZeroVector) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|Ragdoll")
+	bool BeginRecoveryAt(int32 ExpectedSession, const FTransform& Transform, FVector BodyLocalOffset = FVector::ZeroVector);
+
 	/** The ability must complete or abort its session; there is no automatic recovery timer. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|Ragdoll")
 	void CompleteRecovery(int32 ExpectedSession, bool bInterrupted = false);
 
+	/** Forced cleanup ends the session even if safe placement fails, leaving movement disabled. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|Ragdoll")
-	void AbortRagdoll(int32 ExpectedSession);
+	bool AbortRagdoll(int32 ExpectedSession, bool bForce = false);
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll")
 	bool IsRagdollAvailable() const;
@@ -56,6 +64,14 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "IMG|Ragdoll")
 	bool GetRagdollFollowTarget(FTransform& OutTarget, bool& bFaceUp) const;
 	virtual bool GetRagdollFollowTarget_Implementation(FTransform& OutTarget, bool& bFaceUp) const;
+
+	/** Optional body facts only. GetUp thresholds and settled time belong to the caller. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "IMG|Ragdoll")
+	bool GetRagdollBodyMotion(FVector& OutLinearVelocity, FVector& OutAngularVelocityRadians) const;
+	virtual bool GetRagdollBodyMotion_Implementation(FVector& OutLinearVelocity, FVector& OutAngularVelocityRadians) const;
+
+	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll")
+	EIMGRagdollIssue GetRagdollMovementIssue() const;
 
 	UPROPERTY(BlueprintAssignable, Category = "IMG|Ragdoll")
 	FIMGRagdollEvent OnRagdollStarted;
