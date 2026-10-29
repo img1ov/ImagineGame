@@ -27,6 +27,17 @@ void UIMGCameraComponent::OnRegister()
 		CameraModeStack = NewObject<UIMGCameraModeStack>(this);
 		check(CameraModeStack);
 	}
+	CameraModeStack->ActivateStack();
+}
+
+void UIMGCameraComponent::OnUnregister()
+{
+	if (CameraModeStack)
+	{
+		CameraModeStack->DeactivateStack();
+	}
+	FieldOfViewOffset = 0.f;
+	Super::OnUnregister();
 }
 
 void UIMGCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView)
@@ -36,7 +47,12 @@ void UIMGCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& Desir
 	UpdateCameraModes();
 
 	FIMGCameraModeView CameraModeView;
-	CameraModeStack->EvaluateStack(DeltaTime, CameraModeView);
+	if (!CameraModeStack->EvaluateStack(DeltaTime, CameraModeView))
+	{
+		FieldOfViewOffset = 0.f;
+		Super::GetCameraView(DeltaTime, DesiredView);
+		return;
+	}
 
 	// Keep player controller in sync with the latest view.
 	if (APawn* TargetPawn = Cast<APawn>(GetTargetActor()))
@@ -100,6 +116,20 @@ void UIMGCameraComponent::UpdateCameraModes()
 		}
 		CameraModeStack->PushCameraMode(CameraMode);
 	}
+}
+
+void UIMGCameraComponent::ResetInterpolation()
+{
+	if (CameraModeStack)
+	{
+		CameraModeStack->ResetInterpolation();
+	}
+}
+
+void UIMGCameraComponent::NotifyCameraCut()
+{
+	Super::NotifyCameraCut();
+	ResetInterpolation();
 }
 
 void UIMGCameraComponent::DrawDebug(UCanvas* Canvas) const

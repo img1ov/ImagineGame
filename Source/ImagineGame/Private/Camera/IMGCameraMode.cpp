@@ -125,7 +125,13 @@ FRotator UIMGCameraMode::GetPivotRotation() const
 
 void UIMGCameraMode::UpdateCameraMode(float DeltaTime)
 {
+	const uint32 ResetRevision = InterpolationResetRevision;
 	UpdateView(DeltaTime);
+	// Keep a new request made by a view-update callback for the next complete update.
+	if (ResetRevision == InterpolationResetRevision)
+	{
+		bResetInterpolation = false;
+	}
 	UpdateBlending(DeltaTime);
 }
 
@@ -337,6 +343,14 @@ bool UIMGCameraModeStack::EvaluateStack(float DeltaTime, FIMGCameraModeView& Out
 	BlendStack(OutCameraModeView);
 
 	return true;
+}
+
+void UIMGCameraModeStack::ResetInterpolation()
+{
+	for (UIMGCameraMode* CameraMode : CameraModeStack)
+	{
+		CameraMode->ResetInterpolation();
+	}
 }
 
 UIMGCameraMode* UIMGCameraModeStack::GetCameraModeInstance(TSubclassOf<UIMGCameraMode> CameraModeClass)

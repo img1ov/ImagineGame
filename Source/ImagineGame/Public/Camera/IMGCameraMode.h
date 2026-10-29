@@ -88,6 +88,10 @@ public:
 
 	void UpdateCameraMode(float DeltaTime);
 
+	/** Snap interpolation on this mode's next update, including while it is being blended. */
+	UFUNCTION(BlueprintCallable, Category = "IMG|Camera")
+	void ResetInterpolation() { bResetInterpolation = true; ++InterpolationResetRevision; }
+
 	float GetBlendTime() const { return BlendTime; }
 	float GetBlendWeight() const { return BlendWeight; }
 	void SetBlendWeight(float Weight);
@@ -147,9 +151,10 @@ protected:
 	float BlendWeight;
 
 protected:
-	/** If true, skips all interpolation and puts camera in ideal location.  Automatically set to false next frame. */
+	/** Snap this mode's interpolation during its next view update. */
 	UPROPERTY(transient)
 	uint32 bResetInterpolation:1;
+	uint32 InterpolationResetRevision = 0;
 };
 
 
@@ -175,6 +180,8 @@ public:
 	void PushCameraMode(TSubclassOf<UIMGCameraMode> CameraModeClass);
 
 	bool EvaluateStack(float DeltaTime, FIMGCameraModeView& OutCameraModeView);
+
+	void ResetInterpolation();
 
 	void DrawDebug(UCanvas* Canvas) const;
 

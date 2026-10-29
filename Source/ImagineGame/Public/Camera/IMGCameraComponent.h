@@ -50,9 +50,16 @@ public:
 	// Gets the tag associated with the top layer and the blend weight of it
 	void GetBlendInfo(float& OutWeightOfTopLayer, FGameplayTag& OutTagOfTopLayer) const;
 
+	/** Reset active modes after a teleport or another discontinuous change to the camera target. */
+	UFUNCTION(BlueprintCallable, Category = "IMG|Camera")
+	void ResetInterpolation();
+
+	virtual void NotifyCameraCut() override;
+
 protected:
 
 	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
 	virtual void GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView) override;
 
 	virtual void UpdateCameraModes();

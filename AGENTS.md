@@ -21,9 +21,9 @@
 - UE 5.8；Gameplay 核心用 C++，蓝图用于配置、装配、转发及明确保留的移动计算；暂不接脚本。项目专有类型用 `IMG`，通用类型遵循同目录命名，不沿用参考项目的专有名称或前缀。
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
-- Lyra 参考：`D:/Application/UnrealProjects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
-- GTA 参考：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`，工程导航见其仓库根目录 `AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码：`D:/Application/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
+- GTA 参考：`D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`，工程导航见其仓库根目录 `AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
+- UE 源码：`D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ### GTA 3C 源码导航与映射
 
@@ -240,6 +240,28 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose` 按 Avatar/Spec/PredKey 对照，结束恢复 Log。PredictionRejected 表示激活拒绝；TargetData 重检失败发生在激活后；AuthorityEndedPredictedTraversal 只说明权威先结束，不能据此认定预测错误。
 - GTA 检测/手点：`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`；发起：`task/Default/TaskPlayer.cpp`；Jump/Vault 分流：`task/Movement/Jumping/TaskJump.*`；执行/清理：`task/Movement/Climbing/TaskVault.*`。
 - GTA 人形搜索绕 Z、多层球扫水平、坡面后筛；SearchForHandHold 探针来自固定层值/覆写，GetClimbDetectorParam 的 MBR 插值影响发起范围，JumpVault 有步态门槛，AutoVault 结合摇杆、受阻降步态和冷却且纯自动要求落地。本工程速度搜索缩放、固定发起范围及默认允许空中属项目策略；不机械移植动画表、手动位移或网络协议。
+
+## 镜头
+
+### 调用链与职责
+
+- Hero.DetermineCameraMode 选择能力覆盖或 PawnData.DefaultCameraMode，CameraComponent 回退 Default；CameraModeStack 更新/混合，CameraComponent 输出视图。TPS 顺序为姿态/未滞后枢轴 → 位置 Lag＋PelvisOffset → 阻尼朝向的轨道偏移 → Shake → 防穿墙。旋转误差使用本模式 FOV、UE 投影及分屏尺寸，不按栈混合或后续特效重算；无本地目标 Controller/视口时按相机 AspectRatio 回退。
+- `Camera/IMGCameraRotationDamping.h/.cpp`、`IMGCameraShake.h/.cpp` 只有调用方持有的数值配置/历史，不查 World、角色、动画、Controller、GAS 或视口，不自行 Tick/复制。TPS 负责采样和表现，步态/瞄准规则归蓝图或具体玩法；不向 ABP、CMC 或 Mesh 写回。
+- View.ControlRotation 保留原始期望朝向，阻尼/Shake 只改表现。武器和 AimAssistInputModifier 仍取最终玩家视点，因而受镜头表现影响。
+
+### 配置与蓝图合同
+
+- Rotation Damping、Pelvis Offset、Shake 均默认关闭。旋转按 Yaw/Pitch 两轴先平滑目标角速度，再收拢角度；频率为 Hz，Roll 透传，MaxErrorFraction 限制相对各轴半 FOV 的误差。
+- Shake 各轴振幅默认0；位置 X/Y/Z 为未摇晃相机的前/右/上，旋转以局部四元数叠加，FOV 偏移后限于5至170度。GetShakeInput(TargetActor, DeltaTime) 在每个启用模式的视图更新中调用一次，原生输出 Active=false、AmplitudeScale/FrequencyScale=1；蓝图按步态/曲线返回启停及非负倍率，C++ 不固定奔跑或 Tag 判断。Active=false 用最后一次激活倍率混出，关闭 Enable Shake 立即清空；持续驱动使用 HoldTime=-1。
+- 通用 Shake 支持 Sine/DampedSine、相位/随机种子/DC Offset，以及预延迟→Attack→Decay→Hold→Release 包络；曲线为 Linear/SmoothStep/Exponential，默认 Release 为 exp(-7t)。Start 幂等，释放期间重启保留相位并从当前包络恢复；有限 Hold 可单次 Start 后自然结束。Phase/RandomSeed 在新实例 Start 时消费；其他 Shake 的触发和实例调度归调用方。
+- PelvisOffsetSocket 默认空，PelvisOffsetHeight 须按模型/模式校准，不以启用瞬间姿势标定。目标修正 = Socket 世界高度＋配置偏移－未滞后的完整姿态枢轴高度，经连续死区、权重、上下限及独立弹簧后加在位置 Lag 外。只读 Character.Mesh 最近完成的骨骼/Socket，支持直接 LeaderPose 映射；它跟随最终身体高度，不能分离纯 FootIK，采样时效受动画降频/更新顺序影响。
+
+### 重置、调试与参考
+
+- CameraComponent.ResetInterpolation/NotifyCameraCut 向所有在栈模式转发，下次完整视图更新消费，回调中的新请求留给下一次。组件注销时停用栈、清单帧 FOV 偏移，重注册重新激活；栈停用期间回退原生视图，不输出空模式结果。TPS 激活、目标/控制器变化或可观察到的 CameraCut 重置历史，重置帧强制重查碰撞探针；停用/关闭释放本方状态，没有通知的瞬移须显式重置。Pelvis 的 Mesh/骨骼资产/Socket 改变或采样失效时清空回退原枢轴。
+- 零步长不推进弹簧/振荡或求导，但仍应用轴旁路及 FOV/偏移上限；零时长包络阶段可立即完成。超过32/120秒：旋转清历史并直达目标，Pelvis 直达新目标，Shake 清空并输出零；无效输入/配置分别回退原朝向、原枢轴或零 Shake。位置 Lag 最多32个子步，超出预算直达目标。
+- `showdebug camera` 查看 Shake 包络/倍率/阶段及 Pelvis 修正/来源。Draw Pelvis Offset 默认关闭：白点为原枢轴，绿点/竖线为补偿结果，红色为回退，文字为实际厘米数；单帧绘图受 ENABLE_DRAW_DEBUG 保护。
+- GTA 路径相对 `camera/`：`gameplay/follow/FollowPedCamera.cpp::UpdateRunningShake` 对照运动驱动；`helpers/{FrameShaker,Oscillator,Envelope}` 对照数值层；`base/BaseCamera.cpp` 对照 PostEffectFrame；`gameplay/GameplayDirector.cpp::RegisterExplosion` 复用同类 Shaker。`gameplay/aim/FirstPersonShooterCamera.cpp::UpdateFrameShakers` 的 FPS 头骨跟随尚未迁入。
 
 ## 装备、背包与射击
 

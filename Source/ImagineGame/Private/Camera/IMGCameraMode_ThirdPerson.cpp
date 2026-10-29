@@ -1,16 +1,23 @@
 
 #include "Camera/IMGCameraMode_ThirdPerson.h"
+#include "Camera/IMGCameraComponent.h"
 #include "Camera/IMGCameraMode.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Camera/IMGPenetrationAvoidanceFeeler.h"
 #include "Curves/CurveVector.h"
 #include "Engine/Canvas.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/SkeletalMesh.h"
 #include "GameFramework/CameraBlockingVolume.h"
 #include "Camera/IMGCameraAssistInterface.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
 #include "Math/RotationMatrix.h"
+#include "SceneView.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGCameraMode_ThirdPerson)
 
@@ -34,17 +41,39 @@ UIMGCameraMode_ThirdPerson::UIMGCameraMode_ThirdPerson()
 
 void UIMGCameraMode_ThirdPerson::UpdateView(float DeltaTime)
 {
-	UpdateForTarget(DeltaTime);
+	UpdateForTarget();
 	UpdateStanceOffset(DeltaTime);
 
-	const FVector PivotLocation = UpdateCameraLag(DeltaTime) + CurrentStanceOffset;
+	const FVector DesiredPivotLocation = GetPivotLocation();
+	const double HeightOffset = UpdatePelvisOffsetSpring(DesiredPivotLocation + CurrentStanceOffset, DeltaTime);
+	const FVector UncompensatedPivotLocation = UpdateCameraLag(DesiredPivotLocation, DeltaTime) + CurrentStanceOffset;
+	const FVector PivotLocation = UncompensatedPivotLocation + FVector::UpVector * HeightOffset;
+#if ENABLE_DRAW_DEBUG
+	if (bApplyPelvisOffset && bDrawPelvisOffset)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			const FColor Color = bHasPelvisOffset ? FColor::Green : FColor::Red;
+			DrawDebugPoint(World, UncompensatedPivotLocation, 9.f, FColor::White, false, -1.f);
+			DrawDebugLine(World, UncompensatedPivotLocation, PivotLocation, Color, false, -1.f, 0, 2.f);
+			DrawDebugPoint(World, PivotLocation, 7.f, Color, false, -1.f);
+			DrawDebugString(World, PivotLocation + FVector::UpVector * 8.f,
+				FString::Printf(TEXT("Pelvis offset [%s]: %+.1f cm (%s)"), *PelvisOffsetSocket.ToString(),
+					HeightOffset, bHasPelvisOffset ? TEXT("active") : TEXT("inactive")),
+				nullptr, Color, 0.f, true);
+		}
+	}
+#endif
 	FRotator PivotRotation = GetPivotRotation();
 
+	PivotRotation.Pitch = FMath::ClampAngle(PivotRotation.Pitch, ViewPitchMin, ViewPitchMax);
+	const FRotator ControlRotation = PivotRotation;
+	PivotRotation = UpdateRotationDamping(PivotRotation, DeltaTime);
 	PivotRotation.Pitch = FMath::ClampAngle(PivotRotation.Pitch, ViewPitchMin, ViewPitchMax);
 
 	View.Location = PivotLocation;
 	View.Rotation = PivotRotation;
-	View.ControlRotation = View.Rotation;
+	View.ControlRotation = ControlRotation;
 	View.FieldOfView = FieldOfView;
 
 	// Apply third person offset using pitch.
@@ -67,28 +96,107 @@ void UIMGCameraMode_ThirdPerson::UpdateView(float DeltaTime)
 		View.Location = PivotLocation + PivotRotation.RotateVector(TargetOffset);
 	}
 
-	// Adjust final desired camera location to prevent any penetration
+	UpdateShake(DeltaTime);
+
+	// Include shake displacement in the final penetration check.
 	UpdatePreventPenetration(DeltaTime);
 }
 
-FVector UIMGCameraMode_ThirdPerson::UpdateCameraLag(float DeltaTime)
+void UIMGCameraMode_ThirdPerson::GetShakeInput_Implementation(AActor* TargetActor, float DeltaTime,
+	bool& bActive, float& AmplitudeScale, float& FrequencyScale)
 {
-	const FVector DesiredPivotLocation = GetPivotLocation();
+	bActive = false;
+	AmplitudeScale = 1.f;
+	FrequencyScale = 1.f;
+}
+
+void UIMGCameraMode_ThirdPerson::ResetShake()
+{
+	ShakeState.Reset();
+	ShakeAmplitudeScale = 1.f;
+	ShakeFrequencyScale = 1.f;
+}
+
+void UIMGCameraMode_ThirdPerson::UpdateShake(float DeltaTime)
+{
+	AActor* TargetActor = GetTargetActor();
+	if (!bEnableShake || !IsValid(TargetActor))
+	{
+		ResetShake();
+		return;
+	}
+	if (bResetInterpolation)
+	{
+		ResetShake();
+	}
+	bool bActive = false;
+	float AmplitudeScale = 1.f;
+	float FrequencyScale = 1.f;
+	GetShakeInput(TargetActor, DeltaTime, bActive, AmplitudeScale, FrequencyScale);
+	if (!bEnableShake || !IsValid(TargetActor) || GetTargetActor() != TargetActor)
+	{
+		ResetShake();
+		return;
+	}
+	if (bActive)
+	{
+		if (!FMath::IsFinite(AmplitudeScale) || AmplitudeScale < 0.f
+			|| !FMath::IsFinite(FrequencyScale) || FrequencyScale < 0.f)
+		{
+			ResetShake();
+			return;
+		}
+		ShakeAmplitudeScale = AmplitudeScale;
+		ShakeFrequencyScale = FrequencyScale;
+		ShakeState.Start(ShakeSettings);
+	}
+	else
+	{
+		// Keep the last requested scales during release, even when a gait curve has already returned to zero.
+		ShakeState.Release();
+	}
+
+	FVector LocationOffset;
+	FRotator RotationOffset;
+	float FOVOffset;
+	ShakeState.Update(DeltaTime, ShakeAmplitudeScale, ShakeFrequencyScale, ShakeSettings,
+		LocationOffset, RotationOffset, FOVOffset);
+	View.Location += View.Rotation.RotateVector(LocationOffset);
+	if (!RotationOffset.IsNearlyZero())
+	{
+		View.Rotation = (View.Rotation.Quaternion() * RotationOffset.GetNormalized().Quaternion()).Rotator();
+	}
+	View.FieldOfView = FMath::Clamp(View.FieldOfView + FOVOffset, 5.f, 170.f);
+}
+
+FVector UIMGCameraMode_ThirdPerson::UpdateCameraLag(const FVector& DesiredPivotLocation, float DeltaTime)
+{
 	if (!bHasLaggedPivotLocation || bResetInterpolation || !bEnableCameraLag || CameraLocationLagSpeed <= 0.0f)
 	{
 		LaggedPivotLocation = DesiredPivotLocation;
 		bHasLaggedPivotLocation = true;
 		return LaggedPivotLocation;
 	}
+	if (!FMath::IsFinite(DeltaTime) || DeltaTime < 0.f || !FMath::IsFinite(CameraLocationLagSpeed))
+	{
+		LaggedPivotLocation = DesiredPivotLocation;
+		return LaggedPivotLocation;
+	}
 
 	if (bUseCameraLagSubstepping && DeltaTime > CameraLagMaxTimeStep)
 	{
+		constexpr int32 MaxSubsteps = 32;
+		const float MaxTimeStep = FMath::Max(CameraLagMaxTimeStep, 1.0f / 200.0f);
+		if (!FMath::IsFinite(MaxTimeStep) || DeltaTime > MaxTimeStep * MaxSubsteps)
+		{
+			LaggedPivotLocation = DesiredPivotLocation;
+			return LaggedPivotLocation;
+		}
 		const FVector PivotMovementStep = (DesiredPivotLocation - LaggedPivotLocation) / DeltaTime;
 		FVector LerpTarget = LaggedPivotLocation;
 		float RemainingTime = DeltaTime;
-		const float MaxTimeStep = FMath::Max(CameraLagMaxTimeStep, 1.0f / 200.0f);
 
-		while (RemainingTime > UE_KINDA_SMALL_NUMBER)
+		for (int32 StepIndex = 0; StepIndex < MaxSubsteps && RemainingTime > UE_KINDA_SMALL_NUMBER; ++StepIndex)
 		{
 			const float Step = FMath::Min(MaxTimeStep, RemainingTime);
 			LerpTarget += PivotMovementStep * Step;
@@ -110,15 +218,217 @@ FVector UIMGCameraMode_ThirdPerson::UpdateCameraLag(float DeltaTime)
 	return LaggedPivotLocation;
 }
 
+FRotator UIMGCameraMode_ThirdPerson::UpdateRotationDamping(const FRotator& TargetRotation, float DeltaTime)
+{
+	const UIMGCameraComponent* CameraComponent = GetIMGCameraComponent();
+	if (!bEnableRotationDamping || !CameraComponent || CameraComponent->ProjectionMode != ECameraProjectionMode::Perspective
+		|| !FMath::IsFinite(FieldOfView) || FieldOfView <= 0.f || FieldOfView >= 180.f
+		|| !FMath::IsFinite(CameraComponent->AspectRatio) || CameraComponent->AspectRatio <= UE_SMALL_NUMBER)
+	{
+		RotationDampingState.Reset();
+		return TargetRotation;
+	}
+	if (bResetInterpolation)
+	{
+		RotationDampingState.Reset();
+	}
+
+	// Use this mode's FOV and UE's projection rules, including the local player's split-screen rectangle.
+	FMinimalViewInfo ViewInfo;
+	ViewInfo.FOV = FieldOfView;
+	ViewInfo.AspectRatio = CameraComponent->AspectRatio;
+	ViewInfo.bConstrainAspectRatio = CameraComponent->bConstrainAspectRatio;
+	FMatrix Projection = ViewInfo.CalculateProjectionMatrix();
+	if (const APlayerController* Controller = CachedViewController.Get())
+	{
+		if (const ULocalPlayer* LocalPlayer = Controller->GetLocalPlayer())
+		{
+			int32 Width = 0;
+			int32 Height = 0;
+			Controller->GetViewportSize(Width, Height);
+			Width = FMath::TruncToInt(Width * LocalPlayer->Size.X);
+			Height = FMath::TruncToInt(Height * LocalPlayer->Size.Y);
+			if (Width > 0 && Height > 0)
+			{
+				FSceneViewProjectionData ProjectionData;
+				const FIntRect ViewRect(0, 0, Width, Height);
+				ProjectionData.SetViewRectangle(ViewRect);
+				FMinimalViewInfo::CalculateProjectionMatrixGivenViewRectangle(
+					ViewInfo, LocalPlayer->AspectRatioAxisConstraint, ViewRect, ProjectionData);
+				Projection = ProjectionData.ProjectionMatrix;
+			}
+		}
+	}
+
+	if (ViewInfo.ProjectionMode != ECameraProjectionMode::Perspective
+		|| !FMath::IsFinite(Projection.M[0][0]) || Projection.M[0][0] <= UE_SMALL_NUMBER
+		|| !FMath::IsFinite(Projection.M[1][1]) || Projection.M[1][1] <= UE_SMALL_NUMBER)
+	{
+		RotationDampingState.Reset();
+		return TargetRotation;
+	}
+
+	const FVector2D FieldOfViewDegrees(
+		FMath::RadiansToDegrees(2.0 * FMath::Atan(1.0 / Projection.M[0][0])),
+		FMath::RadiansToDegrees(2.0 * FMath::Atan(1.0 / Projection.M[1][1])));
+	return RotationDampingState.Update(TargetRotation, FieldOfViewDegrees, DeltaTime, RotationDampingSettings);
+}
+
+void UIMGCameraMode_ThirdPerson::ResetPelvisOffsetSpring()
+{
+	PelvisOffset = 0.0;
+	PelvisOffsetVelocity = 0.0;
+	bHasPelvisOffset = false;
+	CachedPelvisMesh.Reset();
+	CachedPelvisMeshAsset.Reset();
+	CachedPelvisSocket = NAME_None;
+}
+
+double UIMGCameraMode_ThirdPerson::UpdatePelvisOffsetSpring(const FVector& UnlaggedPivotLocation, float DeltaTime)
+{
+	if (!bApplyPelvisOffset || PelvisOffsetSocket.IsNone()
+		|| !FMath::IsFinite(PelvisOffsetHeight) || !FMath::IsFinite(PelvisOffsetWeight)
+		|| PelvisOffsetWeight <= 0.f || PelvisOffsetWeight > 1.f
+		|| !FMath::IsFinite(DeltaTime) || DeltaTime < 0.f || UnlaggedPivotLocation.ContainsNaN())
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+	const float NonNegativeSettings[] = { PelvisOffsetDeadZone, PelvisOffsetMaxDown,
+		PelvisOffsetMaxUp, PelvisOffsetFrequency, PelvisOffsetDampingRatio };
+	for (float Value : NonNegativeSettings)
+	{
+		if (!FMath::IsFinite(Value) || Value < 0.f)
+		{
+			ResetPelvisOffsetSpring();
+			return 0.0;
+		}
+	}
+	if (PelvisOffsetFrequency > 30.f || PelvisOffsetDampingRatio > 10.f)
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+
+	const ACharacter* Character = Cast<ACharacter>(GetTargetActor());
+	const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	const USkeletalMesh* MeshAsset = IsValid(Mesh) ? Mesh->GetSkeletalMeshAsset() : nullptr;
+	if (!IsValid(Mesh) || !IsValid(MeshAsset) || !Mesh->IsRegistered())
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+	const int32 SocketBoneIndex = Mesh->GetBoneIndex(Mesh->GetSocketBoneName(PelvisOffsetSocket));
+	const USkinnedMeshComponent* PoseComponent = Mesh->GetBaseComponent();
+	int32 PoseBoneIndex = SocketBoneIndex;
+	if (PoseComponent != Mesh)
+	{
+		const TArray<int32>& BoneMap = Mesh->GetLeaderBoneMap();
+		PoseBoneIndex = BoneMap.IsValidIndex(SocketBoneIndex) ? BoneMap[SocketBoneIndex] : INDEX_NONE;
+	}
+	if (!IsValid(PoseComponent) || !PoseComponent->IsRegistered()
+		|| PoseBoneIndex < 0 || PoseBoneIndex >= PoseComponent->GetNumComponentSpaceTransforms())
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+	const FVector SocketLocation = Mesh->GetSocketTransform(PelvisOffsetSocket, RTS_World).GetLocation();
+	if (SocketLocation.ContainsNaN())
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+
+	if (bResetInterpolation || CachedPelvisMesh.Get() != Mesh || CachedPelvisMeshAsset.Get() != MeshAsset
+		|| CachedPelvisSocket != PelvisOffsetSocket)
+	{
+		ResetPelvisOffsetSpring();
+	}
+	CachedPelvisMesh = Mesh;
+	CachedPelvisMeshAsset = MeshAsset;
+	CachedPelvisSocket = PelvisOffsetSocket;
+
+	// Compare against the complete unlagged stance pivot so actor travel and eye-height changes are not added twice.
+	const double HeightError = SocketLocation.Z + PelvisOffsetHeight - UnlaggedPivotLocation.Z;
+	const double ErrorOutsideDeadZone = FMath::Sign(HeightError)
+		* FMath::Max(FMath::Abs(HeightError) - PelvisOffsetDeadZone, 0.0);
+	const double MinOffset = -double(PelvisOffsetMaxDown);
+	const double MaxOffset = double(PelvisOffsetMaxUp);
+	const double TargetOffset = FMath::Clamp(ErrorOutsideDeadZone * PelvisOffsetWeight, MinOffset, MaxOffset);
+	constexpr float MaxStepSeconds = 1.f / 120.f;
+	constexpr int32 MaxSubsteps = 32;
+	if (!bHasPelvisOffset || PelvisOffsetFrequency <= 0.f || DeltaTime > MaxStepSeconds * MaxSubsteps)
+	{
+		PelvisOffset = TargetOffset;
+		PelvisOffsetVelocity = 0.0;
+		bHasPelvisOffset = true;
+	}
+	else if (DeltaTime > UE_SMALL_NUMBER)
+	{
+		const int32 NumSteps = FMath::Clamp(FMath::CeilToInt(DeltaTime / MaxStepSeconds), 1, MaxSubsteps);
+		for (int32 StepIndex = 0; StepIndex < NumSteps; ++StepIndex)
+		{
+			FMath::SpringDamper(PelvisOffset, PelvisOffsetVelocity, TargetOffset, 0.0,
+				DeltaTime / NumSteps, PelvisOffsetFrequency, PelvisOffsetDampingRatio);
+			const double ClampedOffset = FMath::Clamp(PelvisOffset, MinOffset, MaxOffset);
+			if (ClampedOffset != PelvisOffset)
+			{
+				PelvisOffset = ClampedOffset;
+				PelvisOffsetVelocity = 0.0;
+			}
+		}
+	}
+	if (!FMath::IsFinite(PelvisOffset) || !FMath::IsFinite(PelvisOffsetVelocity))
+	{
+		ResetPelvisOffsetSpring();
+		return 0.0;
+	}
+	const double ClampedOffset = FMath::Clamp(PelvisOffset, MinOffset, MaxOffset);
+	if (ClampedOffset != PelvisOffset)
+	{
+		PelvisOffset = ClampedOffset;
+		PelvisOffsetVelocity = 0.0;
+	}
+	return PelvisOffset;
+}
+
 void UIMGCameraMode_ThirdPerson::OnActivation()
 {
 	Super::OnActivation();
+	ResetInterpolation();
 	bHasLaggedPivotLocation = false;
+	RotationDampingState.Reset();
+	ResetShake();
+	ResetPelvisOffsetSpring();
+	CachedViewTarget.Reset();
+	CachedViewController.Reset();
 }
 
-void UIMGCameraMode_ThirdPerson::UpdateForTarget(float DeltaTime)
+void UIMGCameraMode_ThirdPerson::OnDeactivation()
 {
-	if (const ACharacter* TargetCharacter = Cast<ACharacter>(GetTargetActor()))
+	RotationDampingState.Reset();
+	ResetShake();
+	ResetPelvisOffsetSpring();
+	CachedViewTarget.Reset();
+	CachedViewController.Reset();
+	bHasLaggedPivotLocation = false;
+	Super::OnDeactivation();
+}
+
+void UIMGCameraMode_ThirdPerson::UpdateForTarget()
+{
+	const AActor* TargetActor = GetTargetActor();
+	const APawn* TargetPawn = Cast<APawn>(TargetActor);
+	const APlayerController* Controller = TargetPawn ? TargetPawn->GetController<APlayerController>() : nullptr;
+	if (CachedViewTarget.Get() != TargetActor || CachedViewController.Get() != Controller
+		|| (Controller && Controller->PlayerCameraManager && Controller->PlayerCameraManager->bGameCameraCutThisFrame))
+	{
+		bResetInterpolation = true;
+	}
+	CachedViewTarget = TargetActor;
+	CachedViewController = Controller;
+
+	if (const ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor))
 	{
 		// ACharacter owns the active eye height. Native crouch updates it through
 		// RecalculateBaseEyeHeight, while custom stances can update it in their
@@ -138,6 +448,18 @@ void UIMGCameraMode_ThirdPerson::DrawDebug(UCanvas* Canvas) const
 
 #if ENABLE_DRAW_DEBUG
 	FDisplayDebugManager& DisplayDebugManager = Canvas->DisplayDebugManager;
+	if (bEnableShake)
+	{
+		DisplayDebugManager.DrawString(FString::Printf(TEXT("Shake: envelope %.2f, amplitude %.2f, frequency %.2f (%s)"),
+			ShakeState.GetEnvelopeLevel(), ShakeAmplitudeScale, ShakeFrequencyScale,
+			ShakeState.IsReleasing() ? TEXT("releasing") : ShakeState.IsActive() ? TEXT("active") : TEXT("inactive")));
+	}
+	if (bApplyPelvisOffset)
+	{
+		DisplayDebugManager.DrawString(FString::Printf(TEXT("Pelvis offset: %s %.1fcm (%s)"),
+			*PelvisOffsetSocket.ToString(), PelvisOffset,
+			bHasPelvisOffset ? TEXT("active") : TEXT("inactive")));
+	}
 	for (int i = 0; i < DebugActorsHitDuringCameraPenetration.Num(); i++)
 	{
 		DisplayDebugManager.DrawString(
@@ -158,16 +480,25 @@ void UIMGCameraMode_ThirdPerson::UpdatePreventPenetration(float DeltaTime)
 	}
 
 	AActor* TargetActor = GetTargetActor();
+	if (!IsValid(TargetActor))
+	{
+		return;
+	}
 
 	APawn* TargetPawn = Cast<APawn>(TargetActor);
 	AController* TargetController = TargetPawn ? TargetPawn->GetController() : nullptr;
-	IIMGCameraAssistInterface* TargetControllerAssist = Cast<IIMGCameraAssistInterface>(TargetController);
-
 	IIMGCameraAssistInterface* TargetActorAssist = Cast<IIMGCameraAssistInterface>(TargetActor);
 
 	TOptional<AActor*> OptionalPPTarget = TargetActorAssist ? TargetActorAssist->GetCameraPreventPenetrationTarget() : TOptional<AActor*>();
-	AActor* PPActor = OptionalPPTarget.IsSet() ? OptionalPPTarget.GetValue() : TargetActor;
-	IIMGCameraAssistInterface* PPActorAssist = OptionalPPTarget.IsSet() ? Cast<IIMGCameraAssistInterface>(PPActor) : nullptr;
+	AActor* PPActor = OptionalPPTarget.Get(nullptr);
+	if (!IsValid(PPActor))
+	{
+		PPActor = TargetActor;
+	}
+	if (!IsValid(PPActor))
+	{
+		return;
+	}
 
 	const UPrimitiveComponent* PPActorRootComponent = Cast<UPrimitiveComponent>(PPActor->GetRootComponent());
 	if (PPActorRootComponent)
@@ -212,16 +543,23 @@ void UIMGCameraMode_ThirdPerson::UpdatePreventPenetration(float DeltaTime)
 		bool const bSingleRayPenetrationCheck = !bDoPredictiveAvoidance;
 		PreventCameraPenetration(*PPActor, SafeLocation, View.Location, DeltaTime, AimLineToDesiredPosBlockedPct, bSingleRayPenetrationCheck);
 
-		IIMGCameraAssistInterface* AssistArray[] = { TargetControllerAssist, TargetActorAssist, PPActorAssist };
-
 		if (AimLineToDesiredPosBlockedPct < ReportPenetrationPercent)
 		{
-			for (IIMGCameraAssistInterface* Assist : AssistArray)
+			const TWeakObjectPtr<AActor> AssistActors[] = { TargetController, TargetActor, PPActor };
+			for (int32 Index = 0; Index < UE_ARRAY_COUNT(AssistActors); ++Index)
 			{
-				if (Assist)
+				AActor* AssistActor = AssistActors[Index].Get();
+				bool bAlreadyNotified = false;
+				for (int32 Previous = 0; Previous < Index; ++Previous)
 				{
-					// camera is too close, tell the assists
-					Assist->OnCameraPenetratingTarget();
+					bAlreadyNotified |= AssistActor == AssistActors[Previous].Get();
+				}
+				if (IsValid(AssistActor) && !bAlreadyNotified)
+				{
+					if (IIMGCameraAssistInterface* Assist = Cast<IIMGCameraAssistInterface>(AssistActor))
+					{
+						Assist->OnCameraPenetratingTarget();
+					}
 				}
 			}
 		}
@@ -264,7 +602,7 @@ void UIMGCameraMode_ThirdPerson::PreventCameraPenetration(class AActor const& Vi
 	for (int32 RayIdx = 0; RayIdx < NumRaysToShoot; ++RayIdx)
 	{
 		FIMGPenetrationAvoidanceFeeler& Feeler = PenetrationAvoidanceFeelers[RayIdx];
-		if (Feeler.FramesUntilNextTrace <= 0)
+		if (bResetInterpolation || Feeler.FramesUntilNextTrace <= 0)
 		{
 			// calc ray target
 			FVector RayTarget;
@@ -424,6 +762,14 @@ void UIMGCameraMode_ThirdPerson::SetTargetStanceOffset(FVector NewTargetOffset)
 
 void UIMGCameraMode_ThirdPerson::UpdateStanceOffset(float DeltaTime)
 {
+	if (bResetInterpolation)
+	{
+		InitialStanceOffset = TargetStanceOffset;
+		CurrentStanceOffset = TargetStanceOffset;
+		StanceOffsetBlendPct = 1.0f;
+		return;
+	}
+
 	if (StanceOffsetBlendPct < 1.0f)
 	{
 		StanceOffsetBlendPct = FMath::Min(StanceOffsetBlendPct + DeltaTime * CrouchOffsetBlendMultiplier, 1.0f);
