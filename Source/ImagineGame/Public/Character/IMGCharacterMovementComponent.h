@@ -130,7 +130,6 @@ public:
 	//~UMovementComponent interface
 	UE_API virtual void SimulateMovement(float DeltaTime) override;
 	UE_API virtual void SimulatedTick(float DeltaSeconds) override;
-	UE_API virtual FRotator ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const override;
 	
 	UE_API virtual float GetMaxSpeed() const override;
 	UE_API virtual void Crouch(bool bClientSimulation = false) override;
@@ -211,14 +210,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Stance", meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm/s"))
 	float MaxCrawlSpeed = 120.0f;
 
-	/** Keep movement-oriented characters facing their travel direction while braking without input acceleration. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement (Rotation Settings)|Braking Orientation", meta = (EditCondition = "bOrientRotationToMovement"))
-	bool bOrientToVelocityDuringBraking = false;
-
-	/** Minimum planar speed required to use velocity as the movement-facing direction. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement (Rotation Settings)|Braking Orientation", meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm/s", EditCondition = "bOrientRotationToMovement && bOrientToVelocityDuringBraking"))
-	float BrakingOrientationMinSpeed = 10.0f;
-	
 	// TODO : Fix: OffsetRootBone one-frame “flick” on Listen Server (CMC timing bug)
 	UE_API virtual void TickCharacterPose(float DeltaTime) override;
 	

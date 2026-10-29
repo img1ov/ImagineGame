@@ -104,7 +104,7 @@
 
 - `UIMGHeroComponent::AddMovementIntent` 是世界空间移动意图统一入口，平滑方向、发急转事件并提交 AddMovementInput；玩家、自动奔跑和外部 AI 驱动复用。持续移动结束/中断须 ResetMovementIntent，输入结束、Controller 切换和 EndPlay 兜底清理。
 - Intent 只塑形方向；`UIMGCharacterMovementComponent` 管姿态、速度、制动、网络预测。原生 AI Path Following 未被该入口接管。
-- 制动朝向默认关闭；启用后仅在地面无输入制动且速度高于阈值时按实际速度定向，不覆盖寻路、Root Motion 或空中旋转。胶囊保留逻辑/权威朝向，表现平滑留给 ABP。
+- 普通移动朝向复用原生 CMC 规则，不按制动速度额外定向；胶囊保留逻辑/权威朝向，表现平滑留给 ABP。
 - UE 网络默认：Exponential；模拟代理位置/旋转平滑 0.10/0.05 秒，Listen Server 远端角色 0.04/0.033 秒，普通/大误差纠偏最小间隔 0.10/0.05 秒。自主代理纠偏后重放 SavedMoves，不由代理插值、NetUpdateFrequency 或 NetworkPrediction 插件缓冲控制。
 - GameNetworkManager 的 MAXPOSITIONERRORSQUARED=3.0，约 1.73 cm；Play As Client 即使不开 Network Emulation 仍走网络移动。先用 `p.NetShowCorrections 1` 定位，再查两端参数和预测，不以放宽容差代替修复。
 - PreCMC 的本地待消费输入与服务端远端 RPC 加速度不可混用。ReplicateUsingRegisteredSubObjectList 只选择子对象复制路径，不自动同步 MaxWalkSpeed 等 CMC 参数。
