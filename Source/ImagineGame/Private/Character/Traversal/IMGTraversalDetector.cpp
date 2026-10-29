@@ -79,12 +79,23 @@ void GatherSurfaceHits(UWorld& World, const FVector& Start, const FVector& End, 
 	Hits.StableSort([](const FHitResult& A, const FHitResult& B) { return A.Time < B.Time; });
 }
 
-FVector GetGroundReference(AIMGCharacter& Character, UIMGCharacterMovementComponent& Movement)
+const FHitResult* GetSupportingGroundHit(const UIMGCharacterMovementComponent& Movement)
 {
-	const FHitResult& Ground = Movement.GetGroundInfo().GroundHitResult;
-	if (Ground.bBlockingHit && !Ground.bStartPenetrating && !Ground.ImpactPoint.ContainsNaN())
+	// Traversal consumes CMC support, not the distant ground trace used by GetGroundInfo in air.
+	if (!Movement.IsMovingOnGround() || !Movement.CurrentFloor.IsWalkableFloor())
 	{
-		return Ground.ImpactPoint;
+		return nullptr;
+	}
+	const FHitResult& Ground = Movement.CurrentFloor.HitResult;
+	return Ground.IsValidBlockingHit() && IsValid(Ground.GetComponent()) && Ground.GetComponent()->IsRegistered() &&
+	    !Ground.ImpactPoint.ContainsNaN() && !Ground.ImpactNormal.ContainsNaN() ? &Ground : nullptr;
+}
+
+FVector GetGroundReference(const AIMGCharacter& Character, const FHitResult* GroundHit)
+{
+	if (GroundHit)
+	{
+		return GroundHit->ImpactPoint;
 	}
 	return Character.GetActorLocation() -
 	    FVector::UpVector * Character.GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
@@ -202,16 +213,11 @@ float GetCandidateScore(const FVector& Origin, const FVector& Forward, const FHi
 	    (bSecondary ? Settings.SecondaryHitPenalty : 1.f);
 }
 
-bool IsReachableAlongGroundSlope(UIMGCharacterMovementComponent& Movement, const FVector& FootLocation,
+bool IsReachableAlongGroundSlope(const UWorld* World, const FHitResult& GroundHit, const FVector& GroundLocation,
     const FVector& LedgeLocation, const FVector& SurfaceForward, const FIMGTraversalDetectorSettings& Settings)
 {
-	if (!Movement.IsMovingOnGround())
-	{
-		return false;
-	}
-	const FHitResult& GroundHit = Movement.GetGroundInfo().GroundHitResult;
 	const FVector GroundNormal = GroundHit.ImpactNormal.GetSafeNormal();
-	if (!GroundHit.bBlockingHit || GroundNormal.Z <= Settings.WalkableSlopeMinNormalZ ||
+	if (GroundNormal.Z <= Settings.WalkableSlopeMinNormalZ ||
 	    GroundNormal.Equals(FVector::UpVector, KINDA_SMALL_NUMBER))
 	{
 		return false;
@@ -221,13 +227,13 @@ bool IsReachableAlongGroundSlope(UIMGCharacterMovementComponent& Movement, const
 	{
 		return false;
 	}
-	const FVector ProjectionStart = FootLocation + FVector::UpVector * WalkableSlopeBaseOffset;
+	const FVector ProjectionStart = GroundLocation + FVector::UpVector * WalkableSlopeBaseOffset;
 	const FVector ProjectionEnd = ProjectionStart + SlopeDirection * WalkableSlopeProjectionLength;
 	const FVector ClosestPoint = FMath::ClosestPointOnSegment(LedgeLocation, ProjectionStart, ProjectionEnd);
 	const FVector Separation = LedgeLocation - ClosestPoint;
 #if ENABLE_DRAW_DEBUG
-	IMGTraversalDebug::Line(Movement.GetWorld(), ProjectionStart, ProjectionEnd, FColor::Silver, 3, 1.f, -2.f, EStage::Validate);
-	IMGTraversalDebug::Line(Movement.GetWorld(), ClosestPoint, LedgeLocation,
+	IMGTraversalDebug::Line(World, ProjectionStart, ProjectionEnd, FColor::Silver, 3, 1.f, -2.f, EStage::Validate);
+	IMGTraversalDebug::Line(World, ClosestPoint, LedgeLocation,
 	    Separation.Z < 0.f || Separation.Size() < Settings.WalkableSlopeDistanceTolerance ? FColor::Red : FColor::Green,
 	    3, 1.f, -2.f, EStage::Validate);
 #endif
@@ -416,7 +422,8 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		Failure = EIMGTraversalFailure::MovingTarget;
 		return false;
 	}
-	const FVector GroundLocation = GetGroundReference(*Character, *Movement);
+	const FHitResult* GroundHit = GetSupportingGroundHit(*Movement);
+	const FVector GroundLocation = GetGroundReference(*Character, GroundHit);
 	float Height = CenterTop.ImpactPoint.Z - (Settings.bUseGroundPositionForHeight ? GroundLocation.Z : FootZ);
 	if (Height < Settings.MinHeight || Height > Settings.MaxHeight)
 	{
@@ -501,29 +508,32 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 		Failure = EIMGTraversalFailure::NoFrontLedge;
 		return false;
 	}
-	const bool bTaggedStairs =
-	    HasSurfaceTag(FaceComponent, Settings.StairSurfaceTag) || HasSurfaceTag(TopComponent, Settings.StairSurfaceTag);
-	const bool bOnStairs = Movement->IsMovingOnGround() &&
-	    HasSurfaceTag(Movement->GetGroundInfo().GroundHitResult.GetComponent(), Settings.StairSurfaceTag);
-	if ((bTaggedStairs || bOnStairs) &&
-	    (FrontEdgeVerticalSpan < (bTaggedStairs ? Settings.TaggedStairMinEdgeSpan : Settings.StairMinEdgeSpan) ||
+	const bool bFaceStairs = HasSurfaceTag(FaceComponent, Settings.StairSurfaceTag);
+	const bool bTopStairs = HasSurfaceTag(TopComponent, Settings.StairSurfaceTag);
+	const bool bTaggedStairs = bFaceStairs || bTopStairs;
+	const bool bOnStairs = GroundHit && HasSurfaceTag(GroundHit->GetComponent(), Settings.StairSurfaceTag);
+	const float MinStairEdgeSpan = bTaggedStairs ? Settings.TaggedStairMinEdgeSpan : Settings.StairMinEdgeSpan;
+	const bool bRejectStairProfile = (bTaggedStairs || bOnStairs) &&
+	    (FrontEdgeVerticalSpan < MinStairEdgeSpan ||
 	        (FrontEdgeVerticalSpan < Settings.StairAmbiguousEdgeSpan &&
-	            FrontEdgePlanarDrift > Settings.StairMaxPlanarDrift)))
+	            FrontEdgePlanarDrift > Settings.StairMaxPlanarDrift));
+#if ENABLE_DRAW_DEBUG
+	IMGTraversalDebug::String(World, CenterTop.ImpactPoint + Up * 32.f,
+	    FString::Printf(TEXT("Stair profile %s | tag %s | face/top/support %d/%d/%d\nSpan %.3f cutoff %.3f drift %.3f"),
+	        bRejectStairProfile ? TEXT("rejected") : (bTaggedStairs || bOnStairs) ? TEXT("passed") : TEXT("inactive"),
+	        *Settings.StairSurfaceTag.ToString(), bFaceStairs, bTopStairs, bOnStairs,
+	        FrontEdgeVerticalSpan, MinStairEdgeSpan, FrontEdgePlanarDrift),
+	    bRejectStairProfile ? FColor::Red : FColor::Yellow, 2, -2.f, EStage::Compute);
+#endif
+	if (bRejectStairProfile)
 	{
 		Failure = EIMGTraversalFailure::InvalidSurface;
-#if ENABLE_DRAW_DEBUG
-		IMGTraversalDebug::String(World, CenterTop.ImpactPoint + Up * 12.f,
-		    FString::Printf(TEXT("Stair profile rejected: span %.1f drift %.1f"), FrontEdgeVerticalSpan, FrontEdgePlanarDrift),
-		    FColor::Red, 2, -2.f, EStage::Compute);
-#endif
 		return false;
 	}
-	if (Query.Source == EIMGTraversalRequestSource::Automatic && (bTaggedStairs || bOnStairs) &&
-	    Movement->IsMovingOnGround())
+	if (Query.Source == EIMGTraversalRequestSource::Automatic && (bTaggedStairs || bOnStairs) && GroundHit)
 	{
-		const FHitResult& GroundHit = Movement->GetGroundInfo().GroundHitResult;
-		const FVector Downhill = GroundHit.ImpactNormal.GetSafeNormal2D();
-		if (GroundHit.bBlockingHit && !Downhill.IsNearlyZero() &&
+		const FVector Downhill = GroundHit->ImpactNormal.GetSafeNormal2D();
+		if (!Downhill.IsNearlyZero() &&
 		    FVector::DotProduct(Forward, Downhill) >= StairDownhillFacingDot)
 		{
 			Failure = EIMGTraversalFailure::InvalidSurface;
@@ -609,10 +619,7 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 #endif
 		return false;
 	}
-	const FVector FootLocation = Movement->IsMovingOnGround()
-	    ? GroundLocation
-	    : FVector(Character->GetActorLocation().X, Character->GetActorLocation().Y, FootZ);
-	if (IsReachableAlongGroundSlope(*Movement, FootLocation, FrontPoint, SurfaceForward, Settings))
+	if (GroundHit && IsReachableAlongGroundSlope(World, *GroundHit, GroundLocation, FrontPoint, SurfaceForward, Settings))
 	{
 		Failure = EIMGTraversalFailure::InvalidSurface;
 #if ENABLE_DRAW_DEBUG
@@ -1245,10 +1252,9 @@ bool FIMGTraversalDetector::Detect(
 		}
 	}
 	const FVector ApproachNormal = ApproachNormalSum.GetSafeNormal();
-	const FVector GroundLocation = GetGroundReference(*Character, *Character->GetIMGMovementComponent());
-	const FHitResult& GroundHit = Character->GetIMGMovementComponent()->GetGroundInfo().GroundHitResult;
-	const FVector GroundNormal = Movement->IsMovingOnGround() && GroundHit.bBlockingHit
-	    ? GroundHit.ImpactNormal.GetSafeNormal() : FVector::ZeroVector;
+	const FHitResult* GroundHit = GetSupportingGroundHit(*Movement);
+	const FVector GroundLocation = GetGroundReference(*Character, GroundHit);
+	const FVector GroundNormal = GroundHit ? GroundHit->ImpactNormal.GetSafeNormal() : FVector::ZeroVector;
 	for (int32 HitIndex = 0; HitIndex < SearchHits.Num(); ++HitIndex)
 	{
 		const FHitResult& Hit = SearchHits[HitIndex];

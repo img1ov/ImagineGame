@@ -192,7 +192,7 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
 	float AutomaticMinFacingDot = 0.8f;
 
-	/** Keep the project's CHT height convention by default; GroundPos mapping is available explicitly. */
+	/** Default height is relative to capsule feet; enabled uses valid CMC support, falling back to feet. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height")
 	bool bUseGroundPositionForHeight = false;
 
@@ -322,9 +322,11 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
 	float AutomaticMaxGroundDrop = 150.f;
 
+	/** Reject spans strictly below this cutoff when standing on stairs, matching the reference comparison. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
 	float StairMinEdgeSpan = 22.5f;
 
+	/** Replaces StairMinEdgeSpan for tagged faces/tops; equality is accepted by the span filter. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
 	float TaggedStairMinEdgeSpan = 30.f;
 
@@ -472,6 +474,7 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	FVector GroundNormal = FVector::UpVector;
 
+	/** Current CMC support point, or capsule feet when no valid support exists (including in air). */
 	UPROPERTY(BlueprintReadOnly)
 	FVector GroundLocation = FVector::ZeroVector;
 

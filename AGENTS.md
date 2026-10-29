@@ -22,8 +22,51 @@
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Application/UnrealProjects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
-- GTA 参考：`D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码：`D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- GTA 参考：`D:/Application/GTA/GTAVSP/GTAV Source/src/dev_ng/game`，工程导航见其仓库根目录 `AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
+- UE 源码：`D:/Application/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+
+### GTA 3C 源码导航与映射
+
+- GTA 的 Player/AI 行为、Movement、Motion、局部动画分别有任务职责；入口为 `Peds/Ped.cpp::ProcessControl_Intelligence` → `PedMotionData.ProcessPreTaskTrees` → `PedIntelligence.Process` → `ProcessPostTaskTrees`。`scene/world/GameWorld.cpp::ProcessAfterAllMovement` 处理移动后任务与 PreCamera，PostCamera 另有回调。借鉴其意图、移动、表现和镜头的执行边界；本工程继续由 GAS 管能力、CMC 管移动与预测、Animation 管表现。
+- 下表路径相对 GTA 的 `src/dev_ng/game`；ImagineGame 落点表示职责映射，不代表相应功能已经实现。
+
+| 系统 | GTA 源码入口 | 可借鉴合同与 ImagineGame 落点 |
+| --- | --- | --- |
+| 输入与控制朝向 | `task/Default/TaskPlayer.cpp` 的 `CTaskPlayerOnFoot`、`CTaskMovePlayer`；`camera/CamInterface.cpp` | 玩家行为解释输入，MovePlayer 分派普通/Strafe/水中移动；控制 Heading/Pitch、瞄准 Frame 有独立查询。Hero 保留移动意图入口，镜头扩展须核对 ControlRotation 与最终画面的关系。 |
+| 普通移动与步态 | `task/Motion/Locomotion/TaskMotionPed.*`、`TaskHumanLocomotion.*`；`task/Motion/TaskMotionBase.cpp::UpdateGaitReduction` | MotionPed 分派普通/瞄准/Strafe/潜行等；HumanLocomotion 有 IdleTurn、Start、Moving、Turn180、Stop、Reposition；GaitReduction 对照实际/动画速度及阻挡。规则扩展现有 Locomotion，启停/转向表现归 Animation，不复制真实速度/移动阶段。 |
+| 情境镜头 | `camera/gameplay/GameplayDirector.*`、`follow/FollowPedCamera.*` | Director 消费角色、武器、掩体、水中等事实；FollowPed 有 Ragdoll/GetUp 与梯子对齐行为。扩展 CameraMode/选择规则，玩法提供镜头需求；镜头不取得移动状态所有权。 |
+| 身体接触与 IK | `ik/IkRequest.h`、`IkManager.*`、`solvers/{LegSolver,ArmIkSolver,BodyLookSolver,TorsoReactSolver}.*` | 请求携带目标、混合参数，BodyLook 有优先级；LegSolver 有坡面/楼梯/动态支撑的脚与骨盆处理，TorsoReact 接收身体反应请求。映射 Animation/独立表现适配；目标失效、动作中断与优先级交接须释放本方请求。 |
+| 受击与碰撞反应 | `task/Physics/TaskNM.*`、`TaskNMShot.*`；`task/Movement/TaskCollisionResponse.*`；`ik/solvers/TorsoReactSolver.*` | 局部身体反应、撞墙/避让与物理倒地有独立执行入口。伤害/反应规则由玩法或 GA 决策，表现适配执行；Ragdoll 移动层只消费跟随事实。恢复主链见 Ragdoll 小节的 `TaskGetUp` 对照。 |
+| 掩体 | `task/Combat/Cover/TaskCover.*`；`camera/gameplay/GameplayDirector.cpp::UpdateFollowPedCoverSettings` | Seek/Enter/InCover/Exit、探头/盲射/转角及镜头协作；存在本地与 Clone 掩体信息消费。几何/接触机制可共享，射击交互规则归 ShooterCore；与武器、动画、镜头分别接合。 |
+| 梯子与主动下沿 | `task/Movement/Climbing/{TaskGoToAndClimbLadder,TaskLadderClimb,DropDownDetector,TaskDropDown}.*` | 梯子区分接近、挂载、持续上下、滑降、阻挡和脱离；DropDown 独立检测与执行。持续交互需独立会话/移动合同，现有 Hurdle/Vault/Mantle 的一次 Montage 合同不能直接视为持续攀爬实现。 |
+| AI 特殊路径动作 | `task/Movement/TaskNavBase.*`；`task/General/TaskBasic.*` 的 `CTaskComplexControlMovement` | 导航遇梯子时交接执行，成功恢复 FollowingPath，失败结束当前导航任务；LOD 可禁止 climb/drop/ladder。ImagineGame 可用导航链接适配现有 GA，须处理接近、接管、取消、失败重规划和路径恢复。 |
+| 战斗翻滚 | `task/Motion/Locomotion/TaskCombatRoll.*` | Initial/RollLaunch/RollLand/Quit、方向与中止清理独立于 Vault。适合独立 GA，沿正常 Root Motion/CMC 执行，射击限制归玩法。 |
+| 游泳与潜水 | `task/Motion/Locomotion/TaskInWater.*` | 水面与潜水分开 Motion task，有水位/净空、入水与游动过渡。MOVE_Swimming 只提供引擎移动基础；完整水中规则、表现与镜头需另行接合。 |
+| 载体与上下车 | `task/Vehicle/{TaskGoToVehicleDoor,TaskEnterVehicle,TaskInVehicle,TaskExitVehicle}.*`；`task/Physics/TaskNM.cpp::OnMovingGround` | 门/座位与进入退出是交互执行链；移动地面有参照速度处理。Walking 复用 BasedMovement，Traversal/Ragdoll 的动态参照须扩展各自原合同；车辆规则归玩法模块。 |
+| 场景交互 | `task/Scenario/Types/TaskUseScenario.*`、`task/Scenario/ScenarioPoint.*` | 接近起点、Enter、持续行为、Exit 与异常退出分段管理。可在现有 Interaction 上接交互位置/占用与执行；SmartObject 提供查询和预留，执行生命周期仍归调用方。 |
+| 多角色预算 | `Peds/PedIntelligence/PedAILodManager.*`；`task/Physics/TaskNM.cpp` 的 Ragdoll Pool | AI、Motion、事件扫描、动画分时和布娃娃池分别有预算/优先级。ImagineGame 的 SignificanceManager 可作接点；降级须保留权威移动及关键动作完成/清理，不以统一停 Tick 代替。 |
+
+- GTA 的梯子、DropDown 已有明确入口；持续悬挂/横移是否有可直接参考的完整实现仍须专项追踪。MoVE、NM、ClipSet、Clone 的实现合同依赖 RAGE；本工程按 UE 动画/物理及 GAS/CMC 合同重建对应能力，插件已启用不能作为项目链路完成的证据。
+
+### GTA 玩法系统参考与职责
+
+- 以下为本地 GTA 快照的源码导航与职责映射，不表示 ImagineGame 已具备对应玩法。共享事实/查询/资源合同可归 ImagineGame；具体反应策略、战斗、人口与警戒规则由对应 Game Feature 提供。现有 GAS、GameplayMessage、Team、Interaction、Equipment、Experience/GamePhase 保持原所有权。
+
+| 系统 | GTA 源码入口（相对 `src/dev_ng/game`） | 可借鉴设计与本工程边界 |
+| --- | --- | --- |
+| 事件响应与打断 | `Peds/PedIntelligence.cpp::Process`；`event/{EventGroup,EventHandler,EventResponseFactory}.*`；`event/decision/EventDecisionMaker.*` | 扫描、决策、最高优先级事件与任务执行分开；HandlerHistory 保留被临时事件替代的非临时事件。GameplayMessage 适合通知，AI 的有效期、优先级、记忆与恢复策略归 AI 适配/行为层，GA 负责执行。 |
+| 世界刺激 | `event/{ShockingEvents,EventShocking}.*` | ShockingEventsManager 管事件添加、非脚本事件去重、寿命覆写及按区域/来源清理，供角色观察、逃离和反应。可为枪声、爆炸、尸体、危险区域提供空间事实；消费者自行决定行为，不让消息总线承担持续世界状态。 |
+| 感知与阵营关系 | `Peds/PedIntelligence/PedPerception.*`；`Peds/{Relationships,RelationshipEnums}.*` | 感知区分中央/周边视野、距离和姿态等修饰；关系组独立于角色类型，支持 Respect/Like/Ignore/Dislike/Hate 等。`ComputeFOVVisibility` 主要检查视野和距离，不能作为完整 LOS 证明。扩展 Team/AI attitude 的统一查询，AI 敌意与 CanCauseDamage 的玩法政策分别明确。 |
+| 群体战斗协调 | `task/Combat/{CombatDirector,CombatSituation,CombatOrders}.*` | Director 管成员、战况及协调开火；Situation 的 Initialize/Uninitialize 对称，Orders 提供 HoldFire、CoverFire、射速和射击间隔修饰。可由 ShooterCore 的服务端协调层向个体 AI 发约束，个体继续通过能力和导航执行。 |
+| AI 射击节奏 | `weapons/FiringPattern.{h,cpp,psc}`；`Peds/PedIntelligence.cpp` 的 FiringPattern Pre/PostProcess | 共享 Info 存储开火前延迟、每轮连发数、发间/轮间间隔；每角色 CFiringPattern 保存执行状态。接在 AI 开火请求层，武器自身射速、弹药与成本仍由现有武器能力校验。 |
+| 场景交互与多人同步 | `task/Scenario/{ScenarioPoint,Types/TaskUseScenario}.*`；`network/General/NetworkSynchronisedScene.*` | ScenarioPoint 有使用计数、位置和时间条件；UseScenario 分接近、Enter、持续行为、Exit。同步 Scene 明确参与角色/实体/镜头、起点、Phase、Rate 与开始/结束。可在 Interaction/GA 上扩展位置占用及同步执行；沿 UE 权威/复制体系重新定义会话，不沿用 GTA 控制权迁移协议。 |
+| 伤害事实与多路反馈 | `weapons/WeaponDamage.*`；`event/EventDamage.*` | WeaponImpact 分派 Ped/Vehicle/Object、伤害事件、AI、VFX、Audio 与 Ragdoll 请求。复用 EffectContext/HitResult、DamageExecution、GameplayCue/ContextEffects，具体受击反应走独立适配；生命变化、物理冲量、AI 感知和表现各有消费者。 |
+| 世界人口与资源预留 | `Core/game.cpp` 注册 `CPedPopulation::Process`；`Peds/{pedpopulation,PopCycle,PopZones}.*`；`streaming/populationstreaming.*`；`network/Objects/NetworkObjectPopulationMgr.*` | 区域/时段配置、可用模型、实体增删和网络名额预留分别管理。扩展场景生成/Encounter 时复用 Bot/PawnData 创建链，业务决定数量/时机，预算与可用资产先批准；Significance 负责更新成本，不能代替生成预算。 |
+| 犯罪、警戒与调度 | `game/{Crime,Wanted,witness}.*`；`game/Dispatch/{IncidentManager,Incidents,DispatchManager,DispatchServices}.*` | 犯罪事实、目击/报告、Wanted 与事件调度分别有状态；Dispatch 提供服务开关与资源创建限制，并申请网络人口预留。可映射为独立警戒/增援 Game Feature，事件/目击事实先于升级与出兵决策。 |
+| 玩法资源所有权 | `script/Handlers/{GameScriptHandler,GameScriptResources,GameScriptEntity}.*` | Handler 跟踪资源/任务实体，具体资源类型处理释放；实体带 Cleanup/NoLongerNeeded 与所有者信息。借鉴获取句柄、明确交接和对称释放，复用 AbilitySet GrantedHandles、GameFeature ContextData 等现有模式；本工程仍以 C++/GA 实现玩法，不引入脚本体系。 |
+
+- 人口源码优先核对 `pedpopulation.*` 的 `CPedPopulation` 与 `Core/game.cpp` 的注册调用，不能仅凭旧 `Population.*` 的 `CPopulation` 判定当前运行链。`PopCycle::Update` 的快照实现按小时/区域切换配置，但 WeekSubdivision 固定为 Weekday，周末切换代码被注释；最终配置值仍须查实际数据。
+- 数据与运行状态分开：EventDecisionMaker 的共享规则/可修改组件、FiringPatternInfo/每角色 FiringPattern 可作参考。映射到本工程时复用 DataAsset/PawnData/能力配置，角色会话、记忆、冷却与占用归运行实例；单帧 override 须按原消费时序清理，持久规则使用显式所有权。
 
 ## 初始化、能力与 AI
 
@@ -176,8 +219,9 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 意图优先待消费输入，再 CMC.Acceleration；AI 复用 Manual，在两者为空时可读 Moving 的 PathFollowing 当前段目标，不以实际 Velocity 替代意图。普通玩家按 GA.RequestSource，服务端 AI 强制 AI 来源；AI 检测/发起共用意图，无意图时可向前按手动站立规则尝试。
 - ServerDistanceTolerance 仅补偿远端发起距离。速度缩放用于 Detector 搜索长度；Candidate.Speed/RunningSpeedThreshold 仅供选择建议，不限制原生 Supports，外部 CHT/蓝图可另筛。MaxMovingSpeed/MaxAngularSpeedDegrees 用于障碍/载体运动，检测、落点和执行继续复核。
 - 几何/坡面/净空/动作支持与最终动画覆盖分开；自动深度安全限制、高位开放接近拒绝及楼梯下行方向限制仅用于 Automatic，楼梯轮廓过滤也用于 Manual/AI。ActionSettings 提供默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点/接触，Notify 管窗口，Landing 管曲线/落点。最终复核表面、落差、可走支撑和完整胶囊，Root Motion/MotionWarping 执行位移。
+- Traversal 的 GroundLocation 只取 CMC.CurrentFloor 的有效可走支撑；空中或缺少有效支撑（含无碰撞支撑的 NavWalking）回退当前缩放胶囊底部，不消费 GetGroundInfo 的长距离下探。坡面/脚下楼梯判定只消费有效支撑；接近角度和自动落差检查共用该参考。bUseGroundPositionForHeight 默认 false；开启后也按同一支撑/脚底回退，不把远处地面当高度基准。
 - 低障碍在高度小于 DetectorSettings.UseRequestDirectionBelowHeight（默认80 cm）时优先保留请求方向，允许斜向越过边沿；该方向的候选失败后可重试墙面法线方向。设为0可关闭此分支；MinFacingDot（Manual/AI默认0.3）和 AutomaticMinFacingDot（默认0.8）限制接近角度。调试 Handhold: request heading 表示所用方向，HClear/VClear 为净空测量，不是动画轨迹。
-- 楼梯语义由 DetectorSettings.StairSurfaceTag 指定，默认 Traversal.Stairs；加在实际碰撞组件的 Component Tags 或所属 Actor 的 Tags，使用普通 FName 标签。命中前侧/顶部带标签，或角色在地面且脚下带标签时启用楼梯轮廓过滤；未标记不保证从几何识别楼梯。默认边缘采样垂直跨度至少22.5 cm，命中楼梯表面时至少30 cm；跨度小于40 cm且水平漂移大于10 cm也拒绝。Span不是台阶高度，Height默认相对胶囊底部；顶部平台为独立组件/Actor时须覆盖实际命中边缘，不能仅依赖下面阶梯的标签。
+- 楼梯语义由 DetectorSettings.StairSurfaceTag 指定，默认 Traversal.Stairs；加在实际碰撞组件的 Component Tags 或所属 Actor 的 Tags，使用普通 FName 标签。命中前侧/顶部带标签，或角色在地面且脚下带标签时启用楼梯轮廓过滤；未标记不保证从几何识别楼梯。默认边缘采样垂直跨度截止值22.5 cm，命中楼梯表面时30 cm；与 GTA 参考一致，严格小于截止值才拒绝，不额外添加容差，等于截止值仍可通过本项。跨度小于40 cm且水平漂移大于10 cm也拒绝。Span不是台阶高度，Height默认相对胶囊底部；顶部平台为独立组件/Actor时须覆盖实际命中边缘，不能仅依赖下面阶梯的标签。DebugDraw 2 的 Stair profile 显示标签、前侧/顶部/支撑命中状态、精确跨度和截止值；标签不表示禁止全部攀爬。
 - 表面策略在 Traversal组件类默认值的 DetectorSettings 中配置：AutomaticBlockedSurfaceTags 仅拒绝 Automatic，BlockedSurfaceTags 拒绝所有来源。例如给局部楼梯/顶部边缘加 Traversal.NoAuto，并将同名标签加入 AutomaticBlockedSurfaceTags，可禁止该表面自动翻越、保留手动检测；此自定义名字须显式加入列表才生效。Actor标签影响其全部碰撞组件，局部限制优先用 Component Tags；Traversal.Stairs 启用过滤，不等于禁止全部攀爬。
 
 ### 执行、网络与清理
