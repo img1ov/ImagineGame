@@ -88,3 +88,7 @@ $RECYCLE.BIN/
 
 # Generated map build data
 *_BuiltData.uasset
+
+# Map external packages excluded from version control
+/Content/__ExternalActors__/
+/Content/__ExternalObjects__/
