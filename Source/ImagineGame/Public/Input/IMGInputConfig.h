@@ -3,7 +3,6 @@
 
 #include "GameplayTagContainer.h"
 #include "Engine/DataAsset.h"
-#include "InputTriggers.h"
 
 #include "IMGInputConfig.generated.h"
 
@@ -27,16 +26,6 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<const UInputAction> InputAction = nullptr;
-
-	// Press event to bind for ability input dispatch.
-	// Use Triggered for hold IA with one-shot hold trigger, Started for tap.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	ETriggerEvent PressedTriggerEvent = ETriggerEvent::Started;
-
-	// Whether this action should also bind Completed as a release event.
-	// Keep true for button-like actions that should update held-state in analyzer.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	bool bBindReleaseEvent = true;
 };
 
 /**

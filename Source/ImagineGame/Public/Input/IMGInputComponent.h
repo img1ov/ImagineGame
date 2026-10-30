@@ -52,15 +52,15 @@ void UIMGInputComponent::BindAbilityActions(const UIMGInputConfig* InputConfig, 
 
 	for (const FIMGInputAction& Action : InputConfig->AbilityInputActions)
 	{
-		if (Action.InputAction)
+		if (Action.InputAction && Action.InputTag.IsValid())
 		{
 			if (PressedFunc)
 			{
 				// Keep binding handles so they can be removed cleanly on pawn swap/rebind.
-				BindHandles.Add(BindAction(Action.InputAction, Action.PressedTriggerEvent, Object, PressedFunc, Action.InputTag).GetHandle());
+				BindHandles.Add(BindAction(Action.InputAction, ETriggerEvent::Triggered, Object, PressedFunc, Action.InputTag).GetHandle());
 			}
 
-			if (ReleasedFunc && Action.bBindReleaseEvent)
+			if (ReleasedFunc)
 			{
 				BindHandles.Add(BindAction(Action.InputAction, ETriggerEvent::Completed, Object, ReleasedFunc, Action.InputTag).GetHandle());
 			}

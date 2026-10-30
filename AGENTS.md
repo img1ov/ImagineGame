@@ -80,6 +80,12 @@
 - 玩家/Bot Controller.OnUnPossess 仅在 ASC Avatar 和 PawnExt 仍匹配旧 Pawn 时调用 PawnExt.UninitializeAbilitySystem；其顺序为取消能力、清输入/Cue → 清 Avatar/ActorInfo → 广播解绑 → 清组件 ASC 引用。取消保留 SurvivesDeath 能力；缺少匹配 PawnExt 时保留原生清 Avatar 路径，旧 Pawn 不得解绑新 Pawn 的 ASC。
 - `UIMGHealthComponent` 发死亡事件，已授予的 `UIMGGameplayAbility_Death` 控制开始/结束，Character 在结束后销毁；自动重生能力位于 `ShooterCoreRuntime/GameModes`。
 
+### 能力输入绑定
+
+- `FIMGInputAction` 只保存 InputTag/InputAction；`UIMGInputComponent::BindAbilityActions` 对有效 Action/Tag 按 Lyra 固定绑定 Triggered→Pressed、Completed→Released，不配置每项 PressedTriggerEvent 或 BindReleaseEvent。NativeAction 仍由调用方显式选择 TriggerEvent。
+- 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn，不能替代 Enhanced Input 的 IA 触发条件；Triggered 可逐帧到达，行为与 Lyra 一致。
+- Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。输入解绑的绑定句柄与 ASC.ClearAbilityInput 保持原职责；额外输入配置的移除仍是现有未实现边界，不因固定绑定而视为已解决。
+
 ### 复制 Montage 前置条件
 
 - ASC 的 `RegisterReplicatedMontagePrerequisite(Avatar, Name, Delegate)` 返回注册句柄；委托须弱绑定 UObject，只接受当前 Avatar。相同对象/Name 重复注册复用句柄，不同步执行回调；注册后、前置数据变化后调用 `RetryReplicatedMontage`。检查返回 NotApplicable、Waiting、Ready 或 Discard，业务 Session/Sequence 由提供者自行核对，不复制第二套播放阶段。
@@ -246,23 +252,41 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 ### 调用链与职责
 
-- Hero.DetermineCameraMode 选择能力覆盖或 PawnData.DefaultCameraMode，CameraComponent 回退 Default；CameraModeStack 更新/混合，CameraComponent 输出视图。TPS 顺序为姿态/未滞后枢轴 → 位置 Lag＋PelvisOffset → 阻尼朝向的轨道偏移 → Shake → 防穿墙。旋转误差使用本模式 FOV、UE 投影及分屏尺寸，不按栈混合或后续特效重算；无本地目标 Controller/视口时按相机 AspectRatio 回退。
+- Hero.DetermineCameraMode 选择能力覆盖或 PawnData.DefaultCameraMode，CameraComponent 回退 Default；CameraModeStack 更新/混合，CameraComponent 输出视图。TPS 顺序为未滞后枢轴 → 位置 Lag → 姿态与骨盆高度补偿 → 阻尼朝向的轨道偏移 → Shake → 防穿墙。旋转误差使用本模式 FOV、UE 投影及分屏尺寸，不按栈混合或后续特效重算；无本地目标 Controller/视口时按相机 AspectRatio 回退。
 - `Camera/IMGCameraRotationDamping.h/.cpp`、`IMGCameraShake.h/.cpp` 只有调用方持有的数值配置/历史，不查 World、角色、动画、Controller、GAS 或视口，不自行 Tick/复制。TPS 负责采样和表现，步态/瞄准规则归蓝图或具体玩法；不向 ABP、CMC 或 Mesh 写回。
 - View.ControlRotation 保留原始期望朝向，阻尼/Shake 只改表现。武器和 AimAssistInputModifier 仍取最终玩家视点，因而受镜头表现影响。
 
 ### 配置与蓝图合同
 
-- Rotation Damping、Pelvis Offset、Shake 均默认关闭。旋转按 Yaw/Pitch 两轴先平滑目标角速度，再收拢角度；频率为 Hz，Roll 透传，MaxErrorFraction 限制相对各轴半 FOV 的误差。
+- Rotation Damping、Shake 均默认关闭。旋转按 Yaw/Pitch 两轴先平滑目标角速度，再收拢角度；频率为 Hz，Roll 透传，MaxErrorFraction 限制相对各轴半 FOV 的误差。
+- TPS 的 `Third Person|Pelvis Offset` 默认关闭，曲线 `FootIK_PelvisDeltaZ`、骨骼 `pelvis`、SpringConstant=10、DampingRatio=1。`UpdatePelvisOffset` 从目标 ACharacter 主 Mesh 的 `GetCurveValue(Name,0,Value)` 读取已求值的组件曲线（含 PostProcess/URO 混合），只消费世界 cm 的已加权高度差，不读取骨骼绝对高度、不再乘 IK 权重；骨骼名用于校验对应骨架。曲线缺失以0为目标渐退；关闭、无效来源/配置/数值立即清理，切换目标、Mesh/骨架、主 AnimInstance、曲线/骨骼名及 CameraCut 后首样本直达目标。相机只读已有姿势，不强制动画求值，不新增 Tick/复制或移动依赖。
+- 骨盆平滑按 GTA `camera/helpers/DampedSpring.cpp` 的单位质量 k/阻尼比公式：欠阻尼携带速度；临界/过阻尼沿用该快照只保留慢指数模式的近似，默认响应约为 exp(-sqrt(k)·dt)，不是 UE 的 Hz 参数或完整临界阻尼解。k=0直达目标；已初始化时零步长不推进。补偿同号加在位置 Lag 之后，并进入现有防穿墙；`showdebug camera` 显示曲线/骨骼名与当前 cm 偏移。
 - Shake 各轴振幅默认0；位置 X/Y/Z 为未摇晃相机的前/右/上，旋转以局部四元数叠加，FOV 偏移后限于5至170度。GetShakeInput(TargetActor, DeltaTime) 在每个启用模式的视图更新中调用一次，原生输出 Active=false、AmplitudeScale/FrequencyScale=1；蓝图按步态/曲线返回启停及非负倍率，C++ 不固定奔跑或 Tag 判断。Active=false 用最后一次激活倍率混出，关闭 Enable Shake 立即清空；持续驱动使用 HoldTime=-1。
 - 通用 Shake 支持 Sine/DampedSine、相位/随机种子/DC Offset，以及预延迟→Attack→Decay→Hold→Release 包络；曲线为 Linear/SmoothStep/Exponential，默认 Release 为 exp(-7t)。Start 幂等，释放期间重启保留相位并从当前包络恢复；有限 Hold 可单次 Start 后自然结束。Phase/RandomSeed 在新实例 Start 时消费；其他 Shake 的触发和实例调度归调用方。
-- PelvisOffsetSocket 默认空，PelvisOffsetHeight 须按模型/模式校准，不以启用瞬间姿势标定。目标修正 = Socket 世界高度＋配置偏移－未滞后的完整姿态枢轴高度，经连续死区、权重、上下限及独立弹簧后加在位置 Lag 外。只读 Character.Mesh 最近完成的骨骼/Socket，支持直接 LeaderPose 映射；它跟随最终身体高度，不能分离纯 FootIK，采样时效受动画降频/更新顺序影响。
 
 ### 重置、调试与参考
 
-- CameraComponent.ResetInterpolation/NotifyCameraCut 向所有在栈模式转发，下次完整视图更新消费，回调中的新请求留给下一次。组件注销时停用栈、清单帧 FOV 偏移，重注册重新激活；栈停用期间回退原生视图，不输出空模式结果。TPS 激活、目标/控制器变化或可观察到的 CameraCut 重置历史，重置帧强制重查碰撞探针；停用/关闭释放本方状态，没有通知的瞬移须显式重置。Pelvis 的 Mesh/骨骼资产/Socket 改变或采样失效时清空回退原枢轴。
-- 零步长不推进弹簧/振荡或求导，但仍应用轴旁路及 FOV/偏移上限；零时长包络阶段可立即完成。超过32/120秒：旋转清历史并直达目标，Pelvis 直达新目标，Shake 清空并输出零；无效输入/配置分别回退原朝向、原枢轴或零 Shake。位置 Lag 最多32个子步，超出预算直达目标。
-- `showdebug camera` 查看 Shake 包络/倍率/阶段及 Pelvis 修正/来源。Draw Pelvis Offset 默认关闭：白点为原枢轴，绿点/竖线为补偿结果，红色为回退，文字为实际厘米数；单帧绘图受 ENABLE_DRAW_DEBUG 保护。
+- CameraComponent.ResetInterpolation/NotifyCameraCut 向所有在栈模式转发，下次完整视图更新消费，回调中的新请求留给下一次。组件注销时停用栈、清单帧 FOV 偏移，重注册重新激活；栈停用期间回退原生视图，不输出空模式结果。TPS 激活、目标/控制器变化或可观察到的 CameraCut 重置历史，重置帧强制重查碰撞探针；停用/关闭释放本方状态，没有通知的瞬移须显式重置。
+- 零步长不推进弹簧/振荡或求导，但仍应用轴旁路及 FOV/偏移上限；零时长包络阶段可立即完成。超过32/120秒：旋转清历史并直达目标，Shake 清空并输出零；无效输入/配置分别回退原朝向或零 Shake。位置 Lag 最多32个子步，超出预算直达目标。
+- `showdebug camera` 查看 Shake 包络/倍率/阶段。
 - GTA 路径相对 `camera/`：`gameplay/follow/FollowPedCamera.cpp::UpdateRunningShake` 对照运动驱动；`helpers/{FrameShaker,Oscillator,Envelope}` 对照数值层；`base/BaseCamera.cpp` 对照 PostEffectFrame；`gameplay/GameplayDirector.cpp::RegisterExplosion` 复用同类 Shaker。`gameplay/aim/FirstPersonShooterCamera.cpp::UpdateFrameShakers` 的 FPS 头骨跟随尚未迁入。
+
+### FootPlacement ControlRig 与镜头曲线
+
+- 资产：`Content/Characters/Heroes/Mannequin/Rigs/CR_Biped_FootPlacement.uasset`，对象路径 `/Game/Characters/Heroes/Mannequin/Rigs/CR_Biped_FootPlacement.CR_Biped_FootPlacement`。用户维护既有 Graph 对齐和注释框；编辑前读取实时图与坐标，不用旧 T3D 覆盖当前资产。`D:/CR_Biped_FootPlacement.T3D` 仅为调查时的导出快照。
+- 主图为 EditorAsset 的 `RigVMModel`（编辑器显示 Rig Graph），同时包含 Construction 与 Forwards Solve。Forwards Solve 原入口为 `RigUnit_BeginExecution` → EarlyOut Branch；主 Sequence 按顺序执行 Reset/动画目标缓存、`UpdateRootDamper`、地面查询/平滑、植脚、腿/骨盆控制、腿 IK/Post Solve，再缓存世界变换和调试绘制。
+- 骨盆主链：`Update Leg Controls` 左/右 → `Update Pelvis Control` → `RigUnit_SetRelativeTransformForItem_1`（Child=pelvis，Parent=pelvis_ctrl）→ `Solve Leg IK` 左/右 → `Update Foot Post Solve` 左/右。`Update Pelvis Control` 的 `Pelvis Offset` 已经腿长约束和平滑，按世界方向保存再逆旋转用于落位；它不等于包含 RootDamper 的完整骨盆高度差。
+- 镜头输出接在主图，不修改上述函数内部。`CameraPelvisCaptureComment` 框在 Forwards Solve/EarlyOut 前，以 Current pelvis Global Transform → Translation → To World(Location) 保存 `CameraPelvisBeforeWS`，再清零曲线。`CameraPelvisOutputComment` 框接在右脚 `Update Foot Post Solve_1` 后，读取同次求解后的 pelvis 世界位置，以 After−Before 的 Z 写 `FootIK_PelvisDeltaZ`；包含 RootDamper 和骨盆修正，单位 UE cm、上正下负。Rig Global 不是 World；To World 的位置版本包含组件变换与缩放。
+- 曲线通过 Rig Hierarchy 中的 Curve 和 `Set Curve Value` 输出，不从 Mesh Socket 读取上一完成姿势来充当求解前采样。Rig 内不额外乘 ABP 的 ControlRig Alpha；外部 Pose/曲线混合仍须核对。ABP 同名曲线应以上游 `Modify Curve`（Blend、Alpha=1、Value=0）提供零基线，避免旁路继承旧值；TPS 已提供曲线消费者，但 Rig 输出本身不证明 ABP 基线、动画 Tick/曲线过滤和当前派生相机配置均已接通。
+
+### UE 5.8 ControlRig 编辑工具与接口限制
+
+- 本地 MCP 服务：`ModelContextProtocol.StartServer 8000`，端点 `http://127.0.0.1:8000/mcp`；`ModelContextProtocol.RefreshTools` 刷新目录。`EditorToolset` 提供资产/属性工具，`AnimationAssistantToolset` 提供 CR 工具。先 `list_toolsets`/`describe_toolset` 核对实际加载；`call_tool` 的 tool_name 用短名，toolset_name 单独传。
+- 当前资产是 `ControlRigRuntimeAsset`；内置 `animation_toolset.toolsets.controlrig.ControlRigTools` 的参数仍要求旧 `ControlRigBlueprint`，会拒绝该资产。不要强转或改资产类型。UE Python 正确入口：`rig=unreal.load_asset(path)` → `ed=rig.get_editor_asset()`（ControlRigEditorAsset）→ `g=ed.get_default_model()` → `c=ed.get_controller(g)`；HierarchyController 用 `ed.get_hierarchy_controller()`。
+- **结构类型变量的 AddMemberVariable 必须传完整类型路径**：`ed.add_member_variable(name, '/Script/CoreUObject.Vector', False, False, '(X=0,Y=0,Z=0)')`。此接口将字符串按 CPPTypePath 解析，裸 `FVector` 会使 CPPTypeObject 为空并触发 RigVMExternalVariable 断言，不能靠 Python try/except 恢复。反之，`c.add_variable_node` 分别接收 `FVector` 和 `unreal.load_object(None, '/Script/CoreUObject.Vector')`；两种签名不能混用。修改前核对本地源码、方法 docstring 和 `ed.generate_python_commands()`。
+- 实际引脚名以 `node.get_pins()` 为准：当前 `RigUnit_BeginExecution`、`RigUnit_SetCurveValue` 等 RigUnit 使用 `ExecutePin`；Variable Setter 和函数引用使用 `ExecuteContext`。连线用 `c.add_link(source_path,target_path)`，对返回值做检查；浮点类型、Getter/Setter 和子引脚也先回读，不能从节点标题推测接口。
+- 编辑前检查 dirty 状态，并备份磁盘资产、实时 `c.export_nodes_to_text(...)`、节点坐标/连线和 `ed.generate_python_commands()`。分步创建变量/Hierarchy Curve、创建节点、设置默认值、接线、`ed.recompile_vm()`；使用事务/UndoBracket，批量操作期间暂停自动 VM 重编译并在 finally 恢复。回读检查只移除预期旧连线、保留既有节点/用户修改；仅保存目标资产。
+- 需要通用 Python API 而 MCP 工具签名不兼容时，可使用引擎自带 `PythonScriptPlugin/Content/Python/remote_execution.py` 的本机入口；先核对绑定为 `127.0.0.1`、匹配 `project_root/project_name`，记录并恢复 Remote Execution 原开关。该入口用于编辑资产，不修改 C++ 或工具插件源码。独立验证可用 `ed.create_rig_vm_host()`，执行 Construction/Forwards Solve，避免直接改运行角色或资产默认配置。
 
 ## 装备、背包与射击
 
