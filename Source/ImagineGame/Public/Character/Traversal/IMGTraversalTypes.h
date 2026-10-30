@@ -11,13 +11,13 @@ class UAnimMontage;
 class UPrimitiveComponent;
 class URootMotionModifier_Warp;
 
-/** 本次请求的规则分类，不控制 GA 的激活时机、尝试频率或输入绑定。 */
+/** Rule category for this request; does not control GA activation timing, attempt frequency, or input bindings. */
 UENUM(BlueprintType)
 enum class EIMGTraversalRequestSource : uint8
 {
-	/** 手动请求：使用通用检测及手动发起条件，默认允许站立发起。 */
+	/** Manual request: uses common detection and manual initiation conditions; standing initiation is allowed by default. */
 	Manual,
-	/** 外部自动决策发起的请求：应用自动专属限制，持续尝试仍由调用方驱动。 */
+	/** Request initiated by external automatic decisions: applies automatic-only limits; repeated attempts remain caller-driven. */
 	Automatic,
 	/** AI request: reuses manual initiation conditions and may use an active path target when input/acceleration is unavailable. */
 	AI
@@ -118,42 +118,42 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RunningSpeedThreshold = 350.f;
 
-	/** 前向搜索的绝对长度上限（cm），默认沿用参考手动搜索的 250 cm；各层最终长度不超过此值。 */
+	/** Absolute forward search length cap (cm), defaulting to the reference manual search's 250 cm; caps every layer's final length. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float SearchDistance = 250.f;
 
 	/**
-	 * 项目扩展：使用 CMC 水平速度缩放所有请求的前向搜索长度，不移动起点或改变球半径、层间距。
-	 * 比例 = Lerp(MinSearchDistanceScale, 1, Clamp(Speed / SpeedForMaxSearchDistance, 0, 1))。
-	 * 这里只调整探针长度；静止是否调用检测由 GA/蓝图决定，不在 Detector 中检查输入或跳过检测。
+	 * Project extension: scales forward search lengths for all requests using CMC planar speed, preserving origins, sphere radii, and layer spacing.
+	 * Scale = Lerp(MinSearchDistanceScale, 1, Clamp(Speed / SpeedForMaxSearchDistance, 0, 1)).
+	 * Only probe length changes here; GA/Blueprint decides whether to detect while stationary. The detector does not check input or skip detection.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search")
 	bool bScaleSearchDistanceBySpeed = true;
 
 	/**
-	 * 静止时各层使用其最大长度的这个比例。默认 0.3：250 cm 层缩为 75 cm，150 cm 层缩为 45 cm。
-	 * 这是项目自定义的短距离搜索比例，不是参考算法的原生速度缩放常量。
+	 * Fraction of each layer's maximum length used while stationary. Default 0.3: a 250 cm layer shrinks to 75 cm, a 150 cm layer to 45 cm.
+	 * This is a project-specific short-range search ratio, not a native speed-scaling constant from the reference algorithm.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search",
 	    meta = (ClampMin = "0.01", ClampMax = "1", EditCondition = "bScaleSearchDistanceBySpeed"))
 	float MinSearchDistanceScale = 0.3f;
 
-	/** 达到这个 CMC 水平速度（cm/s）时使用各层完整长度；更高速度不再增长，不使用垂直下落速度。 */
+	/** CMC planar speed (cm/s) at which each layer reaches full length; higher speeds add no length, and vertical falling speed is excluded. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search",
 	    meta = (ClampMin = "1", EditCondition = "bScaleSearchDistanceBySpeed"))
 	float SpeedForMaxSearchDistance = 600.f;
 
 	/**
-	 * Automatic 请求从低到高的每层最大长度（cm），默认参考分层搜索：250、250、150、150、150、150。
-	 * 每项先受 SearchDistance 上限约束，再乘速度缩放比例；Manual/AI 使用统一的 SearchDistance 上限。
-	 * 空数组表示所有层使用统一上限；额外搜索层使用数组最后一项。这里不配置输入、速度门槛或发起距离。
+	 * Maximum lengths (cm) for Automatic request layers from bottom to top, following the reference layered search: 250, 250, 150, 150, 150, 150.
+	 * Each entry is capped by SearchDistance, then multiplied by the speed scale; Manual/AI use the uniform SearchDistance cap.
+	 * An empty array uses the uniform cap for all layers; extra layers use the last entry. Input, speed thresholds, and initiation distance are configured elsewhere.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
 	TArray<float> AutomaticSearchLayerDistances = {250.f, 250.f, 150.f, 150.f, 150.f, 150.f};
 
 	/**
-	 * 返回前沿到角色原点的最大水平距离（cm），作为独立的动画覆盖上限，不随探针速度缩放而改变。
-	 * 它可以大于较短的 SearchDistance；实际仍需探针命中，InitiationSettings 和 CHT 再判断能否发起。
+	 * Maximum planar distance (cm) from the returned front ledge to the actor origin; an independent animation coverage cap unaffected by probe speed scaling.
+	 * May exceed a shorter SearchDistance; a probe hit is still required, then InitiationSettings and CHT determine whether initiation is allowed.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float MaxAnimationReachDistance = 250.f;
@@ -564,9 +564,9 @@ struct FIMGTraversalLandingSettings
 };
 
 /**
- * 动画选定后的执行规则：定义 Warp 几何绑定、必要目标、落点计算和合法参数范围。
- * 不负责选择 Montage，也不修改 SelectTraversalAnimation 返回的 StartTime/PlayRate；不满足规则则拒绝本次执行。
- * Warp 窗口时间及 Modifier 参数仍配置在动画 Notify 中，预测端与服务端按相同规则校验。
+ * Execution rules after animation selection: define warp geometry bindings, required targets, landing calculation, and valid parameter ranges.
+ * Does not select a Montage or modify StartTime/PlayRate returned by SelectTraversalAnimation; execution is rejected if the rules are not satisfied.
+ * Warp window times and Modifier parameters remain configured in animation Notifies; prediction and the server validate using the same rules.
  */
 USTRUCT(BlueprintType)
 struct IMAGINEGAME_API FIMGTraversalAnimationSettings
@@ -598,7 +598,7 @@ struct IMAGINEGAME_API FIMGTraversalAnimationSettings
 	float MaxPlayRate = 3.f;
 };
 
-/** 同一个 Action 下各蒙太奇共用的默认执行配置；每个 Action 应只有一条。 */
+/** Default execution settings shared by all montages for an Action; each Action should have only one entry. */
 USTRUCT(BlueprintType)
 struct FIMGTraversalActionSettings
 {
@@ -612,26 +612,26 @@ struct FIMGTraversalActionSettings
 };
 
 /**
- * 选中 Action/Montage 的专属执行配置；仅用于该动画与动作通用规则有差异的情况。
- * 匹配后完整使用 Settings；未匹配才回退 ActionSettings，不重新选择动画，也不进行字段合并。
+ * Execution settings specific to the selected Action/Montage; used only when the animation differs from the action's common rules.
+ * A match uses Settings in full; only unmatched pairs fall back to ActionSettings. Does not reselect animation or merge fields.
  */
 USTRUCT(BlueprintType)
 struct FIMGTraversalMontageSettings
 {
 	GENERATED_BODY()
 
-	/** 匹配 SelectTraversalAnimation 已返回的蒙太奇，不是备用动画或新的选择结果。 */
+	/** Matches the montage already returned by SelectTraversalAnimation; not a fallback animation or a new selection. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<UAnimMontage> Montage = nullptr;
 
-	/** 与 Montage 共同组成匹配键，不覆盖已选中的 Action。 */
+	/** Forms the matching key with Montage; does not override the selected Action. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EIMGTraversalAction Action = EIMGTraversalAction::None;
 
 	/**
-	 * 整份替换，包含 WarpBindings、RequiredTargets、Landing、净空及 PlayRate 范围。
-	 * 应先复制对应 ActionSettings.Settings，再修改特殊项；新结构的默认值不等于该动作的配置。
-	 * 例如 Hurdle 动作默认启用 DistanceCurve，而新结构的 Landing.Mode 默认是 None。
+	 * Replaces the entire configuration, including WarpBindings, RequiredTargets, Landing, clearance, and the PlayRate range.
+	 * Copy the corresponding ActionSettings.Settings before editing special cases; a new struct's defaults do not match the action's configuration.
+	 * For example, Hurdle enables DistanceCurve by default, whereas a new struct defaults Landing.Mode to None.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIMGTraversalAnimationSettings Settings;
