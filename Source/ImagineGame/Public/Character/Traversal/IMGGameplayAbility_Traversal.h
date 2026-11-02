@@ -7,7 +7,10 @@
 #include "IMGGameplayAbility_Traversal.generated.h"
 
 class UIMGTraversalComponent;
+class UIMGCharacterMovementComponent;
+class UIMGAbilitySystemComponent;
 class UPrimitiveComponent;
+struct FCharacterMoveResponseDataContainer;
 
 /** Single-montage traversal. Blueprint selects the action/montage; native code owns geometry and lifetime. */
 UCLASS(Abstract, Blueprintable)
@@ -26,6 +29,8 @@ protected:
 	    const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	    const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+	virtual void OnPawnAvatarSet() override;
 
 	/** Use CHT and PoseMatch here. None/empty montage rejects this attempt. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Traversal")
@@ -41,6 +46,14 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
+
+	/** Minimum local delay after an attempt ends or authority rejects it; held input remains eligible afterwards. */
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network", meta = (ClampMin = "0.01"))
+	float RetryInterval = 0.25f;
+
+	/** Releases a remote authority instance whose target data has not arrived. */
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network", meta = (ClampMin = "0.1"))
+	float TargetDataTimeout = 2.f;
 
 	/**
 	 * Selects player detection/initiation rules, independently of activation timing and retries.
@@ -69,6 +82,12 @@ private:
 	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
 	    TArray<FIMGTraversalWarpTarget>& OutTargets) const;
 	void CheckActiveTarget();
+	void OnTargetDataTimedOut();
+	void FilterClientCorrection(const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection);
+	void ClearCorrectionFilter();
+	void OnNetworkTermination(FGameplayAbilitySpecHandle Handle, int16 PredictionKey, bool bRejected);
+	void ClearNetworkTracking();
+	void DelayLocalRetry();
 
 	UFUNCTION()
 	void OnMontageCompleted();
@@ -78,7 +97,18 @@ private:
 
 	FDelegateHandle TargetDataDelegateHandle;
 	FDelegateHandle TargetDataCancelledDelegateHandle;
+	FDelegateHandle CorrectionFilterHandle;
+	FDelegateHandle NetworkTerminationHandle;
 	FTimerHandle TargetCheckTimer;
+	TWeakObjectPtr<UIMGCharacterMovementComponent> FilteredMovement;
+	TWeakObjectPtr<UIMGAbilitySystemComponent> NetworkASC;
+	TWeakObjectPtr<AActor> NetworkRequestAvatar;
+	// Retained through local EndAbility until the matching authority termination arrives.
+	FGameplayAbilitySpecHandle PendingAuthoritySpec;
+	int16 PendingAuthorityPredictionKey = 0;
+	double NextLocalRetryTime = 0.0;
+	double CorrectionFilterStartTime = 0.0;
+	TArray<float> PreTraversalMoveTimeStamps;
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;

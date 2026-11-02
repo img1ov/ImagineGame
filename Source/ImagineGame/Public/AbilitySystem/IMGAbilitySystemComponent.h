@@ -38,6 +38,8 @@ struct FIMGReplicatedMontagePrerequisiteResult
 
 DECLARE_DELEGATE_RetVal_TwoParams(FIMGReplicatedMontagePrerequisiteResult, FIMGReplicatedMontagePrerequisite,
 	const UAnimMontage* /* Montage */, uint8 /* PlayInstanceId */);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FIMGAbilityNetworkTermination,
+	FGameplayAbilitySpecHandle, int16 /* PredictionKey */, bool /* bRejected */);
 
 /**
  * UIMGAbilitySystemComponent
@@ -53,6 +55,8 @@ public:
 	
 	UE_API UIMGAbilitySystemComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	UE_API virtual ~UIMGAbilitySystemComponent() override;
+	/** Also reports termination received after the predicted instance has already ended locally. */
+	FIMGAbilityNetworkTermination AbilityNetworkTermination;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UE_API virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
@@ -143,6 +147,8 @@ protected:
 
 	UE_API virtual void ClientTryActivateAbility_Implementation(FGameplayAbilitySpecHandle AbilityToActivate) override;
 	UE_API virtual void ClientActivateAbilityFailed_Implementation(FGameplayAbilitySpecHandle AbilityToActivate, int16 PredictionKey) override;
+	UE_API virtual void ClientEndAbility_Implementation(FGameplayAbilitySpecHandle AbilityToEnd, FGameplayAbilityActivationInfo ActivationInfo) override;
+	UE_API virtual void ClientCancelAbility_Implementation(FGameplayAbilitySpecHandle AbilityToCancel, FGameplayAbilityActivationInfo ActivationInfo) override;
 	UE_API virtual void NotifyAbilityCommit(UGameplayAbility* Ability) override;
 	UE_API virtual void NotifyAbilityActivated(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
 	UE_API virtual void NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason) override;

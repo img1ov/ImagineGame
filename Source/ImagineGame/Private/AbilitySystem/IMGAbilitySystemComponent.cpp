@@ -1003,11 +1003,22 @@ void UIMGAbilitySystemComponent::ClientActivateAbilityFailed_Implementation(FGam
 		*AbilityToActivate.ToString(), PredictionKey);
 
 	Super::ClientActivateAbilityFailed_Implementation(AbilityToActivate, PredictionKey);
+	AbilityNetworkTermination.Broadcast(AbilityToActivate, PredictionKey, true);
 }
 
+void UIMGAbilitySystemComponent::ClientEndAbility_Implementation(
+	FGameplayAbilitySpecHandle AbilityToEnd, FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::ClientEndAbility_Implementation(AbilityToEnd, ActivationInfo);
+	AbilityNetworkTermination.Broadcast(AbilityToEnd, ActivationInfo.GetActivationPredictionKey().Current, false);
+}
 
-
-
+void UIMGAbilitySystemComponent::ClientCancelAbility_Implementation(
+	FGameplayAbilitySpecHandle AbilityToCancel, FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::ClientCancelAbility_Implementation(AbilityToCancel, ActivationInfo);
+	AbilityNetworkTermination.Broadcast(AbilityToCancel, ActivationInfo.GetActivationPredictionKey().Current, false);
+}
 
 void UIMGAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
 {

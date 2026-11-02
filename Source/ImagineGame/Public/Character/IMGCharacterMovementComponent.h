@@ -13,6 +13,8 @@ class UObject;
 struct FFrame;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
+	const FCharacterMoveResponseDataContainer&, bool& /* bDiscardCorrection */);
 
 UENUM(BlueprintType)
 enum class EIMGCustomMovementMode : uint8
@@ -23,6 +25,7 @@ enum class EIMGCustomMovementMode : uint8
 
 struct IMAGINEGAME_API FIMGCharacterNetworkMoveData : FCharacterNetworkMoveData
 {
+	uint8 InputMagnitude = 0;
 	FIMGRagdollMovementInput RagdollInput;
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType) override;
@@ -118,6 +121,9 @@ class UIMGCharacterMovementComponent : public UCharacterMovementComponent
 public:
 	
 	UE_API UIMGCharacterMovementComponent(const FObjectInitializer& ObjectInitializer);
+
+	/** Listeners may only set discard to true. Discarded corrections still ACK through the native path. Packed responses only. */
+	FIMGClientCorrectionFilter ClientCorrectionFilter;
 	
 	UE_API virtual bool CanAttemptJump() const override;
 	UE_API virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
@@ -132,6 +138,7 @@ public:
 	UE_API virtual void SimulatedTick(float DeltaSeconds) override;
 	
 	UE_API virtual float GetMaxSpeed() const override;
+	UE_API virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 	UE_API virtual void Crouch(bool bClientSimulation = false) override;
 	UE_API virtual void UnCrouch(bool bClientSimulation = false) override;
 	UE_API virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
@@ -143,6 +150,7 @@ public:
 	UE_API virtual void PhysicsRotation(float DeltaTime) override;
 	UE_API virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
 	UE_API virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
+	UE_API virtual bool ClientUpdatePositionAfterServerUpdate() override;
 	using Super::ServerMoveHandleClientError;
 	UE_API virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
 		FMovementBaseInterfaceData* ClientMovementBaseInterfaceData, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
@@ -219,6 +227,7 @@ public:
 	void SetStrafeEnabled(const bool bEnable);
 
 protected:
+	UE_API virtual float ComputeAnalogInputModifier() const override;
 	FIMGStanceStateMachine StanceMachine;
 	bool CanEnterStance(EIMGStance NewStance) const;
 	bool ApplyStanceTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation);

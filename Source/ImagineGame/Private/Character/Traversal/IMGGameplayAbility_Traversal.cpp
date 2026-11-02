@@ -90,9 +90,33 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(ActorInfo->AvatarActor.Get());
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(Character);
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
-	return Component && Component->IsTraversalAvailable() && !Component->IsTraversalActive() &&
-	    IsValid(Component->GetMotionWarpingComponent()) && Component->GetMotionWarpingComponent()->IsRegistered() &&
-	    Character->GetIMGMovementComponent() && (!Health || !Health->IsDeadOrDying());
+	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
+	if (!Component || !Component->IsTraversalAvailable() || Component->IsTraversalActive() ||
+	    !IsValid(Component->GetMotionWarpingComponent()) || !Component->GetMotionWarpingComponent()->IsRegistered() ||
+	    !Movement || Character->GetStance() != EIMGStance::Stand ||
+	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
+	{
+		return false;
+	}
+	if (ActorInfo->IsLocallyControlled())
+	{
+		const UWorld* World = Character->GetWorld();
+		if (!World || (NetworkRequestAvatar == Character &&
+		    (PendingAuthorityPredictionKey != 0 || World->GetTimeSeconds() < NextLocalRetryTime)))
+		{
+			return false;
+		}
+		// Reject empty attempts before GAS sends its activation RPC; animation selection remains in ActivateAbility.
+		FIMGTraversalCandidate Candidate;
+		EIMGTraversalFailure Failure;
+		const bool bAI = ActorInfo->IsNetAuthority() && Character->GetController() && !Character->IsPlayerControlled();
+		if (!Component->Detect(Candidate, Failure, FVector::ZeroVector, bAI ? EIMGTraversalRequestSource::AI : RequestSource) ||
+		    !Component->CanInitiate(Candidate))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -107,6 +131,18 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	ActiveObstacleComponents.Reset();
 	PreviousObstacleTransforms.Reset();
 	LocalCandidate = FIMGTraversalCandidate();
+	ClearNetworkTracking();
+	NetworkRequestAvatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (ActorInfo && ActorInfo->IsLocallyControlled() && !ActorInfo->IsNetAuthority())
+	{
+		if (UIMGAbilitySystemComponent* IMGASC = Cast<UIMGAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()))
+		{
+			NetworkASC = IMGASC;
+			PendingAuthoritySpec = Handle;
+			PendingAuthorityPredictionKey = ActivationInfo.GetActivationPredictionKey().Current;
+			NetworkTerminationHandle = IMGASC->AbilityNetworkTermination.AddUObject(this, &ThisClass::OnNetworkTermination);
+		}
+	}
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 	LogTraversalEvent(TEXT("Activate"), TEXT("LocalPredicted traversal activation"));
 	if (!IsActive() || bIsAbilityEnding)
@@ -144,6 +180,8 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	if (!bShouldBuildLocalRequest)
 	{
 		LogTraversalEvent(TEXT("AwaitTargetData"), TEXT("Authority is waiting for the remote selection"));
+		GetWorld()->GetTimerManager().SetTimer(TargetCheckTimer, this, &ThisClass::OnTargetDataTimedOut,
+		    FMath::IsFinite(TargetDataTimeout) ? FMath::Max(TargetDataTimeout, 0.1f) : 2.f, false);
 		return;
 	}
 	bLocalRequest = true;
@@ -373,6 +411,20 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 	}
 	PreviousTargetCheckTime = GetWorld()->GetTimeSeconds();
 	bTraversalStarted = true;
+	if (CurrentActorInfo->IsLocallyControlled() && !CurrentActorInfo->IsNetAuthority())
+	{
+		UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
+		if (const FNetworkPredictionData_Client_Character* ClientData = Movement->GetPredictionData_Client_Character())
+		{
+			for (const FSavedMovePtr& Move : ClientData->SavedMoves)
+			{
+				PreTraversalMoveTimeStamps.Add(Move->TimeStamp);
+			}
+		}
+		FilteredMovement = Movement;
+		CorrectionFilterStartTime = GetWorld()->GetTimeSeconds();
+		CorrectionFilterHandle = Movement->ClientCorrectionFilter.AddUObject(this, &ThisClass::FilterClientCorrection);
+	}
 	Component->BeginTraversal(Candidate, Selection, WarpTargets);
 	Character->GetIMGMovementComponent()->SetMovementMode(MOVE_Flying);
 	if (!IsActive() || bIsAbilityEnding || !IsValid(Component) || !Component->IsTraversalActive() ||
@@ -1030,6 +1082,109 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	return true;
 }
 
+void UIMGGameplayAbility_Traversal::OnTargetDataTimedOut()
+{
+	if (IsActive() && !bIsAbilityEnding && !bTraversalStarted)
+	{
+		LogTraversalEvent(TEXT("TargetDataTimedOut"), TEXT("Authority released an attempt still waiting for target data"), true);
+		K2_EndAbility();
+	}
+}
+
+void UIMGGameplayAbility_Traversal::FilterClientCorrection(
+    const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection)
+{
+	const UIMGCharacterMovementComponent* Movement = FilteredMovement.Get();
+	const UIMGTraversalComponent* Component = ActiveComponent.Get();
+	const UWorld* World = GetWorld();
+	if (!IsActive() || bIsAbilityEnding || !bTraversalStarted || !CurrentActorInfo ||
+	    !CurrentActorInfo->IsLocallyControlled() || CurrentActorInfo->IsNetAuthority() ||
+	    !Movement || !Movement->IsFlying() || !Component || !Component->IsTraversalAvailable() ||
+	    !Component->IsTraversalActive() || Component->GetOwner() != GetAvatarActorFromActorInfo() || !World)
+	{
+		return;
+	}
+	// A recorded timestamp cannot identify a move after another timestamp-reset cycle. Fail open then.
+	const double Age = World->GetTimeSeconds() - CorrectionFilterStartTime;
+	if (!FMath::IsFinite(Movement->MinTimeBetweenTimeStampResets) || Age < 0.0 ||
+	    Age >= Movement->MinTimeBetweenTimeStampResets * 0.5 ||
+	    !PreTraversalMoveTimeStamps.Contains(Response.ClientAdjustment.TimeStamp))
+	{
+		return;
+	}
+	bDiscardCorrection = true;
+	LogTraversalEvent(TEXT("PreTraversalCorrectionDiscarded"), FString::Printf(
+	    TEXT("Move=%.6f ServerMode=%u; native ACK retained, current traversal execution retained"),
+	    Response.ClientAdjustment.TimeStamp, Response.ClientAdjustment.MovementMode));
+}
+
+void UIMGGameplayAbility_Traversal::ClearCorrectionFilter()
+{
+	if (UIMGCharacterMovementComponent* Movement = FilteredMovement.Get())
+	{
+		Movement->ClientCorrectionFilter.Remove(CorrectionFilterHandle);
+	}
+	CorrectionFilterHandle.Reset();
+	FilteredMovement.Reset();
+	PreTraversalMoveTimeStamps.Reset();
+}
+
+void UIMGGameplayAbility_Traversal::DelayLocalRetry()
+{
+	if (CurrentActorInfo && CurrentActorInfo->IsLocallyControlled())
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			const float Delay = FMath::IsFinite(RetryInterval) ? FMath::Max(RetryInterval, 0.01f) : 0.25f;
+			NextLocalRetryTime = World->GetTimeSeconds() + Delay;
+		}
+	}
+}
+
+void UIMGGameplayAbility_Traversal::OnNetworkTermination(
+    FGameplayAbilitySpecHandle Handle, int16 PredictionKey, bool bRejected)
+{
+	if (!NetworkASC.IsValid() || NetworkASC->GetAvatarActor() != NetworkRequestAvatar.Get() ||
+	    Handle != PendingAuthoritySpec || PredictionKey != PendingAuthorityPredictionKey || PredictionKey == 0)
+	{
+		return;
+	}
+	PendingAuthorityPredictionKey = 0;
+	PendingAuthoritySpec = FGameplayAbilitySpecHandle();
+	NetworkASC->AbilityNetworkTermination.Remove(NetworkTerminationHandle);
+	NetworkTerminationHandle.Reset();
+	NetworkASC.Reset();
+	DelayLocalRetry();
+	LogTraversalEvent(TEXT("AuthorityAttemptReleased"), bRejected ? TEXT("Activation rejected") : TEXT("Authority instance ended"));
+}
+
+void UIMGGameplayAbility_Traversal::ClearNetworkTracking()
+{
+	ClearCorrectionFilter();
+	if (UIMGAbilitySystemComponent* ASC = NetworkASC.Get())
+	{
+		ASC->AbilityNetworkTermination.Remove(NetworkTerminationHandle);
+	}
+	NetworkTerminationHandle.Reset();
+	NetworkASC.Reset();
+	NetworkRequestAvatar.Reset();
+	PendingAuthoritySpec = FGameplayAbilitySpecHandle();
+	PendingAuthorityPredictionKey = 0;
+	NextLocalRetryTime = 0.0;
+}
+
+void UIMGGameplayAbility_Traversal::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
+{
+	ClearNetworkTracking();
+	Super::OnRemoveAbility(ActorInfo, Spec);
+}
+
+void UIMGGameplayAbility_Traversal::OnPawnAvatarSet()
+{
+	ClearNetworkTracking();
+	Super::OnPawnAvatarSet();
+}
+
 void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 {
 	UIMGTraversalComponent* Component = ActiveComponent.Get();
@@ -1048,15 +1203,23 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	if (!IsValid(Component) || !Component->IsTraversalAvailable() || !World || !IsValid(Character) ||
 	    Component->GetOwner() != Character || !IsValid(Component->GetMotionWarpingComponent()) ||
 	    !Component->GetMotionWarpingComponent()->IsRegistered() ||
-	    !Character->GetIMGMovementComponent() || !Character->GetIMGMovementComponent()->IsFlying() ||
+	    !Character->GetIMGMovementComponent() ||
 	    !Component->IsTraversalActive() || ActiveObstacleComponents.IsEmpty() ||
 	    ActiveObstacleComponents.Num() != PreviousObstacleTransforms.Num())
 	{
-		LogTraversalEvent(TEXT("TraversalAborted"), TEXT("Component/avatar/warping/obstacle set lost, or movement left Flying"), true);
+		LogTraversalEvent(TEXT("TraversalAborted"), TEXT("Component/avatar/warping/obstacle set lost"), true);
 #if ENABLE_DRAW_DEBUG
 		DrawAbilityMessage(
 		    GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle set or component lost"), FColor::Red);
 #endif
+		K2_EndAbility();
+		return;
+	}
+	if (!Character->GetIMGMovementComponent()->IsFlying())
+	{
+		LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(TEXT("Movement left Flying: Mode=%u Custom=%u"),
+		    static_cast<uint8>(Character->GetIMGMovementComponent()->MovementMode),
+		    Character->GetIMGMovementComponent()->CustomMovementMode), true);
 		K2_EndAbility();
 		return;
 	}
@@ -1150,6 +1313,9 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		    Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled));
 		return;
 	}
+	// The owner may already have ended locally and still needs this terminal result to release its next attempt.
+	bReplicateEndAbility |= ActorInfo && ActorInfo->IsNetAuthority() && !ActorInfo->IsLocallyControlled() &&
+	    ActivationInfo.GetActivationPredictionKey().IsValidKey();
 	LogTraversalEvent(TEXT("End"), FString::Printf(TEXT("Completed=%d Cancelled=%d RemoteEnded=%d ReplicateEnd=%d"),
 	    bMontageCompleted && !bWasCancelled, bWasCancelled, RemoteInstanceEnded, bReplicateEndAbility));
 	if (ActorInfo && !ActorInfo->IsNetAuthority() && bTargetDataSent && RemoteInstanceEnded && !bMontageCompleted)
@@ -1160,6 +1326,8 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 	// Cleanup and Blueprint notifications can synchronously request another end.
 	{
 		TGuardValue<bool> EndingGuard(bIsAbilityEnding, true);
+		ClearCorrectionFilter();
+		DelayLocalRetry();
 		SendPendingTargetDataCancellation();
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::DiscardTraversalSnapshot(GetAvatarActorFromActorInfo());
