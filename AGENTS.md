@@ -143,9 +143,11 @@
 ### 待办：步态 Move 同步与预测收敛（尚未实现）
 
 - 当前步态请求经 GAS Tag 更新蓝图状态，再由世界 Tick 的 PreCMC 写参数；请求生效时刻与 CMC Move 尚未统一。大幅切速时须按同角色、同 Move 时间戳核对步态、参数与速度，不能用两端同一现实时间的速度差直接判定错误，也不能将全部抖动归为步态切换。
-- 目标是完整的逐 Move 普通移动预测合同：Sprint/Walk/Aim/Strafe 请求及输入力度随 SavedMove/Packed Move 保存、发送和重放；请求变化禁止错误合并。首次自主预测、权威执行和纠偏重放在执行对应 Move 前使用同一套 Locomotion 规则，按该 Move 的请求、模拟状态及必要历史配置计算步态与最终参数，不再用当前 ASC Tag 或每帧 PreCMC 解释历史 Move。
+- 目标是完整的逐 Move 普通移动预测合同：步态请求、朝向请求及输入力度随 SavedMove/Packed Move 保存、发送和重放；请求变化禁止错误合并。首次自主预测、权威执行和纠偏重放在执行对应 Move 前使用同一套 Locomotion 规则，按该 Move 的请求、模拟状态及必要历史配置计算步态与最终参数，不再用当前 ASC Tag 或每帧 PreCMC 解释历史 Move。
+- 仅同步 Walk/Run/Sprint 不足以覆盖当前移动规则：Aim/Strafe 会切换朝向策略，该策略参与冲刺准入及方向速度计算。移动请求按“请求步态”和“请求朝向策略”表达，不要求原样传输 Sprint/Walk/Aim/Strafe 四个业务 flag；按当前已核对规则，Aim/Strafe 可在 Locomotion 映射为同一随控制朝向请求，与随移动方向请求区分。只合并对移动计算等价的意图；以后两者产生不同移动规则时再扩展请求，实际步态仍由各端规则及服务端权限复核决定。
 - 拟将最终步态类型及速度上限、加速度、摩擦、制动计算迁至 Locomotion C++；原生 EIMGGait 可声明于 IMGLocomotionComponent.h，实现在 .cpp，蓝图保留配置、曲线和表现。DefaultGameplayTags.ini 的 Event.Movement.Gait.Sprint/Walk 与 Event.Movement.RotationMode.Aim/Strafe 已由 AC_Hero_Locomotion 监听，可在 Locomotion 适配层映射为移动请求；Tag 注册或枚举迁移本身不提供时序同步。
-- GA 保留能力生命周期、消耗及限制，服务端复核请求权限并决定实际参数；不能直接信任客户端提交的最终步态或速度上限，也不能仅等待另一条 Tag 复制到达来决定历史 Move 的步态。CMC 仅提供通用输入传输、模拟接点和预测，不反向依赖 Locomotion、GA 或 GAS；不由模拟代理本机请求驱动权威移动。
+- GA 保留能力生命周期、消耗及限制，服务端复核请求权限并决定实际参数；不能直接信任客户端提交的最终步态或速度上限，也不能仅等待另一条 Tag 复制到达来决定历史 Move 的步态。不由模拟代理本机请求驱动权威移动。
+- 持续保持 Locomotion → CMC 的单向依赖：步态/朝向请求的业务含义、Tag 映射与参数计算归 Locomotion，不向引擎原生 CMC 添加 Gait/Aim/Strafe 业务规则。项目 CMC 扩展仅承接通用 Move 数据保存、传输、合并判断、重放和模拟前接点；Locomotion 经通用接点解释对应 Move 的请求并写入参数。接点可通过委托或接口回调上层，不要求 CMC 引用上层具体类型；CMC 不查询 GAS Tag，不反向依赖 Locomotion、GA 或 GAS，也不重复维护业务规则。具体通用数据布局与接点在实现时沿现有预测链确定。
 - 收敛原则：独立输入力度合同保留；地面参数历史快照作为过渡，完整逐 Move 计算完成并验证后，只删除能可靠重算的快照，保留不能重算的历史输入/配置依据，避免重复状态与双重参数来源。输入力度归一化、历史参数回放、步态错帧分别处理，不因后续发现新的源头而整体撤销已成立的合同。
 - Traversal 的重试/权威终止等待与旧 Walking 纠偏过滤针对独立生命周期问题，单独保留并复核，不随普通步态同步改造自动删除；其范围和限制见 Traversal 的执行、网络与清理小节。若以后补全 Traversal 历史预测，再按实际替代能力评估移除。
 - 保留默认关闭的 IMG.Movement.NetDiagnostics。验收覆盖起步/停下、Run/Sprint/Walk 切换、转弯、动态参数与权限拒绝；在30至60 ms双向延迟、1%丢包配置下按 Actor/Move 对照 Predict/Authority/Replay，区分预测偏差与合理纠偏。不以关闭纠偏、客户端位置权威或单纯加大代理平滑掩盖不一致。
