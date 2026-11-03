@@ -5,6 +5,10 @@
 
 namespace IMGGameplayTags
 {
+	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Movement_Gait_Sprint);
+	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Movement_Gait_Walk);
+	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Movement_RotationMode_Aim);
+	IMAGINEGAME_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Movement_RotationMode_Strafe);
 	IMAGINEGAME_API	UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_AutoRun);
 	IMAGINEGAME_API	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_AutoRunning);
 	IMAGINEGAME_API FGameplayTag FindTagByString(const FString& TagString, bool bMatchPartialString = false);

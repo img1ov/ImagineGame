@@ -65,6 +65,7 @@ private:
 	
 	/** Delegate for when the game instance is changed to register IMC's */
 	FDelegateHandle RegisterInputContextMappingsForGameInstanceHandle;
+	int32 RegistrationCount = 0;
 
 	/** Registers owned Input Mapping Contexts to the Input Registry Subsystem. Also binds onto the start of GameInstances and the adding/removal of Local Players. */
 	void RegisterInputMappingContexts();

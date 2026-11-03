@@ -12,6 +12,9 @@
 class UObject;
 struct FFrame;
 
+DECLARE_DELEGATE_RetVal(uint8, FMovementRequestCapture);
+DECLARE_DELEGATE_TwoParams(FMovementRequestApply, uint8, const FVector&);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
 	const FCharacterMoveResponseDataContainer&, bool& /* bDiscardCorrection */);
@@ -26,6 +29,8 @@ enum class EIMGCustomMovementMode : uint8
 struct IMAGINEGAME_API FIMGCharacterNetworkMoveData : FCharacterNetworkMoveData
 {
 	uint8 InputMagnitude = 0;
+	bool bHasMovementRequest = false;
+	uint8 MovementRequest = 0;
 	FIMGRagdollMovementInput RagdollInput;
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType) override;
@@ -124,6 +129,13 @@ public:
 
 	/** Listeners may only set discard to true. Discarded corrections still ACK through the native path. Packed responses only. */
 	FIMGClientCorrectionFilter ClientCorrectionFilter;
+
+	/** One weak UObject provider; movement only records and transports its request byte. */
+	UE_API bool RegisterMovementRequestProvider(UObject* Source, FMovementRequestCapture Capture, FMovementRequestApply Apply);
+	UE_API void UnregisterMovementRequestProvider(const UObject* Source);
+	bool IsMovementRequestProvider(const UObject* Source) const { return Source && MovementRequestSource.Get() == Source; }
+	UE_API bool HasMovementRequestProvider() const;
+	UE_API virtual void ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds) override;
 	
 	UE_API virtual bool CanAttemptJump() const override;
 	UE_API virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
@@ -239,6 +251,14 @@ protected:
 	friend struct FIMGCharacterMoveResponseDataContainer;
 	friend struct FIMGStanceStateMachine;
 	friend class FIMGCustomMovementMode_Ragdoll;
+
+	void ApplyMovementRequest(const FVector& Input);
+	TWeakObjectPtr<UObject> MovementRequestSource;
+	FMovementRequestCapture CaptureMovementRequest;
+	FMovementRequestApply ApplyMovementRequestDelegate;
+	uint32 MovementRequestGeneration = 0;
+	uint8 MovementRequest = 0;
+	bool bHasMovementRequest = false;
 
 	FIMGCustomMovementMode_Ragdoll RagdollMode;
 	FIMGCharacterNetworkMoveDataContainer IMGNetworkMoveData;

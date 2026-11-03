@@ -1,13 +1,17 @@
 
 
 #include "GameModes/IMGExperienceManager.h"
+#include "IMGLogChannels.h"
 
 #if WITH_EDITOR
 
 void UIMGExperienceManager::OnPlayInEditorBegun()
 {
-	ensure(GameFeaturePluginRequestCountMap.IsEmpty());
-	GameFeaturePluginRequestCountMap.Empty();
+	// A previous PIE world's async teardown can still own requests when a new run starts.
+	if (!GameFeaturePluginRequestCountMap.IsEmpty())
+	{
+		UE_LOG(LogIMGExperience, Verbose, TEXT("Preserving %d game feature request counts across PIE runs while teardown completes."), GameFeaturePluginRequestCountMap.Num());
+	}
 }
 
 void UIMGExperienceManager::NotifyOfPluginActivation(const FString PluginURL)

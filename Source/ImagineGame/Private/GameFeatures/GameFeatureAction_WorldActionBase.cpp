@@ -28,6 +28,7 @@ void UGameFeatureAction_WorldActionBase::OnGameFeatureDeactivating(FGameFeatureD
 	if (ensure(FoundHandle))
 	{
 		FWorldDelegates::OnStartGameInstance.Remove(*FoundHandle);
+		GameInstanceStartHandles.Remove(Context);
 	}
 }
 

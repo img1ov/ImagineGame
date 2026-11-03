@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Kismet/BlueprintAsyncActionBase.h"
+#include "Engine/TimerHandle.h"
 
 #include "AsyncAction_ExperienceReady.generated.h"
 
 class AGameStateBase;
 class UIMGExperienceDefinition;
+class UIMGExperienceManagerComponent;
 class UWorld;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FExperienceReadyAsyncDelegate);
@@ -21,6 +23,7 @@ public:
 	static UAsyncAction_ExperienceReady* WaitForExperienceReady(UObject* WorldContextObject);
 
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	UPROPERTY(BlueprintAssignable)
 	FExperienceReadyAsyncDelegate OnReady;
@@ -30,6 +33,13 @@ private:
 	void Step2_ListenToExperienceLoading(AGameStateBase* GameState);
 	void Step3_HandleExperienceLoaded(const UIMGExperienceDefinition* CurrentExperience);
 	void Step4_BroadcastReady();
+	void HandleExperienceFailed(const FString& Reason);
+	void HandleWorldBeginTearDown(UWorld* World);
 
 	TWeakObjectPtr<UWorld> WorldPtr;
+	TWeakObjectPtr<UIMGExperienceManagerComponent> ExperienceComponentPtr;
+	FTimerHandle ReadyTimer;
+	FDelegateHandle WorldTearDownHandle;
+	bool bActivated = false;
+	bool bFinished = false;
 };

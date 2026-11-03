@@ -3,13 +3,17 @@
 
 #include "Components/GameStateComponent.h"
 #include "LoadingProcessInterface.h"
+#include "Engine/TimerHandle.h"
 
 #include "IMGExperienceManagerComponent.generated.h"
 
 class UIMGExperienceDefinition;
+class UGameFeatureAction;
+struct FStreamableHandle;
 namespace UE::GameFeatures { struct FResult; }
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnIMGExperienceLoaded, const UIMGExperienceDefinition* /*Experience*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnIMGExperienceLoadFailed, const FString& /*Reason*/);
 
 enum class EIMGExperienceLoadState
 {
@@ -19,7 +23,8 @@ enum class EIMGExperienceLoadState
 	LoadingChaosTestingDelay,
 	ExecutingActions,
 	Loaded,
-	Deactivating
+	Deactivating,
+	Failed
 };
 
 UCLASS()
@@ -61,6 +66,12 @@ public:
 
 	// Returns true if the experience is fully loaded
 	bool IsExperienceLoaded() const;
+	bool HasExperienceLoadFailed() const { return bLoadFailed; }
+	const FString& GetExperienceLoadError() const { return ExperienceLoadError; }
+	// Also notifies pending waiters on EndPlay; this is a local lifecycle result.
+	void CallOrRegister_OnExperienceLoadFailed(FOnIMGExperienceLoadFailed::FDelegate&& Delegate);
+	// In-flight callbacks must still guard their own completion after unsubscribing.
+	void RemoveExperienceLoadDelegates(const UObject* Listener);
 
 private:
 	
@@ -69,34 +80,50 @@ private:
 
 	void StartExperienceLoad();
 	void OnExperienceLoadComplete();
-	void OnGameFeaturePluginLoadComplete(const UE::GameFeatures::FResult& Result);
+	void OnGameFeaturePluginLoadComplete(const UE::GameFeatures::FResult& Result, FString PluginURL);
 	void OnExperienceFullLoadCompleted();
+	void FailExperienceLoad(const FString& Reason);
+	void BeginDeactivation();
 
-	void OnActionDeactivationCompleted();
 	void OnAllActionsDeactivated();
+	static void ReleaseGameFeaturePluginRequest(const FString& PluginURL);
 
 private:
 	
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentExperience)
 	TObjectPtr<const UIMGExperienceDefinition> CurrentExperience;
+	FString ExperienceLoadError;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UGameFeatureAction>> RegisteredActions;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UGameFeatureAction>> LoadedActions;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UGameFeatureAction>> ActivatedActions;
+
+	TSharedPtr<FStreamableHandle> ExperienceLoadHandle;
+	FTimerHandle ExperienceLoadDelayTimer;
+	FName ExperienceWorldContext;
+	bool bEndingPlay = false;
+	bool bLoadFailed = false;
+	bool bExecutingCallbacks = false;
+	bool bDeactivationStarted = false;
 
 	EIMGExperienceLoadState LoadState = EIMGExperienceLoadState::Unloaded;
 
-	int32 NumGameFeaturePluginsLoading = 0;
+	TSet<FString> PendingGameFeaturePluginURLs;
 	TArray<FString> GameFeaturePluginURLs;
 
-	int32 NumObservedPausers = 0;
-	int32 NumExpectedPausers = 0;
-	
 	/**
 	 * Delegate called when the experience has finished loading just before others
 	 * (e.g., subsystems that set up for regular gameplay)
 	 */
-	FOnIMGExperienceLoaded OnExperienceLoaded_HighPriority;
+	TArray<FOnIMGExperienceLoaded::FDelegate> OnExperienceLoaded_HighPriority;
 
 	/** Delegate called when the experience has finished loading */
-	FOnIMGExperienceLoaded OnExperienceLoaded;
+	TArray<FOnIMGExperienceLoaded::FDelegate> OnExperienceLoaded;
 
 	/** Delegate called when the experience has finished loading */
-	FOnIMGExperienceLoaded OnExperienceLoaded_LowPriority;
+	TArray<FOnIMGExperienceLoaded::FDelegate> OnExperienceLoaded_LowPriority;
+	FOnIMGExperienceLoadFailed OnExperienceLoadFailed;
 };

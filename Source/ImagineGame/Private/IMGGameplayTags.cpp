@@ -7,6 +7,10 @@
 
 namespace IMGGameplayTags
 {
+	UE_DEFINE_GAMEPLAY_TAG(Event_Movement_Gait_Sprint, "Event.Movement.Gait.Sprint");
+	UE_DEFINE_GAMEPLAY_TAG(Event_Movement_Gait_Walk, "Event.Movement.Gait.Walk");
+	UE_DEFINE_GAMEPLAY_TAG(Event_Movement_RotationMode_Aim, "Event.Movement.RotationMode.Aim");
+	UE_DEFINE_GAMEPLAY_TAG(Event_Movement_RotationMode_Strafe, "Event.Movement.RotationMode.Strafe");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(InputTag_AutoRun, "InputTag.AutoRun", "Auto-run input.");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_AutoRunning, "Status.AutoRunning", "Target is auto-running.");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_ActivateFail_IsDead, "Ability.ActivateFail.IsDead", "Ability failed to activate because its owner is dead.");

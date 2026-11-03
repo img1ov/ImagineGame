@@ -28,7 +28,11 @@ void UGameFeatureAction_AddInputContextMapping::OnGameFeatureRegistering()
 {
 	Super::OnGameFeatureRegistering();
 	
-	RegisterInputMappingContexts();
+	// Experience/ActionSet assets are shared across PIE worlds; global registration is shared too.
+	if (++RegistrationCount == 1)
+	{
+		RegisterInputMappingContexts();
+	}
 }
 
 void UGameFeatureAction_AddInputContextMapping::OnGameFeatureActivating(FGameFeatureActivatingContext& Context)
@@ -57,7 +61,10 @@ void UGameFeatureAction_AddInputContextMapping::OnGameFeatureUnregistering()
 {
 	Super::OnGameFeatureUnregistering();	
 	
-	UnregisterInputMappingContexts();
+	if (ensure(RegistrationCount > 0) && --RegistrationCount == 0)
+	{
+		UnregisterInputMappingContexts();
+	}
 }
 
 #if WITH_EDITOR

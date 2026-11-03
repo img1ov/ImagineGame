@@ -218,13 +218,17 @@ void UIMGLocomotionComponent::RefreshAbilitySystemConnection()
 		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Ready. Owner=[%s] ASC=[%s] Set=[%s]"),
 			*GetNameSafe(GetOwner()), *GetNameSafe(AbilitySystemComponent), *GetNameSafe(LocomotionSet));
 	}
-	else
+	else if (UsesLocomotionSet())
 	{
 		UE_LOG(LogIMG, Warning,
 			TEXT("Locomotion lifecycle: Ready without LocomotionSet. Attribute notifications are disabled and later dynamic Set changes are not observed. Owner=[%s] ASC=[%s]"),
 			*GetNameSafe(GetOwner()), *GetNameSafe(AbilitySystemComponent));
 	}
-	OnLocomotionReady();
+	OnLocomotionReadyNative();
+	if (IsLocomotionReady())
+	{
+		OnLocomotionReady();
+	}
 }
 
 void UIMGLocomotionComponent::ClearAbilitySystemConnection()
@@ -235,6 +239,7 @@ void UIMGLocomotionComponent::ClearAbilitySystemConnection()
 	if (bWasReady)
 	{
 		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Unavailable. Owner=[%s]"), *GetNameSafe(GetOwner()));
+		OnLocomotionUnavailableNative();
 		OnLocomotionUnavailable();
 	}
 }
@@ -242,7 +247,7 @@ void UIMGLocomotionComponent::ClearAbilitySystemConnection()
 void UIMGLocomotionComponent::RefreshLocomotionSet()
 {
 	const UIMGLocomotionSet* CurrentSet = nullptr;
-	if (IsLocomotionReady())
+	if (UsesLocomotionSet() && IsLocomotionReady())
 	{
 		CurrentSet = AbilitySystemComponent->GetSet<UIMGLocomotionSet>();
 	}

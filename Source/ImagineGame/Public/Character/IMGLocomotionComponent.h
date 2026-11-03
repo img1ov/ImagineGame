@@ -46,6 +46,9 @@ protected:
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	UE_API virtual bool CanUpdateLocomotion() const override;
+	virtual bool UsesLocomotionSet() const { return true; }
+	virtual void OnLocomotionReadyNative() {}
+	virtual void OnLocomotionUnavailableNative() {}
 
 	/** Called after binding the current ASC and CMC. The optional LocomotionSet may be null. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "IMG|Locomotion", meta = (DisplayName = "On Locomotion Ready"))

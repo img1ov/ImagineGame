@@ -1,43 +1,29 @@
-
-
 #include "GameModes/IMGExperienceManagerComponent.h"
 
 #include "IMGLogChannels.h"
+#include "Engine/StreamableManager.h"
 #include "GameFeatureAction.h"
 #include "GameFeaturesSubsystem.h"
 #include "GameFeaturesSubsystemSettings.h"
 #include "GameModes/IMGExperienceActionSet.h"
-#include "Net/UnrealNetwork.h"
-#include "System/IMGAssetManager.h"
 #include "GameModes/IMGExperienceDefinition.h"
 #include "GameModes/IMGExperienceManager.h"
+#include "Net/UnrealNetwork.h"
 #include "Settings/IMGSettingsLocal.h"
-
-//@TODO: Async load the experience definition itself
-//@TODO: Handle failures explicitly (go into a 'completed but failed' state rather than check()-ing)
-//@TODO: Do the action phases at the appropriate times instead of all at once
-//@TODO: Support deactivating an experience and do the unloading actions
-//@TODO: Think about what deactivation/cleanup means for preloaded assets
-//@TODO: Handle deactivating game features, right now we 'leak' them enabled
-// (for a client moving from experience to experience we actually want to diff the requirements and only unload some, not unload everything for them to just be immediately reloaded)
-//@TODO: Handle both built-in and URL-based plugins (search for colon?)
+#include "System/IMGAssetManager.h"
+#include "TimerManager.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace IMGConsoleVariables
 {
 	static float ExperienceLoadRandomDelayMin = 0.0f;
 	static FAutoConsoleVariableRef CVarExperienceLoadRandomDelayMin(
-		TEXT("IMG.chaos.ExperienceDelayLoad.MinSecs"),
-		ExperienceLoadRandomDelayMin,
-		TEXT("This value (in seconds) will be added as a delay of load completion of the experience (along with the random value IMG.chaos.ExperienceDelayLoad.RandomSecs)"),
-		ECVF_Default);
-
+		TEXT("IMG.chaos.ExperienceDelayLoad.MinSecs"), ExperienceLoadRandomDelayMin,
+		TEXT("Fixed delay before experience load completion, in seconds."), ECVF_Default);
 	static float ExperienceLoadRandomDelayRange = 0.0f;
 	static FAutoConsoleVariableRef CVarExperienceLoadRandomDelayRange(
-		TEXT("IMG.chaos.ExperienceDelayLoad.RandomSecs"),
-		ExperienceLoadRandomDelayRange,
-		TEXT("A random amount of time between 0 and this value (in seconds) will be added as a delay of load completion of the experience (along with the fixed value IMG.chaos.ExperienceDelayLoad.MinSecs)"),
-		ECVF_Default);
-
+		TEXT("IMG.chaos.ExperienceDelayLoad.RandomSecs"), ExperienceLoadRandomDelayRange,
+		TEXT("Random additional delay before experience load completion, in seconds."), ECVF_Default);
 	float GetExperienceLoadDelayDuration()
 	{
 		return FMath::Max(0.0f, ExperienceLoadRandomDelayMin + FMath::FRand() * ExperienceLoadRandomDelayRange);
@@ -52,89 +38,41 @@ UIMGExperienceManagerComponent::UIMGExperienceManagerComponent(const FObjectInit
 
 void UIMGExperienceManagerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (!bEndingPlay)
+	{
+		bEndingPlay = true;
+		BeginDeactivation();
+		FOnIMGExperienceLoadFailed FailureDelegates = MoveTemp(OnExperienceLoadFailed);
+		FailureDelegates.Broadcast(TEXT("Experience ended"));
+	}
 	Super::EndPlay(EndPlayReason);
-
-	// deactivate any features this experience loaded
-	//@TODO: This should be handled FILO as well
-	for (const FString& PluginURL : GameFeaturePluginURLs)
-	{
-		if (UIMGExperienceManager::RequestToDeactivatePlugin(PluginURL))
-		{
-			UGameFeaturesSubsystem::Get().DeactivateGameFeaturePlugin(PluginURL);
-		}
-	}
-
-	//@TODO: Ensure proper handling of a partially-loaded state too
-	if (LoadState == EIMGExperienceLoadState::Loaded)
-	{
-		LoadState = EIMGExperienceLoadState::Deactivating;
-
-		// Make sure we won't complete the transition prematurely if someone registers as a pauser but fires immediately
-		NumExpectedPausers = INDEX_NONE;
-		NumObservedPausers = 0;
-
-		// Deactivate and unload the actions
-		FGameFeatureDeactivatingContext Context(TEXT(""), [this](FStringView) { this->OnActionDeactivationCompleted(); });
-		const FWorldContext* ExistingWorldContext = GEngine->GetWorldContextFromWorld(GetWorld());
-		if (ExistingWorldContext)
-		{
-			Context.SetRequiredWorldContextHandle(ExistingWorldContext->ContextHandle);
-		}
-
-		auto DeactivateListOfActions = [&Context](const TArray<UGameFeatureAction*>& ActionList)
-		{
-			for (UGameFeatureAction* Action : ActionList)
-			{
-				if (Action)
-				{
-					Action->OnGameFeatureDeactivating(Context);
-					Action->OnGameFeatureUnregistering();
-				}
-			}
-		};
-
-		DeactivateListOfActions(CurrentExperience->Actions);
-		for (const TObjectPtr<UIMGExperienceActionSet>& ActionSet : CurrentExperience->ActionSets)
-		{
-			if (ActionSet != nullptr)
-			{
-				DeactivateListOfActions(ActionSet->Actions);
-			}
-		}
-
-		NumExpectedPausers = Context.GetNumPausers();
-
-		if (NumExpectedPausers > 0)
-		{
-			UE_LOG(LogIMGExperience, Error, TEXT("Actions that have asynchronous deactivation aren't fully supported yet in IMG experiences"));
-		}
-
-		if (NumExpectedPausers == NumObservedPausers)
-		{
-			OnAllActionsDeactivated();
-		}
-	}
 }
 
-void UIMGExperienceManagerComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
+void UIMGExperienceManagerComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
 	DOREPLIFETIME(ThisClass, CurrentExperience);
 }
 
 void UIMGExperienceManagerComponent::SetCurrentExperience(const FPrimaryAssetId& ExperienceId)
 {
-	UIMGAssetManager& AssetManager = UIMGAssetManager::Get();
-	FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(ExperienceId);
-	TSubclassOf<UIMGExperienceDefinition> AssetClass = Cast<UClass>(AssetPath.TryLoad());
-	check(AssetClass);
-	const UIMGExperienceDefinition* Experience = GetDefault<UIMGExperienceDefinition>(AssetClass);
-
-	check(Experience != nullptr);
-	check(CurrentExperience == nullptr);
-	
-	CurrentExperience = Experience;
+	if (bEndingPlay || bLoadFailed || LoadState != EIMGExperienceLoadState::Unloaded || CurrentExperience)
+	{
+		UE_LOG(LogIMGExperience, Warning, TEXT("Ignoring repeated experience assignment: %s"), *ExperienceId.ToString());
+		return;
+	}
+	const FSoftObjectPath AssetPath = UIMGAssetManager::Get().GetPrimaryAssetPath(ExperienceId);
+	UClass* AssetClass = Cast<UClass>(AssetPath.TryLoad());
+	if (bEndingPlay || bLoadFailed)
+	{
+		return;
+	}
+	if (!AssetClass || !AssetClass->IsChildOf(UIMGExperienceDefinition::StaticClass()))
+	{
+		FailExperienceLoad(FString::Printf(TEXT("Invalid experience definition: %s (%s)"), *ExperienceId.ToString(), *AssetPath.ToString()));
+		return;
+	}
+	CurrentExperience = GetDefault<UIMGExperienceDefinition>(AssetClass);
 	StartExperienceLoad();
 }
 
@@ -142,9 +80,9 @@ void UIMGExperienceManagerComponent::CallOrRegister_OnExperienceLoaded_HighPrior
 {
 	if (IsExperienceLoaded())
 	{
-		Delegate.Execute(CurrentExperience);
+		Delegate.ExecuteIfBound(CurrentExperience);
 	}
-	else
+	else if (!bEndingPlay && !bLoadFailed && LoadState != EIMGExperienceLoadState::Deactivating)
 	{
 		OnExperienceLoaded_HighPriority.Add(MoveTemp(Delegate));
 	}
@@ -154,307 +92,514 @@ void UIMGExperienceManagerComponent::CallOrRegister_OnExperienceLoaded(FOnIMGExp
 {
 	if (IsExperienceLoaded())
 	{
-		Delegate.Execute(CurrentExperience);
+		Delegate.ExecuteIfBound(CurrentExperience);
 	}
-	else
+	else if (!bEndingPlay && !bLoadFailed && LoadState != EIMGExperienceLoadState::Deactivating)
 	{
 		OnExperienceLoaded.Add(MoveTemp(Delegate));
 	}
+}
+
+void UIMGExperienceManagerComponent::RemoveExperienceLoadDelegates(const UObject* Listener)
+{
+	auto IsListener = [Listener](const FOnIMGExperienceLoaded::FDelegate& Delegate)
+	{
+		return Delegate.IsBoundToObject(Listener);
+	};
+	OnExperienceLoaded_HighPriority.RemoveAll(IsListener);
+	OnExperienceLoaded.RemoveAll(IsListener);
+	OnExperienceLoaded_LowPriority.RemoveAll(IsListener);
+	OnExperienceLoadFailed.RemoveAll(Listener);
 }
 
 void UIMGExperienceManagerComponent::CallOrRegister_OnExperienceLoaded_LowPriority(FOnIMGExperienceLoaded::FDelegate&& Delegate)
 {
 	if (IsExperienceLoaded())
 	{
-		Delegate.Execute(CurrentExperience);
+		Delegate.ExecuteIfBound(CurrentExperience);
 	}
-	else
+	else if (!bEndingPlay && !bLoadFailed && LoadState != EIMGExperienceLoadState::Deactivating)
 	{
 		OnExperienceLoaded_LowPriority.Add(MoveTemp(Delegate));
 	}
 }
 
+void UIMGExperienceManagerComponent::CallOrRegister_OnExperienceLoadFailed(FOnIMGExperienceLoadFailed::FDelegate&& Delegate)
+{
+	if (bEndingPlay || bLoadFailed)
+	{
+		Delegate.ExecuteIfBound(bLoadFailed ? ExperienceLoadError : FString(TEXT("Experience ended")));
+	}
+	else
+	{
+		OnExperienceLoadFailed.Add(MoveTemp(Delegate));
+	}
+}
+
 const UIMGExperienceDefinition* UIMGExperienceManagerComponent::GetCurrentExperienceChecked() const
 {
-	check(LoadState == EIMGExperienceLoadState::Loaded);
-	check(CurrentExperience != nullptr);
+	check(IsExperienceLoaded());
 	return CurrentExperience;
 }
 
 bool UIMGExperienceManagerComponent::IsExperienceLoaded() const
 {
-	return (LoadState == EIMGExperienceLoadState::Loaded) && (CurrentExperience != nullptr);
+	return !bEndingPlay && !bLoadFailed && LoadState == EIMGExperienceLoadState::Loaded && CurrentExperience != nullptr;
 }
 
 void UIMGExperienceManagerComponent::OnRep_CurrentExperience()
 {
-	StartExperienceLoad();
+	if (CurrentExperience)
+	{
+		StartExperienceLoad();
+	}
 }
 
 void UIMGExperienceManagerComponent::StartExperienceLoad()
 {
-	check(CurrentExperience != nullptr);
-	check(LoadState == EIMGExperienceLoadState::Unloaded);
-
-	UE_LOG(LogIMGExperience, Log, TEXT("EXPERIENCE: StartExperienceLoad(CurrentExperience = %s, %s)"),
-		*CurrentExperience->GetPrimaryAssetId().ToString(),
-		*GetClientServerContextString(this));
-
-	LoadState = EIMGExperienceLoadState::Loading;
-
-	UIMGAssetManager& AssetManager = UIMGAssetManager::Get();
-
-	TSet<FPrimaryAssetId> BundleAssetList;
-	TSet<FSoftObjectPath> RawAssetList;
-
-	BundleAssetList.Add(CurrentExperience->GetPrimaryAssetId());
-	for (const TObjectPtr<UIMGExperienceActionSet>& ActionSet : CurrentExperience->ActionSets)
+	if (bEndingPlay || bLoadFailed || LoadState != EIMGExperienceLoadState::Unloaded || !CurrentExperience)
 	{
-		if (ActionSet != nullptr)
+		return;
+	}
+	LoadState = EIMGExperienceLoadState::Loading;
+	UE_LOG(LogIMGExperience, Log, TEXT("EXPERIENCE: Loading %s (%s)"),
+		*CurrentExperience->GetPrimaryAssetId().ToString(), *GetClientServerContextString(this));
+	if (const FWorldContext* Context = GEngine->GetWorldContextFromWorld(GetWorld()))
+	{
+		ExperienceWorldContext = Context->ContextHandle;
+	}
+	else
+	{
+		FailExperienceLoad(TEXT("Experience world context is unavailable"));
+		return;
+	}
+	TSet<FPrimaryAssetId> BundleAssets;
+	BundleAssets.Add(CurrentExperience->GetPrimaryAssetId());
+	for (const UIMGExperienceActionSet* ActionSet : CurrentExperience->ActionSets)
+	{
+		if (ActionSet)
 		{
-			BundleAssetList.Add(ActionSet->GetPrimaryAssetId());
+			BundleAssets.Add(ActionSet->GetPrimaryAssetId());
 		}
 	}
-
-	// Load assets associated with the experience
-
-	TArray<FName> BundlesToLoad;
-	BundlesToLoad.Add(FIMGBundles::Equipped);
-
-	//@TODO: Centralize this client/server handling in IMGAssetManager.
-	const ENetMode OwnerNetMode = GetOwner()->GetNetMode();
-	const bool bLoadClient = GIsEditor || (OwnerNetMode != NM_DedicatedServer);
-	const bool bLoadServer = GIsEditor || (OwnerNetMode != NM_Client);
-	if (bLoadClient)
+	TArray<FName> BundlesToLoad { FIMGBundles::Equipped };
+	for (const FPrimaryAssetId& AssetId : BundleAssets)
+	{
+		if (!UIMGAssetManager::Get().GetPrimaryAssetPath(AssetId).IsValid())
+		{
+			FailExperienceLoad(FString::Printf(TEXT("Unregistered experience bundle asset: %s"), *AssetId.ToString()));
+			return;
+		}
+	}
+	const ENetMode NetMode = GetOwner()->GetNetMode();
+	if (GIsEditor || NetMode != NM_DedicatedServer)
 	{
 		BundlesToLoad.Add(UGameFeaturesSubsystemSettings::LoadStateClient);
 	}
-	if (bLoadServer)
+	if (GIsEditor || NetMode != NM_Client)
 	{
 		BundlesToLoad.Add(UGameFeaturesSubsystemSettings::LoadStateServer);
 	}
-
-	TSharedPtr<FStreamableHandle> BundleLoadHandle = nullptr;
-	if (BundleAssetList.Num() > 0)
+	TSharedPtr<FStreamableHandle> Handle = UIMGAssetManager::Get().ChangeBundleStateForPrimaryAssets(
+		BundleAssets.Array(), BundlesToLoad, {}, false, FStreamableDelegate(), FStreamableManager::AsyncLoadHighPriority);
+	// AssetManager can pump messages while building the request.
+	if (bEndingPlay || bLoadFailed)
 	{
-		BundleLoadHandle = AssetManager.ChangeBundleStateForPrimaryAssets(BundleAssetList.Array(), BundlesToLoad, {}, false, FStreamableDelegate(), FStreamableManager::AsyncLoadHighPriority);
+		if (Handle.IsValid())
+		{
+			Handle->CancelHandle();
+		}
+		return;
 	}
-
-	TSharedPtr<FStreamableHandle> RawLoadHandle = nullptr;
-	if (RawAssetList.Num() > 0)
+	ExperienceLoadHandle = MoveTemp(Handle);
+	if (!ExperienceLoadHandle.IsValid() || ExperienceLoadHandle->HasLoadCompleted())
 	{
-		RawLoadHandle = AssetManager.LoadAssetList(RawAssetList.Array(), FStreamableDelegate(), FStreamableManager::AsyncLoadHighPriority, TEXT("StartExperienceLoad()"));
+		OnExperienceLoadComplete();
 	}
-	
-	// If both async loads are running, combine them
-	TSharedPtr<FStreamableHandle> Handle = nullptr;
-	if (BundleLoadHandle.IsValid() && RawLoadHandle.IsValid())
+	else if (ExperienceLoadHandle->WasCanceled())
 	{
-		Handle = AssetManager.GetStreamableManager().CreateCombinedHandle({ BundleLoadHandle, RawLoadHandle });
-	}
-	else
-	{
-		Handle = BundleLoadHandle.IsValid() ? BundleLoadHandle : RawLoadHandle;
-	}
-
-	FStreamableDelegate OnAssetsLoadedDelegate = FStreamableDelegate::CreateUObject(this, &ThisClass::OnExperienceLoadComplete);
-	if (!Handle.IsValid() || Handle->HasLoadCompleted())
-	{
-		// Assets were already loaded, call the delegate now
-		FStreamableHandle::ExecuteDelegate(OnAssetsLoadedDelegate);
+		FailExperienceLoad(TEXT("Experience asset loading cancelled"));
 	}
 	else
 	{
-		Handle->BindCompleteDelegate(OnAssetsLoadedDelegate);
-
-		Handle->BindCancelDelegate(FStreamableDelegate::CreateLambda([OnAssetsLoadedDelegate]()
+		ExperienceLoadHandle->BindCompleteDelegate(FStreamableDelegate::CreateUObject(this, &ThisClass::OnExperienceLoadComplete));
+		ExperienceLoadHandle->BindCancelDelegate(FStreamableDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (LoadState == EIMGExperienceLoadState::Loading)
 			{
-				OnAssetsLoadedDelegate.ExecuteIfBound();
-			}));
-	}
-
-	// This set of assets gets preloaded, but we don't block the start of the experience based on it
-	TSet<FPrimaryAssetId> PreloadAssetList;
-	//@TODO: Determine assets to preload (but not blocking-ly)
-	if (PreloadAssetList.Num() > 0)
-	{
-		AssetManager.ChangeBundleStateForPrimaryAssets(PreloadAssetList.Array(), BundlesToLoad, {});
+				FailExperienceLoad(TEXT("Experience asset loading cancelled"));
+			}
+		}));
 	}
 }
 
 void UIMGExperienceManagerComponent::OnExperienceLoadComplete()
 {
-	check(LoadState == EIMGExperienceLoadState::Loading);
-	check(CurrentExperience != nullptr);
-
-	UE_LOG(LogIMGExperience, Log, TEXT("EXPERIENCE: OnExperienceLoadComplete(CurrentExperience = %s, %s)"),
-		*CurrentExperience->GetPrimaryAssetId().ToString(),
-		*GetClientServerContextString(this));
-
-	// find the URLs for our GameFeaturePlugins - filtering out dupes and ones that don't have a valid mapping
-	GameFeaturePluginURLs.Reset();
-
-	auto CollectGameFeaturePluginURLs = [This = this](const UPrimaryDataAsset* Context, const TArray<FString>& FeaturePluginList)
+	if (bEndingPlay || bLoadFailed || LoadState != EIMGExperienceLoadState::Loading)
 	{
-		for (const FString & PluginName : FeaturePluginList)
+		return;
+	}
+	auto CheckLoadHandle = [this](const TSharedPtr<FStreamableHandle>& Handle)
+	{
+		if (!Handle.IsValid())
 		{
-			FString PluginURL;
-			if (UGameFeaturesSubsystem::Get().GetPluginURLByName(PluginName, /*out*/ PluginURL))
-			{
-				This->GameFeaturePluginURLs.AddUnique(PluginURL);
-			}
-			else
-			{
-				ensureMsgf(false, TEXT("OnExperienceLoadComplete failed to find plugin URL from PluginName %s for experience %s - fix data, ignoring for this run"), *PluginName, *Context->GetPrimaryAssetId().ToString());
-			}
+			return true;
 		}
-
-		// 		// Add in our extra plugin
-		// 		if (!CurrentPlaylistData->GameFeaturePluginToActivateUntilDownloadedContentIsPresent.IsEmpty())
-		// 		{
-		// 			FString PluginURL;
-		// 			if (UGameFeaturesSubsystem::Get().GetPluginURLByName(CurrentPlaylistData->GameFeaturePluginToActivateUntilDownloadedContentIsPresent, PluginURL))
-		// 			{
-		// 				GameFeaturePluginURLs.AddUnique(PluginURL);
-		// 			}
-		// 		}
+		TArray<UObject*> LoadedAssets;
+		Handle->GetLoadedAssets(LoadedAssets);
+		const bool bChildFailed = Handle->FindMatchingHandle([](const FStreamableHandle& Child)
+		{
+			return Child.WasCanceled() || Child.HasError();
+		}).IsValid();
+		if (bChildFailed || LoadedAssets.Contains(nullptr))
+		{
+			FailExperienceLoad(TEXT("Failed to load experience asset bundles"));
+			return false;
+		}
+		return true;
 	};
-
-	CollectGameFeaturePluginURLs(CurrentExperience, CurrentExperience->GameFeaturesToEnable);
-	for (const TObjectPtr<UIMGExperienceActionSet>& ActionSet : CurrentExperience->ActionSets)
+	if (!CheckLoadHandle(ExperienceLoadHandle))
 	{
-		if (ActionSet != nullptr)
+		return;
+	}
+	// Unchanged bundle states may return no new handle; validate their retained primary handles too.
+	UIMGAssetManager& AssetManager = UIMGAssetManager::Get();
+	if (!CheckLoadHandle(AssetManager.GetPrimaryAssetHandle(CurrentExperience->GetPrimaryAssetId())))
+	{
+		return;
+	}
+	for (const UIMGExperienceActionSet* ActionSet : CurrentExperience->ActionSets)
+	{
+		if (ActionSet && !CheckLoadHandle(AssetManager.GetPrimaryAssetHandle(ActionSet->GetPrimaryAssetId())))
 		{
-			CollectGameFeaturePluginURLs(ActionSet, ActionSet->GameFeaturesToEnable);
+			return;
 		}
 	}
-
-	// Load and activate the features	
-	NumGameFeaturePluginsLoading = GameFeaturePluginURLs.Num();
-	if (NumGameFeaturePluginsLoading > 0)
+	TArray<FString> PluginURLs;
+	auto CollectPlugins = [this, &PluginURLs](const TArray<FString>& PluginNames)
 	{
-		LoadState = EIMGExperienceLoadState::LoadingGameFeatures;
-		for (const FString& PluginURL : GameFeaturePluginURLs)
+		for (const FString& PluginName : PluginNames)
 		{
-			UIMGExperienceManager::NotifyOfPluginActivation(PluginURL);
-			UGameFeaturesSubsystem::Get().LoadAndActivateGameFeaturePlugin(PluginURL, FGameFeaturePluginLoadComplete::CreateUObject(this, &ThisClass::OnGameFeaturePluginLoadComplete));
+			FString URL;
+			if (!UGameFeaturesSubsystem::Get().GetPluginURLByName(PluginName, URL))
+			{
+				FailExperienceLoad(FString::Printf(TEXT("Unknown game feature plugin: %s"), *PluginName));
+				return false;
+			}
+			PluginURLs.AddUnique(URL);
+		}
+		return true;
+	};
+	if (!CollectPlugins(CurrentExperience->GameFeaturesToEnable))
+	{
+		return;
+	}
+	for (const UIMGExperienceActionSet* ActionSet : CurrentExperience->ActionSets)
+	{
+		if (ActionSet && !CollectPlugins(ActionSet->GameFeaturesToEnable))
+		{
+			return;
 		}
 	}
-	else
+	LoadState = EIMGExperienceLoadState::LoadingGameFeatures;
+	// Plugin completions can be synchronous; finish only after dispatch unwinds.
+	bExecutingCallbacks = true;
+	for (const FString& URL : PluginURLs)
+	{
+		if (bEndingPlay || bLoadFailed)
+		{
+			break;
+		}
+		GameFeaturePluginURLs.Add(URL);
+		PendingGameFeaturePluginURLs.Add(URL);
+		UIMGExperienceManager::NotifyOfPluginActivation(URL);
+		TWeakObjectPtr<ThisClass> WeakThis(this);
+		UGameFeaturesSubsystem::Get().LoadAndActivateGameFeaturePlugin(URL,
+			FGameFeaturePluginLoadComplete::CreateLambda([WeakThis, URL](const UE::GameFeatures::FResult& Result)
+			{
+				if (ThisClass* Component = WeakThis.Get())
+				{
+					Component->OnGameFeaturePluginLoadComplete(Result, URL);
+				}
+				else
+				{
+					ReleaseGameFeaturePluginRequest(URL);
+				}
+			}));
+	}
+	bExecutingCallbacks = false;
+	if (bEndingPlay || bLoadFailed)
+	{
+		BeginDeactivation();
+	}
+	else if (PendingGameFeaturePluginURLs.IsEmpty())
 	{
 		OnExperienceFullLoadCompleted();
 	}
 }
 
-void UIMGExperienceManagerComponent::OnGameFeaturePluginLoadComplete(const UE::GameFeatures::FResult& Result)
+void UIMGExperienceManagerComponent::OnGameFeaturePluginLoadComplete(const UE::GameFeatures::FResult& Result, FString PluginURL)
 {
-	// decrement the number of plugins that are loading
-	NumGameFeaturePluginsLoading--;
-
-	if (NumGameFeaturePluginsLoading == 0)
+	if (PendingGameFeaturePluginURLs.Remove(PluginURL) == 0)
 	{
-		OnExperienceFullLoadCompleted();
+		return;
+	}
+	if (bDeactivationStarted)
+	{
+		ReleaseGameFeaturePluginRequest(PluginURL);
+		return;
+	}
+	if (Result.HasError() && !bEndingPlay && !bLoadFailed)
+	{
+		FailExperienceLoad(FString::Printf(TEXT("Game feature %s failed: %s"), *PluginURL, *Result.GetError()));
+	}
+	if (!bExecutingCallbacks)
+	{
+		if (bEndingPlay || bLoadFailed)
+		{
+			BeginDeactivation();
+		}
+		else if (PendingGameFeaturePluginURLs.IsEmpty())
+		{
+			OnExperienceFullLoadCompleted();
+		}
 	}
 }
 
 void UIMGExperienceManagerComponent::OnExperienceFullLoadCompleted()
 {
-	check(LoadState != EIMGExperienceLoadState::Loaded);
-
-	// Insert a random delay for testing (if configured)
+	if (bEndingPlay || bLoadFailed ||
+		(LoadState != EIMGExperienceLoadState::LoadingGameFeatures && LoadState != EIMGExperienceLoadState::LoadingChaosTestingDelay))
+	{
+		return;
+	}
 	if (LoadState != EIMGExperienceLoadState::LoadingChaosTestingDelay)
 	{
-		const float DelaySecs = IMGConsoleVariables::GetExperienceLoadDelayDuration();
-		if (DelaySecs > 0.0f)
+		const float Delay = IMGConsoleVariables::GetExperienceLoadDelayDuration();
+		if (Delay > 0.0f)
 		{
-			FTimerHandle DummyHandle;
-
 			LoadState = EIMGExperienceLoadState::LoadingChaosTestingDelay;
-			GetWorld()->GetTimerManager().SetTimer(DummyHandle, this, &ThisClass::OnExperienceFullLoadCompleted, DelaySecs, /*bLooping=*/ false);
-
+			GetWorld()->GetTimerManager().SetTimer(ExperienceLoadDelayTimer, this, &ThisClass::OnExperienceFullLoadCompleted, Delay, false);
 			return;
 		}
 	}
-
 	LoadState = EIMGExperienceLoadState::ExecutingActions;
-
-	// Execute the actions
 	FGameFeatureActivatingContext Context;
-
-	// Only apply to our specific world context if set
-	FWorldContext* ExistingWorldContext = GEngine->GetWorldContextFromWorld(GetWorld());
-	if (ExistingWorldContext)
+	Context.SetRequiredWorldContextHandle(ExperienceWorldContext);
+	TArray<UGameFeatureAction*> Actions;
+	for (UGameFeatureAction* Action : CurrentExperience->Actions)
 	{
-		Context.SetRequiredWorldContextHandle(ExistingWorldContext->ContextHandle);
-	}
-
-	auto ActivateListOfActions = [&Context](const TArray<UGameFeatureAction*>& ActionList)
-	{
-		for (UGameFeatureAction* Action : ActionList)
+		if (Action)
 		{
-			if (Action != nullptr)
+			Actions.AddUnique(Action);
+		}
+	}
+	for (const UIMGExperienceActionSet* ActionSet : CurrentExperience->ActionSets)
+	{
+		if (ActionSet)
+		{
+			for (UGameFeatureAction* Action : ActionSet->Actions)
 			{
-				//@TODO: The fact that these don't take a world are potentially problematic in client-server PIE
-				// The current behavior matches systems like gameplay tags where loading and registering apply to the entire process,
-				// but actually applying the results to actors is restricted to a specific world
-				Action->OnGameFeatureRegistering();
-				Action->OnGameFeatureLoading();
-				Action->OnGameFeatureActivating(Context);
+				if (Action)
+				{
+					Actions.AddUnique(Action);
+				}
 			}
 		}
-	};
-
-	ActivateListOfActions(CurrentExperience->Actions);
-	for (const TObjectPtr<UIMGExperienceActionSet>& ActionSet : CurrentExperience->ActionSets)
+	}
+	bExecutingCallbacks = true;
+	for (UGameFeatureAction* Action : Actions)
 	{
-		if (ActionSet != nullptr)
+		RegisteredActions.Add(Action);
+		Action->OnGameFeatureRegistering();
+		if (bEndingPlay || bLoadFailed)
 		{
-			ActivateListOfActions(ActionSet->Actions);
+			break;
+		}
+		LoadedActions.Add(Action);
+		Action->OnGameFeatureLoading();
+		if (bEndingPlay || bLoadFailed)
+		{
+			break;
+		}
+		ActivatedActions.Add(Action);
+		Action->OnGameFeatureActivating(Context);
+		if (bEndingPlay || bLoadFailed)
+		{
+			break;
 		}
 	}
-
+	bExecutingCallbacks = false;
+	if (bEndingPlay || bLoadFailed)
+	{
+		BeginDeactivation();
+		return;
+	}
 	LoadState = EIMGExperienceLoadState::Loaded;
-
-	OnExperienceLoaded_HighPriority.Broadcast(CurrentExperience);
-	OnExperienceLoaded_HighPriority.Clear();
-
-	OnExperienceLoaded.Broadcast(CurrentExperience);
-	OnExperienceLoaded.Clear();
-
-	OnExperienceLoaded_LowPriority.Broadcast(CurrentExperience);
-	OnExperienceLoaded_LowPriority.Clear();
-
+	// Check between listeners too: any callback can synchronously end the world.
+	auto Dispatch = [this](TArray<FOnIMGExperienceLoaded::FDelegate>& Delegates)
+	{
+		TArray<FOnIMGExperienceLoaded::FDelegate> Callbacks = MoveTemp(Delegates);
+		// Preserve native multicast's reverse traversal within each priority.
+		for (int32 Index = Callbacks.Num() - 1; Index >= 0; --Index)
+		{
+			if (!IsExperienceLoaded())
+			{
+				return;
+			}
+			Callbacks[Index].ExecuteIfBound(CurrentExperience);
+		}
+	};
+	Dispatch(OnExperienceLoaded_HighPriority);
+	Dispatch(OnExperienceLoaded);
+	Dispatch(OnExperienceLoaded_LowPriority);
+	if (!IsExperienceLoaded())
+	{
+		return;
+	}
 #if !UE_SERVER
 	UIMGSettingsLocal::Get()->OnExperienceLoaded();
 #endif
 }
 
-void UIMGExperienceManagerComponent::OnActionDeactivationCompleted()
+void UIMGExperienceManagerComponent::FailExperienceLoad(const FString& Reason)
 {
-	check(IsInGameThread());
-	++NumObservedPausers;
-
-	if (NumObservedPausers == NumExpectedPausers)
+	if (bEndingPlay || bLoadFailed)
 	{
-		OnAllActionsDeactivated();
+		return;
+	}
+	bLoadFailed = true;
+	ExperienceLoadError = Reason;
+	UE_LOG(LogIMGExperience, Error, TEXT("EXPERIENCE: %s (%s)"), *Reason, *GetClientServerContextString(this));
+	BeginDeactivation();
+	FOnIMGExperienceLoadFailed FailureDelegates = MoveTemp(OnExperienceLoadFailed);
+	FailureDelegates.Broadcast(ExperienceLoadError);
+}
+
+void UIMGExperienceManagerComponent::BeginDeactivation()
+{
+	if (bDeactivationStarted)
+	{
+		return;
+	}
+	LoadState = EIMGExperienceLoadState::Deactivating;
+	OnExperienceLoaded_HighPriority.Reset();
+	OnExperienceLoaded.Reset();
+	OnExperienceLoaded_LowPriority.Reset();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ExperienceLoadDelayTimer);
+	}
+	if (ExperienceLoadHandle.IsValid())
+	{
+		// CancelHandle can synchronously invoke cancellation; state is already terminal.
+		TSharedPtr<FStreamableHandle> Handle = MoveTemp(ExperienceLoadHandle);
+		if (!Handle->HasLoadCompleted())
+		{
+			Handle->CancelHandle();
+		}
+		else
+		{
+			Handle->ReleaseHandle();
+		}
+	}
+	if (bExecutingCallbacks)
+	{
+		return;
+	}
+	bDeactivationStarted = true;
+
+	TArray<TStrongObjectPtr<UGameFeatureAction>> ActionsToUnregister;
+	for (UGameFeatureAction* Action : RegisteredActions)
+	{
+		ActionsToUnregister.Emplace(Action);
+	}
+	const int32 NumLoadedActions = LoadedActions.Num();
+	RegisteredActions.Reset();
+	LoadedActions.Reset();
+	TArray<FString> CompletedPluginURLs = MoveTemp(GameFeaturePluginURLs);
+	CompletedPluginURLs.RemoveAll([this](const FString& URL)
+	{
+		// In-flight requests are released by their own completion, even if this component is gone.
+		return PendingGameFeaturePluginURLs.Contains(URL);
+	});
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	// Retain shared action assets, never the component or its old World, across asynchronous teardown.
+	auto Finish = MakeShared<TFunction<void()>>(
+		[Actions = MoveTemp(ActionsToUnregister), NumLoadedActions, PluginURLs = MoveTemp(CompletedPluginURLs), WeakThis]() mutable
+		{
+			for (int32 Index = NumLoadedActions - 1; Index >= 0; --Index)
+			{
+				Actions[Index]->OnGameFeatureUnloading();
+			}
+			for (int32 Index = Actions.Num() - 1; Index >= 0; --Index)
+			{
+				Actions[Index]->OnGameFeatureUnregistering();
+			}
+			Actions.Reset();
+			for (int32 Index = PluginURLs.Num() - 1; Index >= 0; --Index)
+			{
+				ReleaseGameFeaturePluginRequest(PluginURLs[Index]);
+			}
+			PluginURLs.Reset();
+			if (ThisClass* Component = WeakThis.Get())
+			{
+				Component->OnAllActionsDeactivated();
+			}
+		});
+	// Synchronous completions make this negative until all pausers have registered.
+	auto RemainingPausers = MakeShared<int32>(0);
+	FGameFeatureDeactivatingContext Context(TEXT(""), [Finish, RemainingPausers](FStringView)
+	{
+		check(IsInGameThread());
+		if (--*RemainingPausers == 0)
+		{
+			const auto Completion = Finish;
+			(*Completion)();
+		}
+	});
+	Context.SetRequiredWorldContextHandle(ExperienceWorldContext);
+	for (int32 Index = ActivatedActions.Num() - 1; Index >= 0; --Index)
+	{
+		ActivatedActions[Index]->OnGameFeatureDeactivating(Context);
+	}
+	ActivatedActions.Reset();
+	*RemainingPausers += Context.GetNumPausers();
+	if (*RemainingPausers == 0)
+	{
+		(*Finish)();
 	}
 }
 
-bool UIMGExperienceManagerComponent::ShouldShowLoadingScreen(FString& OutReason) const
+void UIMGExperienceManagerComponent::ReleaseGameFeaturePluginRequest(const FString& PluginURL)
 {
-	if (LoadState != EIMGExperienceLoadState::Loaded)
+	if (UIMGExperienceManager::RequestToDeactivatePlugin(PluginURL))
 	{
-		OutReason = TEXT("Experience still loading");
-		return true;
+		UGameFeaturesSubsystem::Get().DeactivateGameFeaturePlugin(PluginURL);
 	}
-
-	return false;
 }
 
 void UIMGExperienceManagerComponent::OnAllActionsDeactivated()
 {
-	//@TODO: We actually only deactivated and didn't fully unload...
-	LoadState = EIMGExperienceLoadState::Unloaded;
-	CurrentExperience = nullptr;
-	//@TODO:	GEngine->ForceGarbageCollection(true);
+	LoadState = bLoadFailed ? EIMGExperienceLoadState::Failed : EIMGExperienceLoadState::Unloaded;
+	// Keep replicated selection stable; local clearing could permit a late OnRep restart.
+}
+
+bool UIMGExperienceManagerComponent::ShouldShowLoadingScreen(FString& OutReason) const
+{
+	if (bEndingPlay)
+	{
+		return false;
+	}
+	if (bLoadFailed)
+	{
+		OutReason = FString::Printf(TEXT("Experience failed: %s"), *ExperienceLoadError);
+		return true;
+	}
+	if (!IsExperienceLoaded())
+	{
+		OutReason = TEXT("Experience still loading");
+		return true;
+	}
+	return false;
 }
