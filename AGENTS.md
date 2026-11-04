@@ -284,23 +284,27 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 ### 调用链与职责
 
 - Hero.DetermineCameraMode 选择能力覆盖或 PawnData.DefaultCameraMode，CameraComponent 回退 Default；CameraModeStack 更新/混合，CameraComponent 输出视图。TPS 顺序为未滞后枢轴 → 位置 Lag → 姿态与骨盆高度补偿 → 阻尼朝向的轨道偏移 → Shake → 防穿墙。旋转误差使用本模式 FOV、UE 投影及分屏尺寸，不按栈混合或后续特效重算；无本地目标 Controller/视口时按相机 AspectRatio 回退。
-- `Camera/IMGCameraRotationDamping.h/.cpp`、`IMGCameraShake.h/.cpp` 只有调用方持有的数值配置/历史，不查 World、角色、动画、Controller、GAS 或视口，不自行 Tick/复制。TPS 负责采样和表现，步态/瞄准规则归蓝图或具体玩法；不向 ABP、CMC 或 Mesh 写回。
+- `Camera/IMGCameraDamping.h/.cpp` 为项目相机阻尼库，合并标量/FVector 弹簧核、`FIMGCameraLocationDampingState` 的位置 Lag 与既有 `FIMGCameraRotationDamping*` 类型；保留反射类型名及 CameraMode 属性名/默认值。`IMGCameraShake.h/.cpp` 独立提供振荡/包络。各 CameraMode 按需持有本方数值状态；位置、旋转、骨盆及不同 Mode 不共享历史。依赖只从 Mode 指向算法库，数值层不查 World、角色、动画、Controller、GAS 或视口，不自行 Tick/复制。新增效果的可复用运算/数值状态扩展相机算法层，采样、玩法选择、重置时机与表现编排归 Mode；不向 ABP、CMC 或 Mesh 写回。
 - View.ControlRotation 保留原始期望朝向，阻尼/Shake 只改表现。武器和 AimAssistInputModifier 仍取最终玩家视点，因而受镜头表现影响。
 
 ### 配置与蓝图合同
 
-- Rotation Damping、Shake 均默认关闭。旋转按 Yaw/Pitch 两轴先平滑目标角速度，再收拢角度；频率为 Hz，Roll 透传，MaxErrorFraction 限制相对各轴半 FOV 的误差。
+- 位置 Lag 默认启用，使用 GTA 风格弹簧，XYZ 共用强度/阻尼。保留蓝图属性 `CameraLocationLagSpeed`（默认10），作为 sqrt(k) 的响应强度，实际 k=Speed²；不是 Hz，也不保证与旧 VInterpTo 相同的跟随曲线。新增 `CameraLagDampingRatio` 默认1、范围0至10，欠阻尼允许超调；Speed=0直达目标。`CameraLagMaxDistance` 仍以世界 cm 限制枢轴误差，0不限制，触及硬限距时清速度。
+- Lag 数值状态/子步/限距封装在 `FIMGCameraLocationDampingState`，TPS 仅传入采样、现有配置与本帧直达请求。子步保留 `bUseCameraLagSubstepping` / `CameraLagMaxTimeStep`（默认开启、1/60秒、运行时最小1/200秒），从上一帧真实期望枢轴插值到本帧期望枢轴，均分时间推进弹簧，不从滞后输出构造目标轨迹。停用、重激活、CameraCut、目标/控制器变化清理位置/速度及目标采样历史；关闭、非法配置/时间或超出子步预算直达有效目标并清速度，无效目标清历史并返回上次有效滞后位置（未初始化时为零）。
+- Rotation Damping、Shake 均默认关闭。旋转按 Yaw/Pitch 两轴执行目标角速度平滑 → 积分推进朝向 → 限制角度误差 → 弹簧收拢，继续使用 UE `FMath::SpringDamper` 两级公式；频率为 Hz，Roll 透传，MaxErrorFraction 限制相对各轴半 FOV 的误差，并在角度弹簧后再次限幅。保留最短角度路径、轴旁路和既有重置合同。
+- 旋转优先沿现有结构调参，不因位置 Lag 的表现改善或同属算法库而统一替换弹簧核。UE 的临界/过阻尼分支保留完整速度状态，GTA 快照保留慢指数模式，两者启停/拖尾响应不同；k=(2πf)² 只对应单位质量下的频率/系数关系，不能保证参数或手感兼容。替换数值核须有明确响应需求，不能据结构相似认定表现一致。
 - TPS 的 `Third Person|Pelvis Offset` 默认关闭，曲线 `FootIK_PelvisDeltaZ`、骨骼 `pelvis`、SpringConstant=10、DampingRatio=1。`UpdatePelvisOffset` 从目标 ACharacter 主 Mesh 的 `GetCurveValue(Name,0,Value)` 读取已求值的组件曲线（含 PostProcess/URO 混合），只消费世界 cm 的已加权高度差，不读取骨骼绝对高度、不再乘 IK 权重；骨骼名用于校验对应骨架。曲线缺失以0为目标渐退；关闭、无效来源/配置/数值立即清理，切换目标、Mesh/骨架、主 AnimInstance、曲线/骨骼名及 CameraCut 后首样本直达目标。相机只读已有姿势，不强制动画求值，不新增 Tick/复制或移动依赖。
-- 骨盆平滑按 GTA `camera/helpers/DampedSpring.cpp` 的单位质量 k/阻尼比公式：欠阻尼携带速度；临界/过阻尼沿用该快照只保留慢指数模式的近似，默认响应约为 exp(-sqrt(k)·dt)，不是 UE 的 Hz 参数或完整临界阻尼解。k=0直达目标；已初始化时零步长不推进。补偿同号加在位置 Lag 之后，并进入现有防穿墙；`showdebug camera` 显示曲线/骨骼名与当前 cm 偏移。
+- Lag/骨盆平滑共用 `IMGCameraDamping::AdvanceSpring`，按 GTA `camera/helpers/DampedSpring.cpp` 的单位质量 k/阻尼比公式：欠阻尼携带速度；临界/过阻尼沿用该快照只保留慢指数模式的近似，阻尼比1时响应约为 exp(-sqrt(k)·dt)，不是 UE 的 Hz 参数或完整临界阻尼解。k=0直达目标；已初始化时零步长不推进。骨盆来源校验/曲线采样与缓存留在 TPS，补偿同号加在位置 Lag 之后，并进入现有防穿墙；`showdebug camera` 显示 Lag 误差/速度/强度/阻尼及骨盆曲线/骨骼名与当前 cm 偏移。
 - Shake 各轴振幅默认0；位置 X/Y/Z 为未摇晃相机的前/右/上，旋转以局部四元数叠加，FOV 偏移后限于5至170度。GetShakeInput(TargetActor, DeltaTime) 在每个启用模式的视图更新中调用一次，原生输出 Active=false、AmplitudeScale/FrequencyScale=1；蓝图按步态/曲线返回启停及非负倍率，C++ 不固定奔跑或 Tag 判断。Active=false 用最后一次激活倍率混出，关闭 Enable Shake 立即清空；持续驱动使用 HoldTime=-1。
 - 通用 Shake 支持 Sine/DampedSine、相位/随机种子/DC Offset，以及预延迟→Attack→Decay→Hold→Release 包络；曲线为 Linear/SmoothStep/Exponential，默认 Release 为 exp(-7t)。Start 幂等，释放期间重启保留相位并从当前包络恢复；有限 Hold 可单次 Start 后自然结束。Phase/RandomSeed 在新实例 Start 时消费；其他 Shake 的触发和实例调度归调用方。
 
 ### 重置、调试与参考
 
 - CameraComponent.ResetInterpolation/NotifyCameraCut 向所有在栈模式转发，下次完整视图更新消费，回调中的新请求留给下一次。组件注销时停用栈、清单帧 FOV 偏移，重注册重新激活；栈停用期间回退原生视图，不输出空模式结果。TPS 激活、目标/控制器变化或可观察到的 CameraCut 重置历史，重置帧强制重查碰撞探针；停用/关闭释放本方状态，没有通知的瞬移须显式重置。
-- 零步长不推进弹簧/振荡或求导，但仍应用轴旁路及 FOV/偏移上限；零时长包络阶段可立即完成。超过32/120秒：旋转清历史并直达目标，Shake 清空并输出零；无效输入/配置分别回退原朝向或零 Shake。位置 Lag 最多32个子步，超出预算直达目标。
+- 零步长不推进弹簧/振荡或求导，但仍应用轴旁路及 FOV/偏移上限；零时长包络阶段可立即完成。超过32/120秒：旋转清历史并直达目标，Shake 清空并输出零；无效输入/配置分别回退原朝向或零 Shake。位置 Lag 开启子步时最多32步，超出预算直达目标并清速度；零步长保留弹簧状态但刷新目标采样并应用限距。
 - `showdebug camera` 查看 Shake 包络/倍率/阶段。
 - GTA 路径相对 `camera/`：`gameplay/follow/FollowPedCamera.cpp::UpdateRunningShake` 对照运动驱动；`helpers/{FrameShaker,Oscillator,Envelope}` 对照数值层；`base/BaseCamera.cpp` 对照 PostEffectFrame；`gameplay/GameplayDirector.cpp::RegisterExplosion` 复用同类 Shaker。`gameplay/aim/FirstPersonShooterCamera.cpp::UpdateFrameShakers` 的 FPS 头骨跟随尚未迁入。
+- 旋转参考 `helpers/LookAtDampingHelper.cpp::Update`：角速度/角度两级弹簧与当前结构相近，已确认有 Cinematic Mounted/Tracking 调用，不能视为普通第三人称镜头统一采用的算法。`gameplay/follow/FollowCamera.cpp::ComputeOrbitOrientation` 的跟随及 PullAround 另有速度、输入与配置分支；GTA 镜头表现须沿实际消费者追踪，不能仅凭 `DampedSpring::UpdateAngular` 判定整条旋转链。
 
 ### FootPlacement ControlRig 与镜头曲线
 

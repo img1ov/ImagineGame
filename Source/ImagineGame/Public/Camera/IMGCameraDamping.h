@@ -2,7 +2,23 @@
 
 #include "CoreMinimal.h"
 
-#include "IMGCameraRotationDamping.generated.h"
+#include "IMGCameraDamping.generated.h"
+
+/** Numeric spring operations; callers own the values, velocities, sampling and reset lifecycle. */
+namespace IMGCameraDamping
+{
+	/**
+	 * Unit-mass spring constant k, not Hz. The GTA reference's critical/overdamped branches retain only the slow mode.
+	 * Zero strength snaps to the target; zero time preserves initialized state. Invalid input clears velocity and follows
+	 * a finite target (otherwise zero). Initialize Value to the first target and Velocity to zero before advancing.
+	 */
+	IMAGINEGAME_API void AdvanceSpring(double Target, double SpringConstant, double DampingRatio, double DeltaTime,
+		double& Value, double& Velocity);
+
+	/** The same scalar response applied independently to the three components, with shared k and damping ratio. */
+	IMAGINEGAME_API void AdvanceSpring(const FVector& Target, double SpringConstant, double DampingRatio, double DeltaTime,
+		FVector& Value, FVector& Velocity);
+}
 
 USTRUCT(BlueprintType)
 struct IMAGINEGAME_API FIMGCameraRotationDampingAxisSettings
@@ -63,4 +79,28 @@ private:
 	FVector2D TargetRateDerivatives = FVector2D::ZeroVector;
 	bool bInitialized = false;
 	bool bHasTargetRates = false;
+};
+
+/** Caller-owned position lag history. A camera mode owns one state per independently damped target. */
+struct IMAGINEGAME_API FIMGCameraLocationDampingState
+{
+	void Reset();
+
+	/**
+	 * ResponseSpeed is sqrt(k); the other numeric controls retain the camera lag property's units.
+	 * bSnapToTarget bypasses damping and clears momentum on a finite target, including while paused.
+	 * Invalid targets clear history and return the last finite location, or zero before initialization.
+	 */
+	FVector Update(const FVector& DesiredLocation, float DeltaTime, float ResponseSpeed, float DampingRatio,
+		bool bUseSubstepping, float MaxSubstepTime, float MaxDistance, bool bSnapToTarget = false);
+
+	bool IsInitialized() const { return bInitialized; }
+	double GetErrorDistance() const { return (LaggedLocation - PreviousTargetLocation).Size(); }
+	double GetSpeed() const { return Velocity.Size(); }
+
+private:
+	FVector LaggedLocation = FVector::ZeroVector;
+	FVector Velocity = FVector::ZeroVector;
+	FVector PreviousTargetLocation = FVector::ZeroVector;
+	bool bInitialized = false;
 };

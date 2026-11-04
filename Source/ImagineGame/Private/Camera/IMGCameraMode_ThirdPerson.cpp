@@ -25,34 +25,6 @@
 namespace IMGCameraMode_ThirdPerson_Statics
 {
 	static const FName NAME_IgnoreCameraCollision = TEXT("IgnoreCameraCollision");
-
-	void AdvancePelvisOffsetSpring(double Target, double SpringConstant, double DampingRatio, double DeltaTime,
-		double& Offset, double& Velocity)
-	{
-		const double Displacement = Offset - Target;
-		const double HalfDamping = DampingRatio * FMath::Sqrt(SpringConstant);
-		const double OmegaSquared = SpringConstant - FMath::Square(HalfDamping);
-		double NextDisplacement;
-		if (OmegaSquared >= UE_SMALL_NUMBER)
-		{
-			const double Omega = FMath::Sqrt(OmegaSquared);
-			const double C = (Velocity + HalfDamping * Displacement) / Omega;
-			const double Sin = FMath::Sin(Omega * DeltaTime);
-			const double Cos = FMath::Cos(Omega * DeltaTime);
-			const double Decay = FMath::Exp(-HalfDamping * DeltaTime);
-			const double Wave = Displacement * Cos + C * Sin;
-			NextDisplacement = Decay * Wave;
-			Velocity = Decay * (-HalfDamping * Wave + Omega * (C * Cos - Displacement * Sin));
-		}
-		else
-		{
-			// GTA uses only the slow exponential mode here, including at critical damping.
-			const double Rate = -HalfDamping + FMath::Sqrt(FMath::Max(-OmegaSquared, 0.0));
-			NextDisplacement = Displacement * FMath::Exp(Rate * DeltaTime);
-			Velocity = Rate * NextDisplacement;
-		}
-		Offset = Target + NextDisplacement;
-	}
 }
 
 UIMGCameraMode_ThirdPerson::UIMGCameraMode_ThirdPerson()
@@ -183,51 +155,8 @@ void UIMGCameraMode_ThirdPerson::UpdateShake(float DeltaTime)
 
 FVector UIMGCameraMode_ThirdPerson::UpdateCameraLag(const FVector& DesiredPivotLocation, float DeltaTime)
 {
-	if (!bHasLaggedPivotLocation || bResetInterpolation || !bEnableCameraLag || CameraLocationLagSpeed <= 0.0f)
-	{
-		LaggedPivotLocation = DesiredPivotLocation;
-		bHasLaggedPivotLocation = true;
-		return LaggedPivotLocation;
-	}
-	if (!FMath::IsFinite(DeltaTime) || DeltaTime < 0.f || !FMath::IsFinite(CameraLocationLagSpeed))
-	{
-		LaggedPivotLocation = DesiredPivotLocation;
-		return LaggedPivotLocation;
-	}
-
-	if (bUseCameraLagSubstepping && DeltaTime > CameraLagMaxTimeStep)
-	{
-		constexpr int32 MaxSubsteps = 32;
-		const float MaxTimeStep = FMath::Max(CameraLagMaxTimeStep, 1.0f / 200.0f);
-		if (!FMath::IsFinite(MaxTimeStep) || DeltaTime > MaxTimeStep * MaxSubsteps)
-		{
-			LaggedPivotLocation = DesiredPivotLocation;
-			return LaggedPivotLocation;
-		}
-		const FVector PivotMovementStep = (DesiredPivotLocation - LaggedPivotLocation) / DeltaTime;
-		FVector LerpTarget = LaggedPivotLocation;
-		float RemainingTime = DeltaTime;
-
-		for (int32 StepIndex = 0; StepIndex < MaxSubsteps && RemainingTime > UE_KINDA_SMALL_NUMBER; ++StepIndex)
-		{
-			const float Step = FMath::Min(MaxTimeStep, RemainingTime);
-			LerpTarget += PivotMovementStep * Step;
-			RemainingTime -= Step;
-			LaggedPivotLocation = FMath::VInterpTo(LaggedPivotLocation, LerpTarget, Step, CameraLocationLagSpeed);
-		}
-	}
-	else
-	{
-		LaggedPivotLocation = FMath::VInterpTo(LaggedPivotLocation, DesiredPivotLocation, DeltaTime, CameraLocationLagSpeed);
-	}
-
-	if (CameraLagMaxDistance > 0.0f)
-	{
-		LaggedPivotLocation = DesiredPivotLocation
-			+ (LaggedPivotLocation - DesiredPivotLocation).GetClampedToMaxSize(CameraLagMaxDistance);
-	}
-
-	return LaggedPivotLocation;
+	return LocationDampingState.Update(DesiredPivotLocation, DeltaTime, CameraLocationLagSpeed, CameraLagDampingRatio,
+		bUseCameraLagSubstepping, CameraLagMaxTimeStep, CameraLagMaxDistance, bResetInterpolation || !bEnableCameraLag);
 }
 
 void UIMGCameraMode_ThirdPerson::ResetPelvisOffset()
@@ -293,7 +222,7 @@ double UIMGCameraMode_ThirdPerson::UpdatePelvisOffset(float DeltaTime)
 	}
 	else if (DeltaTime > UE_SMALL_NUMBER)
 	{
-		IMGCameraMode_ThirdPerson_Statics::AdvancePelvisOffsetSpring(TargetOffset, PelvisOffsetSpringConstant,
+		IMGCameraDamping::AdvanceSpring(double(TargetOffset), PelvisOffsetSpringConstant,
 			PelvisOffsetDampingRatio, DeltaTime, PelvisOffset, PelvisOffsetVelocity);
 	}
 
@@ -365,7 +294,7 @@ void UIMGCameraMode_ThirdPerson::OnActivation()
 {
 	Super::OnActivation();
 	ResetInterpolation();
-	bHasLaggedPivotLocation = false;
+	LocationDampingState.Reset();
 	RotationDampingState.Reset();
 	ResetShake();
 	ResetPelvisOffset();
@@ -380,7 +309,7 @@ void UIMGCameraMode_ThirdPerson::OnDeactivation()
 	ResetPelvisOffset();
 	CachedViewTarget.Reset();
 	CachedViewController.Reset();
-	bHasLaggedPivotLocation = false;
+	LocationDampingState.Reset();
 	Super::OnDeactivation();
 }
 
@@ -417,6 +346,12 @@ void UIMGCameraMode_ThirdPerson::DrawDebug(UCanvas* Canvas) const
 
 #if ENABLE_DRAW_DEBUG
 	FDisplayDebugManager& DisplayDebugManager = Canvas->DisplayDebugManager;
+	if (bEnableCameraLag && LocationDampingState.IsInitialized())
+	{
+		DisplayDebugManager.DrawString(FString::Printf(TEXT("Lag: offset %.2f cm, velocity %.2f cm/s (sqrt(k) %.2f, damping %.2f)"),
+			LocationDampingState.GetErrorDistance(), LocationDampingState.GetSpeed(),
+			CameraLocationLagSpeed, CameraLagDampingRatio));
+	}
 	if (bEnablePelvisOffset)
 	{
 		DisplayDebugManager.DrawString(FString::Printf(TEXT("Pelvis offset [%s / %s]: %+.2f cm"),

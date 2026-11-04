@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Camera/IMGCameraMode.h"
-#include "Camera/IMGCameraRotationDamping.h"
+#include "Camera/IMGCameraDamping.h"
 #include "Camera/IMGCameraShake.h"
 #include "Curves/CurveFloat.h"
 #include "Camera/IMGPenetrationAvoidanceFeeler.h"
@@ -70,13 +70,19 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person")
 	float CrouchOffsetBlendMultiplier = 5.0f;
 
-	/** Lag the camera pivot like a spring arm, independently of rotation damping. */
+	/** Spring-damped pivot tracking, independently of rotation and pelvis damping. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag")
 	bool bEnableCameraLag = true;
 
+	/** Spring response rate sqrt(k), not Hz; squared to obtain the unit-mass spring constant. Zero bypasses lag. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0"))
 	float CameraLocationLagSpeed = 10.0f;
 
+	/** One uses the reference's slow exponential mode; lower values allow inertial overshoot. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0", ClampMax = "10.0"))
+	float CameraLagDampingRatio = 1.f;
+
+	/** Interpolate the sampled pivot target between frames when advancing the spring in substeps. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag")
 	bool bUseCameraLagSubstepping = true;
 
@@ -174,8 +180,7 @@ protected:
 	void SetTargetStanceOffset(FVector NewTargetOffset);
 	void UpdateStanceOffset(float DeltaTime);
 
-	FVector LaggedPivotLocation = FVector::ZeroVector;
-	bool bHasLaggedPivotLocation = false;
+	FIMGCameraLocationDampingState LocationDampingState;
 
 	FIMGCameraRotationDampingState RotationDampingState;
 	FIMGCameraShakeState ShakeState;
