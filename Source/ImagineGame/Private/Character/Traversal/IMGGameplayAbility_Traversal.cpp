@@ -517,13 +517,11 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	const bool bCandidateFresh =
 	    Traversal && World && CandidateAge >= 0.0 && CandidateAge <= Traversal->GetDetectorSettings().MaxCandidateAge;
 #if ENABLE_DRAW_DEBUG
-	if (!bCandidateFresh)
+	if (!bCandidateFresh && Character && IMGTraversalDebug::IsEnabled(1) &&
+	    IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
 	{
-		if (Character)
-		{
-			IMGTraversalDebug::String(Character->GetWorld(), Character->GetActorLocation() + FVector::UpVector * 160.f,
-			    FString::Printf(TEXT("Traversal Validate: stale candidate %.3fs"), CandidateAge), FColor::Red, 1);
-		}
+		IMGTraversalDebug::String(Character->GetWorld(), Character->GetActorLocation() + FVector::UpVector * 160.f,
+		    FString::Printf(TEXT("Traversal Validate: stale candidate %.3fs"), CandidateAge), FColor::Red, 1);
 	}
 #endif
 	const bool bMatchesRemoteWhitelist =
@@ -714,24 +712,12 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			RootOffset.ScaleTranslation(Character->GetMesh()->GetComponentScale());
 		}
+		// The modifier determines window-end versus animation-end alignment; do not append a blend-out tail here.
 		RootTarget = RootOffset * WarpTarget;
-		// The last window may finish before the animation stops moving the capsule.
-		if (&Window == FinalTranslationWindow && !Modifier->bSubtractRemainingRootMotion)
-		{
-			FVector Remaining = UMotionWarpingUtilities::ExtractRootMotionFromAnimation(
-			    Selection.Montage, Window.EndTime, Selection.Montage->GetPlayLength()).GetTranslation();
-			if (Character->GetMesh())
-			{
-				Remaining *= Character->GetMesh()->GetComponentScale();
-			}
-			const FQuat EndRotation = Modifier->bWarpRotation
-			    ? Modifier->AdditionalRotationOffset.Quaternion() * RootTarget.GetRotation() : Character->GetActorQuat();
-			RootTarget.AddToTranslation((EndRotation * Character->GetBaseRotationOffset()).RotateVector(Remaining));
-		}
 		return RootTarget.IsValid();
 	};
-	auto CompensateSlope = [&](const FIMGTraversalWarpWindow& Window, const FTransform& Anchor,
-	                           const UPrimitiveComponent* Carrier, FTransform& WarpTarget)
+	auto CompensatePlacement = [&](const FIMGTraversalWarpWindow& Window, const FTransform& Anchor,
+	                               const UPrimitiveComponent* Carrier, FTransform& WarpTarget)
 	{
 		if (&Window != FinalTranslationWindow || Window.Modifier->bIgnoreZAxis)
 		{
@@ -744,6 +730,15 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		}
 		const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
 		const UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
+		auto IsPlacementSupport = [&](const FHitResult& Hit)
+		{
+			UPrimitiveComponent* Component = Hit.GetComponent();
+			const bool bKnownSurface = Component && (Component == Carrier ||
+			    Candidate.ObstacleComponents.Contains(Component) ||
+			    (Candidate.bHasBackFloor && Component == Candidate.BackFloorComponent.Get()));
+			return bKnownSurface && Hit.IsValidBlockingHit() && Movement->IsWalkable(Hit) &&
+			    FIMGTraversalDetector::CanUseSurface(Component, Traversal->GetDetectorSettings(), Candidate.RequestSource);
+		};
 		const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 		const float Radius = Capsule->GetScaledCapsuleRadius();
 		const FVector Up = FVector::UpVector;
@@ -752,7 +747,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		const float FloorGap =
 		    (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) * 0.5f;
 		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalSlopeCompensation), false, Character);
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalPlacementCompensation), false, Character);
 		FCollisionResponseParams Responses;
 		Movement->InitCollisionParams(Params, Responses);
 		const ECollisionChannel Channel = Capsule->GetCollisionObjectType();
@@ -781,16 +776,8 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bHit ? Plane.ImpactPoint : TraceEnd,
 		    bHit ? FColor::Green : FColor::Red, 3);
 #endif
-		// An unsupported target may intentionally lead into falling; this correction only applies to a walkable slope.
-		if (!Plane.IsValidBlockingHit() || !Movement->IsWalkable(Plane))
-		{
-			return;
-		}
-		if (Plane.ImpactNormal.Z >= 1.f - KINDA_SMALL_NUMBER)
-		{
-			return;
-		}
-		if (!FIMGTraversalDetector::CanUseSurface(Plane.GetComponent(), Traversal->GetDetectorSettings(), Candidate.RequestSource))
+		// Placement correction must not promote an unrelated higher surface into a new traversal target.
+		if (!IsPlacementSupport(Plane))
 		{
 			return;
 		}
@@ -799,7 +786,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			return;
 		}
-		// Keep the lower hemisphere above the plane: dot(BottomSphere - PlanePoint, N) >= Radius.
+		// Keep the lower hemisphere above the plane; on flat ground lift the feet to the surface plus FloorGap.
 		const FVector BottomSphere = Center - Up * (HalfHeight - Radius);
 		const double PlaneLift =
 		    (Radius - FVector::DotProduct(BottomSphere - Plane.ImpactPoint, Normal)) / Normal.Z + FloorGap;
@@ -815,15 +802,14 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		const FVector SweepStart = Center + Up * PlaneLift;
 		const bool bHasSupport = Character->GetWorld()->SweepSingleByChannel(Support, SweepStart,
 		    Center - Up * UCharacterMovementComponent::MAX_FLOOR_DIST, FQuat::Identity, Channel, Shape, Params, Responses);
-		if (!bHasSupport || !Support.IsValidBlockingHit() || !Movement->IsWalkable(Support) ||
-		    !Movement->IsWithinEdgeTolerance(Support.Location, Support.ImpactPoint, Radius) ||
-		    !FIMGTraversalDetector::CanUseSurface(Support.GetComponent(), Traversal->GetDetectorSettings(), Candidate.RequestSource))
+		if (!bHasSupport || !IsPlacementSupport(Support) ||
+		    !Movement->IsWithinEdgeTolerance(Support.Location, Support.ImpactPoint, Radius))
 		{
 			return;
 		}
 		const FVector SafeCenter = Support.Location + Up * FloorGap;
-		const double HeightAdjustment = FMath::Max(0.0, SafeCenter.Z - Center.Z);
-		if (!FMath::IsFinite(HeightAdjustment) ||
+		const double HeightAdjustment = SafeCenter.Z - Center.Z;
+		if (!FMath::IsFinite(HeightAdjustment) || HeightAdjustment <= 0.0 ||
 		    Character->GetWorld()->OverlapBlockingTestByChannel(SafeCenter, FQuat::Identity, Channel, Shape, Params, Responses))
 		{
 			return;
@@ -835,7 +821,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		IMGTraversalDebug::Capsule(Character->GetWorld(), SafeCenter, HalfHeight, Radius, FColor::Green, 2);
 #endif
 	};
-	float LandingSlopeCompensation = 0.f;
+	float LandingPlacementCompensation = 0.f;
 	const FIMGTraversalLandingSettings& Landing = Settings->Landing;
 	if (static_cast<uint8>(Landing.Mode) > static_cast<uint8>(EIMGTraversalLandingMode::DistanceCurve))
 	{
@@ -889,11 +875,14 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 			    Landing.bAbsoluteCurveDistance ? FMath::Abs(LandingValue - AnchorValue) : LandingValue - AnchorValue;
 			LandingPoint = PathAnchor.GetLocation() + PathAnchor.GetUnitAxis(EAxis::X).GetSafeNormal2D() * Distance;
 #if ENABLE_DRAW_DEBUG
-			IMGTraversalDebug::String(Character->GetWorld(), LandingPoint + FVector::UpVector * 25.f,
-			    FString::Printf(TEXT("Landing %s %.3f -> %s %.3f | Curve %.1f -> %.1f"),
-			        *AnchorWindow->Modifier->WarpTargetName.ToString(), AnchorWindow->EndTime,
-			        *Landing.TargetName.ToString(), LandingWindow->EndTime, AnchorValue, LandingValue),
-			    FColor::Yellow, 3);
+			if (IMGTraversalDebug::IsEnabled(3) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+			{
+				IMGTraversalDebug::String(Character->GetWorld(), LandingPoint + FVector::UpVector * 25.f,
+				    FString::Printf(TEXT("Landing %s %.3f -> %s %.3f | Curve %.1f -> %.1f"),
+				        *AnchorWindow->Modifier->WarpTargetName.ToString(), AnchorWindow->EndTime,
+				        *Landing.TargetName.ToString(), LandingWindow->EndTime, AnchorValue, LandingValue),
+				    FColor::Yellow, 3);
+			}
 #endif
 		}
 		else if (!Candidate.bHasBackFloor)
@@ -941,8 +930,8 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		FloorTarget.SetLocation(LandingPoint);
 		FTransform LandingWarpTarget = LandingBinding->Offset * FloorTarget;
 		const double UncompensatedZ = LandingWarpTarget.GetLocation().Z;
-		CompensateSlope(*LandingWindow, FloorTarget, FloorComponent, LandingWarpTarget);
-		LandingSlopeCompensation = LandingWarpTarget.GetLocation().Z - UncompensatedZ;
+		CompensatePlacement(*LandingWindow, FloorTarget, FloorComponent, LandingWarpTarget);
+		LandingPlacementCompensation = LandingWarpTarget.GetLocation().Z - UncompensatedZ;
 		FTransform RootTarget;
 		if (!ResolvePlacementRoot(*LandingWindow, LandingWarpTarget, RootTarget))
 		{
@@ -971,9 +960,12 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		const float RootDrop = Candidate.FrontLedge.GetLocation().Z - RootFloor.HitResult.ImpactPoint.Z;
 #if ENABLE_DRAW_DEBUG
 		IMGTraversalDebug::Line(Character->GetWorld(), FloorTarget.GetLocation(), RootTarget.GetLocation(), FColor::Yellow, 3);
-		IMGTraversalDebug::String(Character->GetWorld(), LandingCenter + FVector::UpVector * HalfHeight,
-		    FString::Printf(TEXT("Landing contact -> binding/warp-point -> capsule | floor reach %.1f"), FloorDistance),
-		    FColor::Yellow, 3);
+		if (IMGTraversalDebug::IsEnabled(3) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+		{
+			IMGTraversalDebug::String(Character->GetWorld(), LandingCenter + FVector::UpVector * HalfHeight,
+			    FString::Printf(TEXT("Landing contact -> binding/warp-point -> capsule | floor reach %.1f"), FloorDistance),
+			    FColor::Yellow, 3);
+		}
 		if (RootFloor.bBlockingHit)
 		{
 			IMGTraversalDebug::Intersection(Character->GetWorld(), RootFloor.HitResult,
@@ -1049,11 +1041,11 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 #endif
 		if (Landing.Mode != EIMGTraversalLandingMode::None && Binding.TargetName == Landing.TargetName)
 		{
-			Transform.AddToTranslation(FVector::UpVector * LandingSlopeCompensation);
+			Transform.AddToTranslation(FVector::UpVector * LandingPlacementCompensation);
 		}
 		else if (FinalTranslationWindow && Binding.TargetName == FinalTranslationWindow->Modifier->WarpTargetName)
 		{
-			CompensateSlope(*FinalTranslationWindow, Anchor, Component, Transform);
+			CompensatePlacement(*FinalTranslationWindow, Anchor, Component, Transform);
 		}
 		Target.LocalTransform = Transform.GetRelativeTransform(Component->GetComponentTransform());
 		if (!Target.LocalTransform.IsValid())
@@ -1066,17 +1058,23 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 			IMGTraversalDebug::Point(Character->GetWorld(), UncompensatedLocation, FColor::Orange, 1);
 			IMGTraversalDebug::Point(Character->GetWorld(), Transform.GetLocation(), FColor::Cyan, 1);
 			IMGTraversalDebug::Line(Character->GetWorld(), UncompensatedLocation, Transform.GetLocation(), FColor::Cyan, 1, 3.f);
-			IMGTraversalDebug::String(Character->GetWorld(), Transform.GetLocation() + FVector::UpVector * 15.f,
-			    FString::Printf(TEXT("%s slope +%.2f cm"), *Binding.TargetName.ToString(),
-			        Transform.GetLocation().Z - UncompensatedLocation.Z), FColor::Cyan, 1);
+			if (IMGTraversalDebug::IsEnabled(1) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+			{
+				IMGTraversalDebug::String(Character->GetWorld(), Transform.GetLocation() + FVector::UpVector * 15.f,
+				    FString::Printf(TEXT("%s placement +%.2f cm"), *Binding.TargetName.ToString(),
+				        Transform.GetLocation().Z - UncompensatedLocation.Z), FColor::Cyan, 1);
+			}
 		}
 		IMGTraversalDebug::Line(Character->GetWorld(), Anchor.GetLocation(), Transform.GetLocation(), FColor::Yellow, 3);
 		IMGTraversalDebug::Arrow(Character->GetWorld(), Transform.GetLocation(),
 		    Transform.GetLocation() + Transform.GetUnitAxis(EAxis::X) * 30.f, FColor::Yellow, 3);
-		IMGTraversalDebug::String(Character->GetWorld(), Transform.GetLocation() + FVector::UpVector * 15.f,
-		    FString::Printf(TEXT("%s <- %s + offset | %s"), *Binding.TargetName.ToString(),
-		        *StaticEnum<EIMGTraversalAnchor>()->GetNameStringByValue(static_cast<int64>(Binding.Anchor)), *GetNameSafe(Component)),
-		    FColor::White, 3);
+		if (IMGTraversalDebug::IsEnabled(3) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+		{
+			IMGTraversalDebug::String(Character->GetWorld(), Transform.GetLocation() + FVector::UpVector * 15.f,
+			    FString::Printf(TEXT("%s <- %s + offset | %s"), *Binding.TargetName.ToString(),
+			        *StaticEnum<EIMGTraversalAnchor>()->GetNameStringByValue(static_cast<int64>(Binding.Anchor)), *GetNameSafe(Component)),
+			    FColor::White, 3);
+		}
 #endif
 	}
 	return true;
@@ -1263,7 +1261,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 #if ENABLE_DRAW_DEBUG
 			DrawAbilityMessage(
 			    GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle moved too fast"), FColor::Red);
-			if (IMGTraversalDebug::IsEnabled(3))
+			if (IMGTraversalDebug::IsEnabled(3) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
 			{
 				IMGTraversalDebug::String(World, Target->GetComponentLocation() + FVector::UpVector * 18.f,
 				    FString::Printf(TEXT("Abort %s: V %.0f/%.0f  W %.0f/%.0f"), *Target->GetName(), Speed,

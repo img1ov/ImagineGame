@@ -24,8 +24,8 @@
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
-- GTA 参考：`D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`，工程导航见其仓库根目录 `AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码：`D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- GTA 参考：`C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
+- UE 源码：`D:/Application/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ### GTA 3C 源码导航与映射
 
@@ -87,8 +87,8 @@
 
 ### 能力输入绑定
 
-- `FIMGInputAction` 只保存 InputTag/InputAction；`UIMGInputComponent::BindAbilityActions` 对有效 Action/Tag 按 Lyra 固定绑定 Triggered→Pressed、Completed→Released，不配置每项 PressedTriggerEvent 或 BindReleaseEvent。NativeAction 仍由调用方显式选择 TriggerEvent。
-- 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn，不能替代 Enhanced Input 的 IA 触发条件；Triggered 可逐帧到达，行为与 Lyra 一致。
+- `FIMGInputAction` 只保存 InputTag/InputAction；`UIMGInputComponent::BindAbilityActions` 对有效 Action/Tag 按 IFE 的 LyraInputComponent 固定绑定 Started→Pressed、Completed→Released，不配置每项 PressedTriggerEvent 或 BindReleaseEvent。NativeAction 仍由调用方显式选择 TriggerEvent。
+- 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn；Started 在输入开始时转发一次 Pressed，Held 状态保持至 Released，避免持续 Triggered 被 WaitInputPress 当作下一次点按。
 - Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。输入解绑的绑定句柄与 ASC.ClearAbilityInput 保持原职责；额外输入配置的移除仍是现有未实现边界，不因固定绑定而视为已解决。
 
 ### 复制 Montage 前置条件
@@ -119,8 +119,8 @@
 - UE 网络默认：Exponential；模拟代理位置/旋转平滑 0.10/0.05 秒，Listen Server 远端角色 0.04/0.033 秒，普通/大误差纠偏最小间隔 0.10/0.05 秒。自主代理纠偏后重放 SavedMoves，不由代理插值、NetUpdateFrequency 或 NetworkPrediction 插件缓冲控制。
 - GameNetworkManager 的 MAXPOSITIONERRORSQUARED=3.0，约 1.73 cm；Play As Client 即使不开 Network Emulation 仍走网络移动。先用 `p.NetShowCorrections 1` 定位，再查两端参数和预测，不以放宽容差代替修复。
 - PreCMC 的本地待消费输入与服务端远端 RPC 加速度不可混用。ReplicateUsingRegisteredSubObjectList 只选择子对象复制路径，不自动同步 MaxWalkSpeed 等 CMC 参数。
-- Packed Movement 的 InputMagnitude 为0至255的输入力度，随 FSavedMove_IMG/FIMGCharacterNetworkMoveData 保存、量化和序列化；初次自主预测用同一量化规则，服务端及重放从当前 Move 消费，避免用当前 MaxAcceleration 重新解释旧输入。力度变化禁止 Move 合并并参与 ImportantMove 重发判断；物理加速度仍走原生权威限幅，速度上限仍由各端原有规则决定，不接收客户端提供的移动参数上限。AI/本地权威及旧 Movement RPC 路径保留原生输入力度计算；每个 Packed Move 新增1字节，网络各端须使用同版布局。
-- FSavedMove_IMG 保留地面参数历史快照，纠偏重放直接恢复原 Move 参数，不按当前 Tag 重算；快照不上传服务端、不授予客户端参数权威。有请求提供者时另保存朝向配置与本机注册代次，旧提供者的 Move 不覆盖卸载后的参数。ClientUpdatePositionAfterServerUpdate 仅在提供者代次未变化时恢复当前配置，避免覆盖重放期间的清理。
+- Packed Movement 的 InputMagnitude 为0至255的输入力度，随 FSavedMove_IMG/FIMGCharacterNetworkMoveData 保存、量化和序列化；初次预测从原生已舍入加速度按原规则量化，服务端及重放消费同一字节。有请求提供者时，在实际移动前按该力度、Move 的舍入输入方向和本端规则计算的加速度上限生成物理加速度，避免碰撞降速后以旧上限解释输入。力度变化禁止 Move 合并并参与 ImportantMove 重发判断，不接收客户端移动参数上限。无提供者、AI/本地权威及旧 Movement RPC 路径保留原生输入力度计算；每个 Packed Move 新增1字节，网络各端须使用同版布局。
+- FSavedMove_IMG 保留地面参数历史快照；有请求提供者的重放按历史请求及纠偏后的速度、朝向和移动模式重算动态参数，落地窗口制动值及非本组件所有的制动摩擦仍消费原 Move 快照。无提供者沿原历史参数回放；快照不上传服务端。有请求提供者时另保存朝向配置与本机注册代次，旧提供者的 Move 不覆盖卸载后的参数。ClientUpdatePositionAfterServerUpdate 仅在提供者代次未变化时恢复当前配置和输入上下文，避免覆盖重放期间的清理。
 
 ### Locomotion 调度与职责
 
@@ -140,13 +140,14 @@
 - 依赖方向为 HeroLocomotion → CMC 请求接口。CMC 只持有弱 UObject 委托、通用请求字节与移动历史，不引用 HeroLocomotion、EGait、意图 Tag 或 GAS 规则；步态选择、配置和参数计算归 HeroLocomotion。
 - 四个意图 Tag 沿原路径 Native 注册：Event.Movement.Gait.Sprint/Walk、Event.Movement.RotationMode.Aim/Strafe。Tag 委托只更新当前请求；每个 Move 保存自己的四 bit 请求，CMC 不解释位含义，也不传速度或加速度上限。GA 继续负责意图 Tag 的激活、互斥和释放，不增加能力准入或代激活路径。
 - 请求意图与实际 Gait 分开：冲刺优先，不能冲刺时按 Walk 意图选 Walk，否则 Run。随移动朝向时允许冲刺；Aim/Strafe 使用 ControllerDesiredRotation，冲刺另查输入方向与胶囊朝向的50度夹角。
-- 默认 Walk=(165,150,130)、Run=(380,350,300)、Sprint=(585,585,585)、Crouch=(170,160,150)。Controller 朝向下，Curve_StrafeSpeedMap 消费 CalculateDirection 对应的速度/角色绝对夹角，在前/侧/后速度间插值；随移动方向使用前向值。Walk/Run 加速度500/800，Sprint 按速度[300,700]映射[800,300]；摩擦1/2，Sprint 按速度[0,500]映射[1,2]。普通/落地制动800/2000，落地窗口0.3秒；空中 RotationRate=(0,720,0)，其他为(0,-1,0)。配置在预测历史存在期间应保持稳定，当前没有运行时配置版本同步。
+- 默认 Walk=(165,150,130)、Run=(380,350,300)、Sprint=(585,585,585)、Crouch=(170,160,150)。Controller 朝向下，Curve_StrafeSpeedMap 消费 CalculateDirection 对应的速度/角色绝对夹角，在前/侧/后速度间插值；每次计算共用一次曲线采样更新普通/蹲伏速度，随移动方向使用前向值。Walk/Run 加速度500/800，Sprint 按速度[300,700]映射[800,300]；摩擦1/2，Sprint 按速度[0,500]映射[1,2]。普通/落地制动800/2000，落地窗口0.3秒；空中 RotationRate=(0,720,0)，其他为(0,-1,0)。配置在预测历史存在期间应保持稳定，当前没有运行时配置版本同步。
 - 原蓝图 FullMovementInput 固定 true 的行为保留，不增加未生效的 AnalogWalk/RunThreshold 或摇杆档位规则。CalculateBrakingFriction 保留查询但不接入参数写入；Foley、角色自身 JustLanded 表现和其他蓝图接口维持原职责。
 - 原 PreCMC 调度、蓝图事件和各端更新路径保留；本地取 PendingMovementInputVector，远端取 CMC.CurrentAcceleration，沿原顺序更新朝向和移动参数。逐 Move 接点复用内部计算，不额外触发 PreCMC 蓝图事件。
-- CMC 提供单一弱 UObject 请求提供者。在原 PreCMC 更新之外，首次预测在 ControlledCharacterMove 的输入缩放前回调规则，服务端在 MoveAutonomous 的原生限幅前消费该 Move 请求；重放只恢复 SavedMove 的历史参数和朝向，不回调当前规则。不覆写 PerformMovement、不重建物理加速度，也不扩展 MoveResponse。请求/参数/朝向变化阻止跨状态 Move 合并，请求及力度变化参与 ImportantMove；相同状态保留原有合并。网络自主代理要求 Packed Movement RPC；请求新增1 bit存在标记和可选1字节，各端须使用同版布局。
+- CMC 提供单一弱 UObject 请求提供者。ControlledCharacterMove 在输入缩放前准备实时规则，SavedMove 保存舍入输入和力度；MoveAutonomous 装配权威/重放上下文。三条路径统一在 PerformMovement 调用原生实现前按本次模拟起点计算参数并应用输入力度，避免使用合并回退前或纠偏前的速度。ForcePositionUpdate 延续最后批准的输入，不采样当前 Tag；提供者拒绝接管时保留原生移动。没有新增 RPC、MoveResponse 或参数复制。
+- 请求、参数、朝向及注册代次变化阻止跨状态 Move 合并；其余沿原生合并，合并回退完成后再计算实际参数，不统一禁止合并。请求及力度变化参与 ImportantMove。网络自主代理要求 Packed Movement RPC；请求新增1 bit存在标记和可选1字节，各端须使用同版布局。
 - 落地制动保留蓝图0.3秒可重置的本地窗口，用本组件计时器实现；重放不重启实时窗口，历史制动值由原 SavedMove 快照恢复。此窗口未增加服务端纠偏协议，不能视为任意落地物理都已确定性同步。
-- Gait/CharacterInputState 为本机规则输出，不另加属性复制。各端保留原 ASC Tag/PreCMC 更新，自主代理和权威端另按对应 Move 对齐请求；模拟代理不提交移动请求。Ragdoll/恢复接管期间不写普通移动参数。
-- Ready 后精确绑定四个 Tag、Landed 与 CMC 提供者；Unavailable、EndPlay、Unregister、显式 Deactivate 释放本方绑定和缓存并恢复进入前参数，Activate 在就绪时重绑。CMC 结束清提供者；本机注册代次隔离旧 SavedMove，重放过程中若提供者被卸载/替换，不恢复旧配置覆盖其清理。CMC 缓存对象替换仍须按基类合同重新注册组件。
+- Gait/CharacterInputState 为本机规则输出，不另加属性复制。各端保留原 ASC Tag/PreCMC 更新，自主代理和权威端另按对应 Move 对齐请求；重放只计算历史移动，不覆盖公开的实时意图和步态，不查询当前 Tag 或重启落地计时器。模拟代理不提交移动请求。Ragdoll/恢复接管期间不写普通移动参数。
+- Ready 后精确绑定四个 Tag、Landed 与 CMC 提供者；Unavailable、EndPlay、Unregister、显式 Deactivate 释放本方绑定和缓存，仅仍持有该 CMC 提供者时恢复进入前参数，Activate 在就绪时重绑。CMC 停用/注销失效旧预测代次，结束清提供者；重放期间若提供者被卸载/替换，不恢复旧配置覆盖其清理。CMC 缓存对象替换仍须按基类合同重新注册组件。
 - `IMG.Movement.NetDiagnostics` 默认关闭；1记录纠偏/ACK，2增加每个速度子步消费的 Request、MaxSpeed/MaxAccel/Analog、摩擦/制动与速度。按 Actor/Move 时间戳对照 Predict/Authority/Replay，区分合理权威拒绝、输入时序和物理预测偏差；不以关闭纠偏、放宽误差或加大代理平滑替代收敛。
 - Traversal 的重试/权威结束等待和旧 Walking 纠偏过滤继续独立保留；普通步态同步不提供 Traversal 历史预测，也不替代其生命周期合同。
 
@@ -244,14 +245,16 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 ### 目录、检测与选择
 
 - 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。Detector 无状态同步查几何；Component 管配置、Warp Target、临时碰撞忽略与代理快照；GA 管检测 → 选择 → 校验/Commit → 播放 → 退出；Types/TargetData 定义数据与请求，Debug 在 Private 同目录。
+- Detector 内部由 SampleHandhold 采样中心/左右顶部、宽度和楼梯轮廓，MakeCandidate 调度 ValidateCandidateDirection 验证请求/法线方向。同一候选的方向回退复用本次采样，每个方向从原始 Candidate 副本开始，重新计算接近、深度、后沿、净空及坡向；不跨 Detect 调用、帧或网络端缓存采样，不省略服务端重检。
 - 每次激活只作一次尝试，外部决定输入/自动触发，RequestSource 与 ActivationPolicy 独立。本地 CanActivate 先作原生几何/发起预筛，CHT/PoseMatch 仍只在激活后经 PreSelectTraversalAnimation/SelectTraversalAnimation 选单 Montage；角色装配 Traversal/MotionWarping并授予 GA，服务端无 PoseHistory 时需后备。
 - InitiationSettings 在检测后、选择前及 GA 校验/服务端重检消费；bEnabled=false 只跳过本组发起限制。Manual 默认允许150 cm内站立发起；Automatic 默认允许 Falling，要求朝向前沿的有效意图、方向阈值0.8，固定 AutomaticMaxDistance=150 cm，不以实际速度设门槛或二次缩距。
 - 意图优先待消费输入，再 CMC.Acceleration；AI 复用 Manual，在两者为空时可读 Moving 的 PathFollowing 当前段目标，不以实际 Velocity 替代意图。普通玩家按 GA.RequestSource，服务端 AI 强制 AI 来源；AI 检测/发起共用意图，无意图时可向前按手动站立规则尝试。
 - ServerDistanceTolerance 仅补偿远端发起距离。速度缩放用于 Detector 搜索长度；Candidate.Speed/RunningSpeedThreshold 仅供选择建议，不限制原生 Supports，外部 CHT/蓝图可另筛。MaxMovingSpeed/MaxAngularSpeedDegrees 用于障碍/载体运动，检测、落点和执行继续复核。
 - 几何/坡面/净空/动作支持与最终动画覆盖分开；自动深度安全限制、高位开放接近拒绝及楼梯下行方向限制仅用于 Automatic，楼梯轮廓过滤也用于 Manual/AI。ActionSettings 提供默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点/接触，Notify 管窗口，Landing 管曲线/落点。最终复核表面、落差、可走支撑和完整胶囊，Root Motion/MotionWarping 执行位移。
-- 最后一个平移 Warp 窗口按配置的 Bone/Static/None 参照换算最终胶囊落位，不按 `attach` 骨骼名筛选；按实际可走坡面与下半球的平面距离自动求向上 Z 补偿，再用完整胶囊扫掠、边缘容差及重叠复核。补偿为内部修正，无独立开关/高度上限，不新增发起准入；无法得到有效补偿时保留原 Target，由原落位校验和退出链处置。探测范围由胶囊、锚点距离和 CMC/表面可走坡度推导，IgnoreZAxis 窗口不补偿。Detector.MaxClearanceSlopeAngle 只管净空探针方向，最终支撑仍须通过 CMC.IsWalkable。只调整执行 Target，保留检测锚点和 Target XY，同名 Target 的其他窗口也消费该结果；结果随既有局部 Target 复制。执行调试阶段以橙色原点、青色补偿点/连线标出高度差；不逐帧重算平台形变或动画完整扫掠轨迹。
+- 最后一个平移 Warp 窗口按配置的 Bone/Static/None 参照换算胶囊对齐位置，不按 `attach` 骨骼名或障碍高低筛选；bSubtractRemainingRootMotion=false 时 Target 对齐窗口结束，true 时按 MotionWarping 的减余量合同表示动画结束位置。GA 不再自行追加窗口至整段 Montage 末尾的根位移，避免将可能被提前混出的后续移动当作本次落点。CompensatePlacement 统一处理平地和斜坡，仅消费锚点载体、检测障碍集或已确认 BackFloor 的可走支撑，不把新命中的其他平台作为补偿目标或加入碰撞忽略。按支撑与下半球的平面距离自动求向上 Z 补偿，再用完整胶囊扫掠、边缘容差及重叠复核。补足 CMC 的目标地面间隙，已有足够间隙时不加高，也不向下吸附；Landing.CapsuleClearance 仅作落位查询的验证余量，不重复叠加到执行 Target。补偿为内部修正，无独立开关/高度上限，不新增发起准入；无法得到有效补偿时保留原 Target，由原落位校验和退出链处置。探测范围由胶囊、锚点距离和 CMC/表面可走坡度推导，IgnoreZAxis 窗口不补偿。Detector.MaxClearanceSlopeAngle 只管净空探针方向，最终支撑仍须通过 CMC.IsWalkable。只调整执行 Target，保留检测锚点和 Target XY，同名 Target 的其他窗口也消费该结果；结果随既有局部 Target 复制。执行调试阶段以橙色原点、青色补偿点/连线及 placement +数值标出高度差；不逐帧重算平台形变或动画完整扫掠轨迹。
 - Traversal 的 GroundLocation 只取 CMC.CurrentFloor 的有效可走支撑；空中或缺少有效支撑（含无碰撞支撑的 NavWalking）回退当前缩放胶囊底部，不消费 GetGroundInfo 的长距离下探。坡面/脚下楼梯判定只消费有效支撑；接近角度和自动落差检查共用该参考。bUseGroundPositionForHeight 默认 false；开启后也按同一支撑/脚底回退，不把远处地面当高度基准。
-- 低障碍在高度小于 DetectorSettings.UseRequestDirectionBelowHeight（默认80 cm）时优先保留请求方向，允许斜向越过边沿；该方向的候选失败后可重试墙面法线方向。设为0可关闭此分支；MinFacingDot（Manual/AI默认0.3）和 AutomaticMinFacingDot（默认0.8）限制接近角度。调试 Handhold: request heading 表示所用方向，HClear/VClear 为净空测量，不是动画轨迹。
+- 手点按 GTA 的中心/左右顶部探针取实际接触位置；探针位于前侧命中点正上方，不向内固定平移，也不把顶部/左右命中投影回前侧平面。低障碍在高度小于 DetectorSettings.UseRequestDirectionBelowHeight（默认80 cm）时优先保留请求方向，允许斜向越过边沿；设为0仅关闭低障碍分支。请求方向通过左右实际接触点连线求交并插值高度，调整范围50 cm，仍是近似，不替代双手局部 IK；候选失败后以原始顶部接触和墙面法线重新校验。MinFacingDot（Manual/AI默认0.3）和 AutomaticMinFacingDot（默认0.8）限制接近角度；HClear/VClear 为净空测量，不是动画轨迹。
+- DetectorSettings.AngularSurfaceTag 默认 Traversal.Angular，消费前侧/顶部碰撞组件或所属 Actor 的普通 FName 标签，映射 GTA 车辆棱面策略，不依赖车辆类。带标签且请求与入面方向 dot>0.95 时，高障碍也可保留请求方向，失败回退法线；不引入车辆滑行动作或自动翻越禁令。低障碍、带标签表面及 Automatic 均要求双侧支撑；其余 Manual/AI 可追加外侧探针后重定中心，新中心组件也须纳入障碍校验/执行清理。DebugDraw 3 的青点为中心实际命中，黄点为最终检测手点；Handhold: angular request heading 区分高位棱面方向策略。各端标签/DetectorSettings 须一致；最终动画落位与统一落位补偿沿 GA 合同执行。
 - 楼梯语义由 DetectorSettings.StairSurfaceTag 指定，默认 Traversal.Stairs；加在实际碰撞组件的 Component Tags 或所属 Actor 的 Tags，使用普通 FName 标签。命中前侧/顶部带标签，或角色在地面且脚下带标签时启用楼梯轮廓过滤；未标记不保证从几何识别楼梯。默认边缘采样垂直跨度截止值22.5 cm，命中楼梯表面时30 cm；与 GTA 参考一致，严格小于截止值才拒绝，不额外添加容差，等于截止值仍可通过本项。跨度小于40 cm且水平漂移大于10 cm也拒绝。Span不是台阶高度，Height默认相对胶囊底部；顶部平台为独立组件/Actor时须覆盖实际命中边缘，不能仅依赖下面阶梯的标签。DebugDraw 2 的 Stair profile 显示标签、前侧/顶部/支撑命中状态、精确跨度和截止值；标签不表示禁止全部攀爬。
 - 表面策略在 Traversal组件类默认值的 DetectorSettings 中配置：AutomaticBlockedSurfaceTags 仅拒绝 Automatic，BlockedSurfaceTags 拒绝所有来源。例如给局部楼梯/顶部边缘加 Traversal.NoAuto，并将同名标签加入 AutomaticBlockedSurfaceTags，可禁止该表面自动翻越、保留手动检测；此自定义名字须显式加入列表才生效。Actor标签影响其全部碰撞组件，局部限制优先用 Component Tags；Traversal.Stairs 启用过滤，不等于禁止全部攀爬。
 
@@ -260,7 +263,8 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - GAS LocalPredicted：校验 → Commit → 建立 Target/碰撞忽略 → Flying → Montage启动 → 提交 TargetData/发布快照。启动前单次取消；服务端按方向重查来源、Action、时间/倍率、Warp合同和可选 AllowedMontages，不接受客户端几何。CHT 前拒绝不启动执行，Commit 后重入/播放失败走既有退出。
 - GA 本地结束后默认 RetryInterval=0.25秒再允许尝试；自主代理同时等待同 Avatar/Spec/预测键的权威结束或激活拒绝，保留 WhileInputActive 的持续尝试语义。ASC.AbilityNetworkTermination 透传现有可靠 ClientEnd/Cancel/ActivateFailed，含本机已结束的实例，不新增 RPC；远端 Traversal 权威退出须发送终止通知。权威等待 TargetData 默认 TargetDataTimeout=2秒，开始执行时复用计时器转为目标复核。
 - CMC.ClientCorrectionFilter 是仅用于 Packed MoveResponse 的通用本机过滤入口；只有仍能匹配 SavedMove 的纠偏才询问监听者，丢弃时保留原生 ACK/缓存释放，不应用位置、模式或 Root Motion，也不作为恢复落位已消费的证明。CMC 不依赖 Traversal；GA 弱绑定、按句柄注销，只在本方仍活动且 Flying 时过滤开始前已记录的待确认 Move，超过时间戳重置安全窗口则放行。开始后的纠偏和权威拒绝仍生效；该机制不提供完整 Traversal 历史重放或动态载体回滚。
-- 完成/中断/取消/死亡/目标失效/ASC解绑幂等清理 Target、碰撞忽略、委托、计时器；正常 BlendOut 不提前结束。恢复碰撞后按支撑切 Walking/Falling，仅恢复仍 Flying 的执行，不覆盖后来的模式；PawnExt 解绑顺序见 ASC 生命周期。
+- 正常完成以 PlayMontageAndWait.OnCompleted 为退出边界，包含正常 BlendOut；面向站稳落地的单 Montage 动作须按站稳后混出制作。检测几何、选片后的落位校验及 CompensatePlacement 为 Warp 提供目标依据，不据此推断胶囊已实际到达，也不因预计算落点、Warp 窗口结束或途中接触而提前切 Walking；现有合同不增加持续落地检测或独立落地阶段复制。结束时的实际支撑查询仍须保留，以处理执行偏差和环境变化。
+- 完成/中断/取消/死亡/目标失效/ASC解绑幂等清理 Target、碰撞忽略、委托、计时器。Ragdoll 等外部移动模式接管与正常落地分开处理，由能力取消或 CheckActiveTarget 发现离开 Flying 后走中断清理，不等待蒙太奇正常结束。恢复碰撞后，仅角色存活且仍 Flying 时按实际支撑切 Walking/Falling，不覆盖接管方设置的新模式；PawnExt 解绑顺序见 ASC 生命周期。
 - 模拟代理消费 COND_SkipOwner 快照、GAS Montage和 CMC，按 Montage/PlayInstanceId 等待引用、Target、碰撞忽略和 Flying。结束快照先到保留本机实例至退出（含 BlendOut），同实例引用补齐不反复拆建；Target 恢复历史来自权威，非 Flying 到达后先恢复碰撞再查支撑。
 - Traversal 通过独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 非空时，选片与复制归属仅接受此列表及 MontageSettings 中的资产，仍可复用 ActionSettings，不再按 Target 同名推断；空列表保留现有推断以兼容装配，多 Warp 系统应配置各端一致的明确列表。结束快照保留 Montage/PlayInstanceId，开始被合并或结束先到且尚未播放时丢弃该次表现，不能被晚引用重新启动。
 - 来源组件 → Traversal → CMC，组件仅活动时 Tick；MotionWarping.OnPreUpdate 在实际采样前刷新 Target。默认0.05秒复核载体，运动上限500 cm/s、85 deg/s，候选时效0.25秒。局部 Target 跟随不等于完整支持动态平台；BasedMovement/动态 Bone、输入历史/退出延迟、异步检测、悬挂/Shimmy/梯子另行设计。
@@ -269,6 +273,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 ### 调试与 GTA 参考
 
 - 绘图默认关闭，受 ENABLE_DRAW_DEBUG 保护。`IMG.Traversal.DebugDraw`：0关、1输出/活动Target、2搜索失败、3全部探针；DebugStages 掩码：搜索1、命中2、手点4、体积8、输出16、执行32。
+- 格式化探针/执行调试文本须先检查级别和阶段，再构造 FString。候选快照包含公共采样与方向验证两层检查点，方向失败只回滚验证记录，候选整体失败再回滚公共采样；成功历史保留一份公共采样及最终通过方向。
 - 完整观察：`IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`。`IMG.Traversal.DebugLog 2` 记录启用阶段且须开启绘图；按角色/Role 区分，几何标记 pre-selection，执行输出在动画落点解析后更新。
 - `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose` 按 Avatar/Spec/PredKey 对照，结束恢复 Log。PredictionRejected 表示激活拒绝；TargetData 重检失败发生在激活后；AuthorityEndedPredictedTraversal 只说明权威先结束，不能据此认定预测错误。
 - GTA 检测/手点：`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`；发起：`task/Default/TaskPlayer.cpp`；Jump/Vault 分流：`task/Movement/Jumping/TaskJump.*`；执行/清理：`task/Movement/Climbing/TaskVault.*`。
@@ -304,6 +309,31 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 骨盆主链：`Update Leg Controls` 左/右 → `Update Pelvis Control` → `RigUnit_SetRelativeTransformForItem_1`（Child=pelvis，Parent=pelvis_ctrl）→ `Solve Leg IK` 左/右 → `Update Foot Post Solve` 左/右。`Update Pelvis Control` 的 `Pelvis Offset` 已经腿长约束和平滑，按世界方向保存再逆旋转用于落位；它不等于包含 RootDamper 的完整骨盆高度差。
 - 镜头输出接在主图，不修改上述函数内部。`CameraPelvisCaptureComment` 框在 Forwards Solve/EarlyOut 前，以 Current pelvis Global Transform → Translation → To World(Location) 保存 `CameraPelvisBeforeWS`，再清零曲线。`CameraPelvisOutputComment` 框接在右脚 `Update Foot Post Solve_1` 后，读取同次求解后的 pelvis 世界位置，以 After−Before 的 Z 写 `FootIK_PelvisDeltaZ`；包含 RootDamper 和骨盆修正，单位 UE cm、上正下负。Rig Global 不是 World；To World 的位置版本包含组件变换与缩放。
 - 曲线通过 Rig Hierarchy 中的 Curve 和 `Set Curve Value` 输出，不从 Mesh Socket 读取上一完成姿势来充当求解前采样。Rig 内不额外乘 ABP 的 ControlRig Alpha；外部 Pose/曲线混合仍须核对。ABP 同名曲线应以上游 `Modify Curve`（Blend、Alpha=1、Value=0）提供零基线，避免旁路继承旧值；TPS 已提供曲线消费者，但 Rig 输出本身不证明 ABP 基线、动画 Tick/曲线过滤和当前派生相机配置均已接通。
+- `FootIK_PelvisDeltaZ` 仅供相机消费，不驱动腿部 IK、骨盆或 ControlRig 权重；曲线值不能单独证明最终姿势采用了完整 Rig 输出或可见脚底已贴地。
+
+### FootPlacement 地面查询、Contact 与 Montage 合同
+
+- `ABP_Mannequin_Base` 主姿势顺序为 `DefaultSlot` → `Inertialization` → `OffsetRootBone` → `Procedural_Feet` → `Procedural_Hand` → `PoseHistory` → 输出。`Procedural_Feet` 的 ControlRig 节点引用本资产并传入姿势/曲线，输出再经 `BlendListByEnum(E_MovementModeForAnim)`；其输入包含 `ControlRigIK`、`BasicIK` 和 `PreProceduralPose`。Rig 执行与最终输出权重分开，不从枚举名推断具体旁路规则。
+- `Procedural_Feet` 将 `AllowFootPinning` 返回值接到 `DoRaycast`，并非 `Enable Foot Pinning`；`AllowSlopeWarping` 同时驱动 `Enable Slope Warping`、`WorldZDamperEnabled`，两个查询均按 MovementMode 选择。Rig 持续执行不等于每帧执行查询：主图先查 `DoRaycast`，再查 `Enable Slope Warping`；两者为真才依次执行左右 `Do Scene Query`。DoRaycast 为假不更新原始 floor；前者为真、后者为假则将左右 collision 恢复 Initial Transform。之后独立执行左右 `Update Floor Control`。
+- 动画目标链：主 Sequence.C 在 RootDamper 前用 `CalculateTargetAnimatedToeTransformGlobal` 缓存左右 `animated_toe_target_*_null` 和 `animated_pelvis_null`，D 更新 RootDamper，E 查询地面，F 平滑 floor。`UseIKBoneTargets` 默认 true：Toe 相对 Foot × 外部 IK Foot 相对 Foot × Foot Global，等效将 Toe 的局部偏移应用到 `ik_foot_l/r`；false 时直接取当前 `ball_l/r` Global。须区分动画 IK 骨骼与变形脚骨，不能只凭其中一套骨骼推断另一套的目标。
+- `Do Scene Query` 先缓存 Animated Foot Target Current Global。第一段球扫从 Rig 空间 `(0,0,HeightOffset)` 横向扫至 `(Target.X,Target.Y,HeightOffset)`，检测脚前墙面；HeightOffset 当前局部默认50 cm。命中且 `Adjust Feet Targets For Collision`（默认 true）时只修正动画目标 XY，保留动画 Z。第二段从第一段命中回退位置或横扫终点向下扫 `2 × HeightOffset`，默认约 `Z=+50 → -50`，半径5 cm；检测高度未使用动画脚目标 Z，不能视为覆盖完整攀爬/落差范围。坐标为 Rig Global，经引擎查询节点转换到 World，不能把这些值当世界绝对高度。
+- 第二段只在 bHit=true 时写 `floor_l_collision` / `floor_r_collision` 的位置与旋转；未命中分支没有清零、失效标记或重建 floor，保留上次值。高度悬空须区分未命中留下旧值、平滑和实际姿势权重，不能用 Contact 曲线解释所有位置问题。当前节点为 `Sphere Trace By Trace Channel`，TraceTypeQuery1；对应引擎 `Units/Collision/RigUnit_WorldCollision.cpp` 按执行次数和输入缓存，同次 Solve 可复用，跨 Solve 重新检查；不能仅因 Start/End 不变就认定射线跨帧不刷新。节点忽略 OwningActor（或缺少 Actor 时忽略 OwningComponent）。
+- **Contact 控制地面法线混合，不控制地面命中位置或查询启停**：主图 `GetCurveValue_2/3` 读取 `contact_l/r` 传入各自 `Do Scene Query.Contact`；函数将传入的世界 `Ground Normal` 转到 Rig 空间，再 `Interpolate(A=GroundNormal,B=HitNormal,T=Contact)`，由 Z 轴到该结果的旋转驱动 collision。Contact=0 使用传入法线，=1 使用该脚命中法线；即使射线已命中斜坡，Contact=0 仍可能保持与坡面不同的朝向。最终还受 SlopeWarpingAlpha、坡度限制和平滑影响。
+- `contact_l/r` 按左右脚实际接触窗口配置：离地趋0，接触时平滑趋1；最终效果以 Montage 混合后的求值曲线为准，不把单个源动画或旧快照中的关键帧状态当作当前运行值。
+- `DisableLegIK` 与 Contact 分责：ABP ControlRig Alpha 选 Curve，暴露引脚名为 `DisableLegIK`，`AlphaScaleBiasClamp` 的 Scale=-1、Bias=1，禁用曲线为1会抑制整体 Rig 修正；Contact 仅控制对应机制，不能代替整体权重。
+- `Update Floor Control` 消费原始 collision：先按 `GroundMovementWorldDelta` 更新世界历史，平滑 `SlopeWarpingAlpha` 向启用状态的0/1，再在世界空间平滑位置/旋转、转回 Rig 空间并混合到零平移/单位旋转，写 `smoothed_floor_*_ctrl` 并保存左右世界历史。`Floor Smoothing Time` 当前默认0.05秒；不是 Montage 结束事件触发更新。`DebugDrawGroundCollision` 两个深绿色长方框画的是这些 smoothed 控制器，不能作为原始射线是否命中、是否更新的直接证据。
+- Hierarchy：`floor_*_collision` 为无父级 Control；`animated_toe_target_*_null` 为无父级 Null，其 ctrl 是子级；`smoothed_floor_*_null` 挂在 root 下，smoothed ctrl 挂在对应 null 下；`ik_foot_l/r` 挂在 `ik_foot_root` 下，后者挂在 root 下。RootDamper 修改 root，动画目标缓存与 floor/腿部求解需按各自时序和空间区分；静态图和资产默认值不替代运行时 bHit、Contact、GroundNormal 或最终 Alpha。
+
+### FootPlacement 骨盆目标、约束与重置
+
+- `Update Pelvis Control` 本身不查询 Montage、Contact、移动模式、SlopeWarpingAlpha 或独立 Pelvis Enable/Alpha；它在左右 `Update Leg Controls` 后直接执行。整体 IK 有效仍不证明上游 `DoRaycast` / `Enable Slope Warping` 有效；Contact 经地面法线和可选植脚间接影响腿/骨盆，不是骨盆专用启用曲线，缺少 Contact 不能单独解释全部骨盆高度问题。
+- 腿目标链：`Update Leg Controls` 从 `smoothed_floor_*_ctrl` 取平面点与 Z 轴法线，先混合动画 Toe/Pin 目标，再经 `AdjustPositionToPlane` 写 `toe_*_ctrl`，随后由 Toe 到 Foot 的动画关系、AllowHeelLift 和坡度混合求 `foot_*_ctrl`。`AdjustPositionToPlane` 沿 `(0,0,-1)` 与调整后的地面平面求交，再加回 `Animated Height Offset` 的 Z；它消费 `animated_slope_angle_ctrl`（来源为 ik_foot_root 旋转）扣除动画已表达的坡度。骨盆消费这些修正后的 Toe/Foot 控制器，不直接读取原始 bHit。
+- 左右骨盆候选分别为 `AnimatedPelvisPosition - AnimatedToeTargetPosition + ToeControlPosition`；XY 取两候选平均，**Z 取两候选 Maximum**，不是平均/Minimum，也不按 Contact 筛选支撑脚。左右一侧要求下降、另一侧保持原高时，初始 Z 保留较高一侧；是否再下降由后续腿长约束决定，不能据此直接判定骨盆函数没执行，也不能未核对支撑策略就将 Maximum 改 Minimum。
+- `Clamp Pelvis Offset` 先处理左腿，再处理右腿，保持当前 Pelvis 到 UpperLeg 的相对偏移，把候选 UpperLeg 到修正后 Foot Control 的向量限制在最大长度内。最大长度取 `Max(预计算 LegLength × Hyper Extension Limit Factor, 当前动画 Foot 相对 UpperLeg 的距离)`；因当前动画已伸直而保留较大长度属现有保护策略。Hyper Extension Limit Factor 默认0.98，不能认定始终以0.98倍腿长强制放松。动画腿部弯曲/伸展变化会改变约束结果，不要求 Montage 结束事件。
+- 两腿约束后减去当前 pelvis Global Position，按组件世界旋转转换成世界方向偏移，`Damp(Vector)` 使用 `Pelvis Offset` 历史和 `Pelvis Smoothing Time`（默认0.3秒）平滑；再逆旋转回 Rig 空间，加到当前 pelvis 位置写 `pelvis_null`，旋转沿用当前 pelvis。主图将 pelvis 以单位相对变换贴到 `pelvis_ctrl`（Weight=1、传播子级），随后解腿 IK。该平滑每次有效求解执行，不是等满0.3秒或等 Montage 结束才开始。
+- `Has Teleported || PendingReset || ForceReset` 在当次目标缓存之前执行 `Reset`，清 `Pelvis Offset`、植脚状态/权重、RootDamper 速度，重建 floor/世界历史并清 PendingReset/ForceReset；该帧后续仍走正常求解。反复外部置位可能反复清掉平滑历史，须与纯粹目标不变区分。EarlyOut 要求 FootPinning、SlopeWarping、WorldZDamper 都关闭且对应 Alpha/PinWeight 接近0，并且不用外部 IK 目标或两脚 IK/动画位置已一致；EarlyOut 设置 PendingReset，恢复求解时重置，不是 Montage 状态门控。
+- 后续 `Solve Leg IK` 求解 thigh/calf/foot，`Update Foot Post Solve` 修正脚部，不再写 pelvis；Post Solve 的最小 Toe 高度来自动画相关高度，不是无条件把可见鞋底夹到地面。
+- RootDamper 独立于 `Pelvis Offset`：它在骨盆目标缓存后修改 root，消费 WorldZDamperEnabled、世界位移、GroundNormal 与自身历史；RootDamperSmoothingTime 默认0.15秒。动画输入姿势、原始 collision、smoothed floor、腿部目标、骨盆约束和平滑、最终输出混合分别核对，不能将其中一项代替完整姿势结果。
 
 ### UE 5.8 ControlRig 编辑工具与接口限制
 
@@ -313,6 +343,10 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 实际引脚名以 `node.get_pins()` 为准：当前 `RigUnit_BeginExecution`、`RigUnit_SetCurveValue` 等 RigUnit 使用 `ExecutePin`；Variable Setter 和函数引用使用 `ExecuteContext`。连线用 `c.add_link(source_path,target_path)`，对返回值做检查；浮点类型、Getter/Setter 和子引脚也先回读，不能从节点标题推测接口。
 - 编辑前检查 dirty 状态，并备份磁盘资产、实时 `c.export_nodes_to_text(...)`、节点坐标/连线和 `ed.generate_python_commands()`。分步创建变量/Hierarchy Curve、创建节点、设置默认值、接线、`ed.recompile_vm()`；使用事务/UndoBracket，批量操作期间暂停自动 VM 重编译并在 finally 恢复。回读检查只移除预期旧连线、保留既有节点/用户修改；仅保存目标资产。
 - 需要通用 Python API 而 MCP 工具签名不兼容时，可使用引擎自带 `PythonScriptPlugin/Content/Python/remote_execution.py` 的本机入口；先核对绑定为 `127.0.0.1`、匹配 `project_root/project_name`，记录并恢复 Remote Execution 原开关。该入口用于编辑资产，不修改 C++ 或工具插件源码。独立验证可用 `ed.create_rig_vm_host()`，执行 Construction/Forwards Solve，避免直接改运行角色或资产默认配置。
+- 当前安装引擎实际根目录为 `D:/Application/UnrealEngine/UE_5.8/Engine`（日志确认5.8.4），旧 `D:/Workspace/UnrealEngine/UE_5.8` 在当前机器不存在；此处工具/源码调查优先实际安装路径。引擎 Python 为 `Binaries/ThirdParty/Python3/Win64/python.exe`，系统 `python.exe` 可能只是不可用的 WindowsApps 别名。本机接口发现不到节点时区分沙箱网络可见性与编辑器设置，不能据此反复改配置；Remote Execution 属于安全相关设置，调查资产本身不自动授权开启，须遵守审批并在授权使用后恢复原值。
+- 只读 Rig 图可用 `ed.get_all_models()` 覆盖主图、函数库及聚合子图；节点取 `get_all_pins_recursively()`，引脚取 `get_pin_path/get_cpp_type/get_default_value/get_linked_source_pins/get_linked_target_pins`，坐标用 `node.get_position()`，默认配置用 `ed.get_asset_variables()`。调查快照位于 `Saved/Codex/FootPlacement/live_rig.json`，仅作导航/证据；修改前仍按现有要求回读实时目标图，不用快照覆盖资产。
+- 已有角色 Rig 的只读查询：`unreal.ControlRig.find_control_rigs(actor, unreal.ControlRig)`，再用 `rig.get_hierarchy()`、`get_variable_as_string(name)`；Outer=None 会返回空，不表示没有实例。`RigElementKey` 构造使用 `type=unreal.RigElementType.CONTROL, name='...'` 等关键字，不能按 name/type 的位置顺序传参。动画只读接口为 `unreal.AnimationLibrary.get_float_keys(seq,name)` 和 `get_bone_pose_for_time(seq,bone,time,extract_root_motion)`，当前不是 `AnimationBlueprintLibrary`；前者返回两组 UE Array，须转 list 才能看到值。没有运行实例时不将资产默认值当作运行时数据，不为调查自行启动 PIE 或构造验证运行。
+- 需要明确骨骼采样空间时，可用 `unreal.AnimPoseExtensions.get_anim_pose_at_time(seq,time,unreal.AnimPoseEvaluationOptions(...))` 取得 AnimPose，再 `get_bone_pose(pose,bone,space=...)`；后者默认 `AnimPoseSpaces.LOCAL`，须区分局部、组件与去 Root Motion 后的高度，不能直接把局部 Z 当脚底离地高度。`Saved/Codex/FootPlacement/live_pelvis.json` 与 live_rig.json 同样只作导航，不覆盖实时资产。
 
 ## 装备、背包与射击
 

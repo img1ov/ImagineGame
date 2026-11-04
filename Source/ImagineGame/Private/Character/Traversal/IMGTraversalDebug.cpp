@@ -55,6 +55,7 @@ struct FTraversalDebugSnapshot
 	TWeakObjectPtr<AActor> Actor;
 	TArray<FTraversalDebugCommand> Commands;
 	int32 CandidateCommandStart = INDEX_NONE;
+	int32 DirectionCommandStart = INDEX_NONE;
 	bool bActive = false;
 	bool bCaptureEnabled = true;
 };
@@ -408,10 +409,13 @@ void BeginTraversalSnapshot(const AActor* Actor, bool bReset)
 		TraversalSnapshot.World = Actor->GetWorld();
 		TraversalSnapshot.Actor = const_cast<AActor*>(Actor);
 		TraversalSnapshot.bActive = true;
-		String(Actor->GetWorld(), Actor->GetActorLocation() + FVector::UpVector * 120.f,
-			FString::Printf(TEXT("%s | %s | NetMode %d | t %.3f"), *GetNameSafe(Actor),
-				*UEnum::GetValueAsString(Actor->GetLocalRole()), static_cast<int32>(Actor->GetNetMode()),
-				Actor->GetWorld()->GetTimeSeconds()), FColor::White, 2, -2.f, EStage::Output, FName(TEXT("Actor")), Actor);
+		if (IsEnabled(2) && IsStageEnabled(EStage::Output))
+		{
+			String(Actor->GetWorld(), Actor->GetActorLocation() + FVector::UpVector * 120.f,
+				FString::Printf(TEXT("%s | %s | NetMode %d | t %.3f"), *GetNameSafe(Actor),
+					*UEnum::GetValueAsString(Actor->GetLocalRole()), static_cast<int32>(Actor->GetNetMode()),
+					Actor->GetWorld()->GetTimeSeconds()), FColor::White, 2, -2.f, EStage::Output, FName(TEXT("Actor")), Actor);
+		}
 	}
 }
 
@@ -428,6 +432,7 @@ void BeginTraversalCandidateSnapshot()
 	if (TraversalSnapshot.bActive)
 	{
 		TraversalSnapshot.CandidateCommandStart = TraversalSnapshot.Commands.Num();
+		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
 	}
 }
 
@@ -437,6 +442,24 @@ void RollbackTraversalCandidateSnapshot()
 	{
 		TraversalSnapshot.Commands.SetNum(TraversalSnapshot.CandidateCommandStart);
 		TraversalSnapshot.CandidateCommandStart = INDEX_NONE;
+		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
+	}
+}
+
+void BeginTraversalDirectionSnapshot()
+{
+	if (TraversalSnapshot.bActive && TraversalSnapshot.CandidateCommandStart != INDEX_NONE)
+	{
+		TraversalSnapshot.DirectionCommandStart = TraversalSnapshot.Commands.Num();
+	}
+}
+
+void RollbackTraversalDirectionSnapshot()
+{
+	if (TraversalSnapshot.bActive && TraversalSnapshot.DirectionCommandStart != INDEX_NONE)
+	{
+		TraversalSnapshot.Commands.SetNum(TraversalSnapshot.DirectionCommandStart);
+		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
 	}
 }
 
@@ -539,10 +562,13 @@ void SuccessfulTraversal(const AActor* Actor, const FIMGTraversalCandidate& Cand
 	{
 		BeginTraversalSnapshot(Actor);
 	}
-	CandidateOutput(Actor->GetWorld(), Candidate,
-		FString::Printf(TEXT("Execution | %s | %s | Start %.2f Rate %.2f"),
-			*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Selection.Action)),
-			*GetNameSafe(Selection.Montage.Get()), Selection.StartTime, Selection.PlayRate));
+	if (IsStageEnabled(EStage::Output))
+	{
+		CandidateOutput(Actor->GetWorld(), Candidate,
+			FString::Printf(TEXT("Execution | %s | %s | Start %.2f Rate %.2f"),
+				*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Selection.Action)),
+				*GetNameSafe(Selection.Montage.Get()), Selection.StartTime, Selection.PlayRate));
+	}
 	ReplayTraversalSnapshot(-1.f);
 }
 

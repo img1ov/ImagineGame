@@ -29,6 +29,8 @@ namespace IMGTraversalDebug
 	void SetTraversalSnapshotCaptureEnabled(bool bEnabled);
 	void BeginTraversalCandidateSnapshot();
 	void RollbackTraversalCandidateSnapshot();
+	void BeginTraversalDirectionSnapshot();
+	void RollbackTraversalDirectionSnapshot();
 	void DiscardTraversalSnapshot(const AActor* Actor = nullptr);
 	void CandidateOutput(const UWorld* World, const FIMGTraversalCandidate& Candidate, const FString& Label);
 	void SuccessfulTraversal(const AActor* Actor, const FIMGTraversalCandidate& Candidate,

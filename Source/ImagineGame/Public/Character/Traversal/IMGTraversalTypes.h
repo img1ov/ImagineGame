@@ -312,6 +312,10 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	FName StairSurfaceTag = TEXT("Traversal.Stairs");
 
+	/** Vehicle-like angular surfaces retain a closely aligned request heading (dot > 0.95) and require both side supports. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
+	FName AngularSurfaceTag = TEXT("Traversal.Angular");
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	bool bRejectAutomaticHighOpenApproach = true;
 
@@ -559,6 +563,7 @@ struct FIMGTraversalLandingSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bCheckStraightPath = false;
 
+	/** Vertical margin for landing validation queries; not an additional lift applied to the Warp Target. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
 	float CapsuleClearance = 3.f;
 };
