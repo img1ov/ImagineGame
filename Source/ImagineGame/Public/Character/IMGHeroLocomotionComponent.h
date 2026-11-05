@@ -56,6 +56,7 @@ public:
 	float CalculateBrakingFriction() const;
 
 protected:
+	virtual void BeginPlay() override;
 	virtual void OnLocomotionReadyNative() override;
 	virtual void OnLocomotionUnavailableNative() override;
 	virtual uint8 GetMovementRequest() const override { return CurrentRequest; }

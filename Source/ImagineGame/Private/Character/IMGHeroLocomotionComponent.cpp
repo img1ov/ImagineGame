@@ -29,15 +29,20 @@ UIMGHeroLocomotionComponent::UIMGHeroLocomotionComponent(const FObjectInitialize
 	StrafeSpeedMapCurve = Curve.Object;
 }
 
+void UIMGHeroLocomotionComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	if (!StrafeSpeedMapCurve)
+	{
+		UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: StrafeSpeedMapCurve is missing. Aim and Strafe use the forward speed scale."), *GetPathName());
+	}
+}
+
 void UIMGHeroLocomotionComponent::OnLocomotionReadyNative()
 {
 	ReleaseBindings();
 	UIMGAbilitySystemComponent* ASC = GetIMGAbilitySystemComponent();
 	if (!GetBoundMovement() || !ASC || !IsLocomotionReady()) { return; }
-	if (!StrafeSpeedMapCurve)
-	{
-		UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: StrafeSpeedMapCurve is missing. Aim and Strafe use the forward speed scale."), *GetPathName());
-	}
 	BoundASC = ASC;
 	for (const FGameplayTag Tag : { FGameplayTag(IMGGameplayTags::Event_Movement_Gait_Sprint), FGameplayTag(IMGGameplayTags::Event_Movement_Gait_Walk),
 		FGameplayTag(IMGGameplayTags::Event_Movement_RotationMode_Aim), FGameplayTag(IMGGameplayTags::Event_Movement_RotationMode_Strafe) })

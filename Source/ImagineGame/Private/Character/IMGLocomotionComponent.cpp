@@ -224,7 +224,7 @@ void UIMGLocomotionComponent::RefreshAbilitySystemConnection()
 				{
 					if (GetOwnerRole() == ROLE_Authority)
 					{
-						UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Authority ASC %s has no LocomotionSet. Using native CMC movement until the Set is granted."),
+						UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Authority ASC %s has no LocomotionSet. Check the AbilitySet or runtime grant. Using native CMC movement until the Set is granted."),
 							*GetPathName(), *GetPathNameSafe(AbilitySystemComponent.Get()));
 					}
 					else
@@ -288,8 +288,16 @@ void UIMGLocomotionComponent::RefreshLocomotionSet()
 	const UIMGLocomotionSet* CurrentSet = AbilitySystemComponent->GetSet<UIMGLocomotionSet>();
 	if (!IsValid(CurrentSet))
 	{
-		UE_LOG(LogIMGLocomotion, Log, TEXT("%s: LocomotionSet is unavailable after a Set change. Using native CMC movement. Role=%s ASC=%s"),
-			*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(AbilitySystemComponent.Get()));
+		if (GetOwnerRole() == ROLE_Authority)
+		{
+			UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Authority ASC %s has no LocomotionSet after a Set change. Using native CMC movement until the Set is granted."),
+				*GetPathName(), *GetPathNameSafe(AbilitySystemComponent.Get()));
+		}
+		else
+		{
+			UE_LOG(LogIMGLocomotion, Log, TEXT("%s: LocomotionSet is unavailable after a Set change. Using native CMC movement. Role=%s ASC=%s"),
+				*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(AbilitySystemComponent.Get()));
+		}
 		return;
 	}
 

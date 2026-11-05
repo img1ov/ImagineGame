@@ -131,7 +131,7 @@
 
 - 拥有者纠偏时胶囊立即采用权威位置和速度，再重放 SavedMove。模拟代理插值参数不控制这条链。CMC 仅在本地自主代理的普通地面/下落移动中，以首个已接受纠偏前到重放后的**净位移**补偿网格。40 cm 内反向补偿重力平面分量并限制累计量，按 0.05 秒时间常数衰减。移动 Tick 前撤销、后应用；相机跟胶囊。瞬移、Root Motion、Ragdoll、网格更换和停用清理。
 - Play As Client 即使未开 Network Emulation 也会纠偏。先用 `p.NetShowCorrections 1` 与 `IMG.Movement.NetDiagnostics 1` 对照历史误差、权威响应和 `[AutonomousMeshCorrection]` 的 PostReplayDelta/MeshOffset；历史位置差为零仍可能修正速度。级别 2 对照 Predict/Authority/Replay 的限速、力度、摩擦和制动。用 `IMG.Movement.AutonomousMeshSmoothing 0` 做表现对照。单机也急刹时先查超速制动，两端分歧时查 Move 输入与时序，不靠放宽误差掩盖。
-- `Log LogIMGLocomotion Verbose` 查看 ASC/Set 等待、接管值和释放。权威端初次缺 Set、缺方向曲线、无效上下文或参数记 Warning，客户端复制等待记 Log。提供者冲突或 Packed RPC 未启用见 `LogIMGMovementNet`。
+- `LogIMGLocomotion` 默认输出 ASC/Set 等待、就绪和四项速度。权威端在 ASC 配对后缺 Set 或 Set 变更后失去 Set、Hero 在 BeginPlay 缺方向曲线、移动上下文或参数无效时直接记 Warning。客户端等待 Set 复制记 Log。用 `Log LogIMGLocomotion Verbose` 查看 GameplayReady、Set 变更排队和解绑。提供者冲突或 Packed RPC 未启用见 `LogIMGMovementNet`。
 
 ## Ragdoll 移动基底
 
