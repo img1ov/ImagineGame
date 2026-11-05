@@ -77,5 +77,11 @@ private:
 	TMap<FGameplayTag, FDelegateHandle> IntentTagHandles;
 	uint8 CurrentRequest = 0;
 	FTimerHandle LandingTimer;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Locomotion", meta = (AllowPrivateAccess = "true"))
 	bool bJustLanded = false;
+
+	/** World-space movement velocity at the last landing, before switching movement mode. */
+	UPROPERTY(BlueprintReadOnly, Category = "Locomotion", meta = (AllowPrivateAccess = "true"))
+	FVector LandVelocity = FVector::ZeroVector;
 };

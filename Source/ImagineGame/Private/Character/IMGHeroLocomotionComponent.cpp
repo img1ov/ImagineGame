@@ -67,6 +67,7 @@ void UIMGHeroLocomotionComponent::ReleaseBindings()
 	CurrentRequest = 0;
 	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(LandingTimer); }
 	bJustLanded = false;
+	LandVelocity = FVector::ZeroVector;
 	Gait = EGait::Run;
 	CharacterInputState = FCharacterInputState();
 }
@@ -161,9 +162,10 @@ float UIMGHeroLocomotionComponent::GetDirectionScale(const FVector& Scales, floa
 
 void UIMGHeroLocomotionComponent::HandleLanded(const FHitResult&)
 {
-	if (GetBoundMovement() && IsLocomotionReady() && !GetIMGCharacter()->bClientUpdating)
+	if (const UIMGCharacterMovementComponent* Movement = GetBoundMovement(); Movement && IsLocomotionReady() && !GetIMGCharacter()->bClientUpdating)
 	{
 		bJustLanded = true;
+		LandVelocity = Movement->Velocity;
 		GetWorld()->GetTimerManager().SetTimer(LandingTimer, this, &ThisClass::ClearLandingBraking, 0.3f, false);
 	}
 }
