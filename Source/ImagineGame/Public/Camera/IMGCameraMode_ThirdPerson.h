@@ -99,7 +99,7 @@ protected:
 
 	/** Final pose curve containing AfterIK - BeforeIK in world cm, including the pose's blend weight. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Pelvis Offset", meta = (EditCondition = "bEnablePelvisOffset"))
-	FName PelvisOffsetCurveName = TEXT("FootIK_PelvisDeltaZ");
+	FName PelvisOffsetCurveName = TEXT("LegIK_PelvisDeltaZ");
 
 	/** Bone represented by the curve. A missing bone disables sampling; its absolute height is not used. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Pelvis Offset", meta = (EditCondition = "bEnablePelvisOffset"))
