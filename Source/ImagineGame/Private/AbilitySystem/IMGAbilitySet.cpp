@@ -59,7 +59,7 @@ void FIMGAbilitySet_GrantedHandles::TakeFromAbilitySystem(UIMGAbilitySystemCompo
 	{
 		if (Set)
 		{
-			IMGASC->RemoveSpawnedAttribute(Set);
+			IMGASC->RemoveRuntimeAttributeSet(Set);
 		}
 	}
 
@@ -95,7 +95,7 @@ void UIMGAbilitySet::GiveToAbilitySystem(UIMGAbilitySystemComponent* IMGASC, FIM
 		}
 
 		UAttributeSet* NewSet = NewObject<UAttributeSet>(IMGASC->GetOwner(), SetToGrant.AttributeSet);
-		IMGASC->AddAttributeSetSubobject(NewSet);
+		IMGASC->AddRuntimeAttributeSet(NewSet);
 
 		if (OutGrantedHandles)
 		{

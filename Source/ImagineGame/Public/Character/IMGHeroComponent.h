@@ -200,6 +200,7 @@ protected:
 
 	/** Runtime-only state for movement intent shaping. */
 	FMovementIntentProcessor MovementIntentProcessor;
+	uint32 MovementIntentSerial = 0;
 };
 
 #undef UE_API

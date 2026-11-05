@@ -35,17 +35,15 @@ class IMAGINEGAME_API UIMGHeroLocomotionComponent : public UIMGLocomotionCompone
 	GENERATED_BODY()
 public:
 	UIMGHeroLocomotionComponent(const FObjectInitializer& ObjectInitializer);
-	virtual void Activate(bool bReset = false) override;
-	virtual void Deactivate() override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
-	FVector WalkSpeeds = FVector(165.f, 150.f, 130.f);
+	FVector WalkDirectionScale = FVector(1.f, 150.f / 165.f, 130.f / 165.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
-	FVector RunSpeeds = FVector(380.f, 350.f, 300.f);
+	FVector RunDirectionScale = FVector(1.f, 350.f / 380.f, 300.f / 380.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
-	FVector SprintSpeeds = FVector(585.f);
+	FVector SprintDirectionScale = FVector(1.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
-	FVector CrouchSpeeds = FVector(170.f, 160.f, 150.f);
+	FVector CrouchDirectionScale = FVector(1.f, 160.f / 170.f, 150.f / 170.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	TObjectPtr<UCurveFloat> StrafeSpeedMapCurve;
 
@@ -58,36 +56,26 @@ public:
 	float CalculateBrakingFriction() const;
 
 protected:
-	virtual bool UsesLocomotionSet() const override { return false; }
 	virtual void OnLocomotionReadyNative() override;
 	virtual void OnLocomotionUnavailableNative() override;
-	virtual void UpdateLocomotionPreCMC_Implementation(float DeltaTime) override;
+	virtual uint8 GetMovementRequest() const override { return CurrentRequest; }
+	virtual void ExtendMovementContext(FMovementSimulationContext& Context) const override;
+	virtual bool CalculateMovementParameters(uint8 Request, const FMovementSimulationContext& Context,
+		const FVector& Input, bool bReplay, FCharacterMovementParameters& OutParameters) override;
 
 private:
 	void ReleaseBindings();
 	void HandleIntentTagChanged(FGameplayTag Tag, int32 NewCount);
 	void RefreshRequestFromTags();
-	uint8 CaptureRequest();
-	void ApplyRequest(uint8 Request, const FVector& Input);
-	void WriteMovementParameters();
 	void ClearLandingBraking();
-	float DirectionalSpeed(const FVector& Speeds) const;
+	float GetDirectionMap(bool bControllerFacing) const;
+	float GetDirectionScale(const FVector& Scales, float Map) const;
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
 
 	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundASC;
-	TWeakObjectPtr<UIMGCharacterMovementComponent> BoundMovement;
 	TMap<FGameplayTag, FDelegateHandle> IntentTagHandles;
 	uint8 CurrentRequest = 0;
 	FTimerHandle LandingTimer;
-	float OriginalMaxAcceleration = 0.f;
-	float OriginalMaxWalkSpeed = 0.f;
-	float OriginalMaxCrouchSpeed = 0.f;
-	float OriginalGroundFriction = 0.f;
-	float OriginalBrakingDeceleration = 0.f;
-	FRotator OriginalRotationRate = FRotator::ZeroRotator;
-	bool bOriginalOrientToMovement = false;
-	bool bOriginalControllerDesiredRotation = false;
 	bool bJustLanded = false;
-	bool bLocomotionDisabled = false;
 };

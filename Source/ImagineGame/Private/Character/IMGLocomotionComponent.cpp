@@ -23,7 +23,7 @@ void UIMGLocomotionComponent::OnRegister()
 
 	if (!GetIMGCharacter())
 	{
-		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires an IMGCharacter owner."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMGLocomotion, Error, TEXT("%s: Requires an IMGCharacter owner."), *GetPathName());
 		return;
 	}
 
@@ -44,7 +44,8 @@ void UIMGLocomotionComponent::BeginPlay()
 	Super::BeginPlay();
 	if (IsMovementPrerequisiteReady() && GetIMGCharacter() && !GetIMGCharacterMovementComponent())
 	{
-		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires IMGCharacterMovementComponent."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMGLocomotion, Error, TEXT("%s: Requires IMGCharacterMovementComponent, found %s."),
+			*GetPathName(), *GetPathNameSafe(GetCharacterMovementComponent()));
 	}
 	RegisterForGameplayReady();
 }
@@ -62,12 +63,25 @@ bool UIMGLocomotionComponent::CanUpdateLocomotion() const
 
 bool UIMGLocomotionComponent::IsLocomotionReady() const
 {
-	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
-	return IsMovementPrerequisiteReady() && GetIMGCharacterMovementComponent()
-		&& PawnExtension && PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady)
-		&& IsValid(AbilitySystemComponent)
-		&& PawnExtension->GetIMGAbilitySystemComponent() == AbilitySystemComponent
-		&& AbilitySystemComponent->GetAvatarActor() == GetOwner();
+	const UIMGCharacterMovementComponent* Movement = GetBoundMovement();
+	return !bLocomotionDisabled && !bLocomotionRefreshPending && IsValid(LocomotionSet) && IsValid(AbilitySystemComponent)
+		&& Movement && Movement->IsMovementRequestProvider(this) && AbilitySystemComponent == GetReadyAbilitySystem();
+}
+
+void UIMGLocomotionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	if (bLocomotionRefreshPending)
+	{
+		RefreshLocomotionSet();
+	}
+	if (IsLocomotionReady())
+	{
+		Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	}
+	else if (!AttributeChangeHandles.IsEmpty() && !bLocomotionRefreshPending)
+	{
+		ClearLocomotionConnection(AbilitySystemComponent != GetReadyAbilitySystem());
+	}
 }
 
 AIMGCharacter* UIMGLocomotionComponent::GetIMGCharacter() const
@@ -86,6 +100,7 @@ void UIMGLocomotionComponent::RegisterForGameplayReady()
 	{
 		return;
 	}
+	SetComponentTickEnabled(false);
 
 	const AIMGCharacter* Character = GetIMGCharacter();
 	if (!Character)
@@ -96,19 +111,19 @@ void UIMGLocomotionComponent::RegisterForGameplayReady()
 	UIMGPawnExtensionComponent* PawnExtension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Character);
 	if (!PawnExtension)
 	{
-		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] requires PawnExtension."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMGLocomotion, Error, TEXT("%s: Requires PawnExtension."), *GetPathName());
 		return;
 	}
 
 	PawnExtensionComponent = PawnExtension;
 	GameplayReadyDelegate.BindDynamic(this, &ThisClass::HandleGameplayReady);
-	// Register last: the immediate callback can run Blueprint code that tears down this component.
 	if (!PawnExtension->RegisterAndCallForInitStateChange(
 		IMGGameplayTags::InitState_GameplayReady,
 		GameplayReadyDelegate,
 		true))
 	{
-		UE_LOG(LogIMG, Error, TEXT("LocomotionComponent on [%s] failed to subscribe to PawnExtension GameplayReady."), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMGLocomotion, Error, TEXT("%s: Failed to subscribe to GameplayReady on %s."),
+			*GetPathName(), *GetPathNameSafe(PawnExtension));
 		GameplayReadyDelegate.Unbind();
 		PawnExtensionComponent.Reset();
 	}
@@ -123,8 +138,15 @@ void UIMGLocomotionComponent::InitializeGameplayReadyConnections()
 		return;
 	}
 
+	if (!GetReadyAbilitySystem())
+	{
+		const UIMGAbilitySystemComponent* ASC = PawnExtension->GetIMGAbilitySystemComponent();
+		UE_LOG(LogIMGLocomotion, Log, TEXT("%s: Waiting for ASC avatar pairing. Role=%s ASC=%s Avatar=%s"),
+			*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(ASC),
+			*GetPathNameSafe(IsValid(ASC) ? ASC->GetAvatarActor() : nullptr));
+	}
+
 	PawnExtension->OnAbilitySystemUninitialized_Register(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemUninitialized));
-	// Register last: the immediate callback can run Blueprint code that tears down this component.
 	PawnExtension->OnAbilitySystemInitialized_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &ThisClass::HandleAbilitySystemInitialized));
 }
 
@@ -142,7 +164,7 @@ void UIMGLocomotionComponent::ClearConnections()
 
 	PawnExtensionComponent.Reset();
 	// Unavailable may re-enter lifecycle code; the old subscription state must already be cleared.
-	ClearAbilitySystemConnection();
+	ClearLocomotionConnection(true);
 }
 
 void UIMGLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedParams& Params)
@@ -153,7 +175,7 @@ void UIMGLocomotionComponent::HandleGameplayReady(const FActorInitStateChangedPa
 		&& Params.Implementer.Get() == PawnExtension
 		&& PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady))
 	{
-		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: PawnExtension GameplayReady. Owner=[%s]"), *GetNameSafe(GetOwner()));
+		UE_LOG(LogIMGLocomotion, Verbose, TEXT("%s: PawnExtension reached GameplayReady."), *GetPathName());
 		InitializeGameplayReadyConnections();
 	}
 }
@@ -165,134 +187,371 @@ void UIMGLocomotionComponent::HandleAbilitySystemInitialized()
 
 void UIMGLocomotionComponent::HandleAbilitySystemUninitialized()
 {
-	ClearAbilitySystemConnection();
+	ClearLocomotionConnection(true);
+}
+
+UIMGAbilitySystemComponent* UIMGLocomotionComponent::GetReadyAbilitySystem() const
+{
+	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
+	if (!IsMovementPrerequisiteReady() || !GetIMGCharacterMovementComponent() || !PawnExtension
+		|| !PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady))
+	{
+		return nullptr;
+	}
+	UIMGAbilitySystemComponent* ASC = PawnExtension->GetIMGAbilitySystemComponent();
+	return IsValid(ASC) && ASC->GetAvatarActor() == GetOwner() ? ASC : nullptr;
 }
 
 void UIMGLocomotionComponent::RefreshAbilitySystemConnection()
 {
-	if (bRefreshingConnections)
+	if (bRefreshingConnections || bLocomotionDisabled)
 	{
 		return;
 	}
 	TGuardValue<bool> RefreshGuard(bRefreshingConnections, true);
 
-	UIMGAbilitySystemComponent* CurrentASC = nullptr;
-	if (IsMovementPrerequisiteReady() && GetIMGCharacterMovementComponent())
+	if (AbilitySystemComponent != GetReadyAbilitySystem())
 	{
-		if (const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get())
+		ClearLocomotionConnection(true);
+		// Unavailable can change the ASC pairing or unregister this component.
+		if (!bLocomotionDisabled)
 		{
-			if (PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady))
+			AbilitySystemComponent = GetReadyAbilitySystem();
+			if (AbilitySystemComponent)
 			{
-				CurrentASC = PawnExtension->GetIMGAbilitySystemComponent();
-				if (!IsValid(CurrentASC) || CurrentASC->GetAvatarActor() != GetOwner())
+				AttributeSetsUpdatedHandle = AbilitySystemComponent->OnAttributeSetsUpdated().AddUObject(this, &ThisClass::HandleAttributeSetsUpdated);
+				if (!IsValid(AbilitySystemComponent->GetSet<UIMGLocomotionSet>()))
 				{
-					CurrentASC = nullptr;
+					if (GetOwnerRole() == ROLE_Authority)
+					{
+						UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Authority ASC %s has no LocomotionSet. Using native CMC movement until the Set is granted."),
+							*GetPathName(), *GetPathNameSafe(AbilitySystemComponent.Get()));
+					}
+					else
+					{
+						UE_LOG(LogIMGLocomotion, Log, TEXT("%s: Waiting for LocomotionSet replication. Role=%s ASC=%s"),
+							*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(AbilitySystemComponent.Get()));
+					}
 				}
 			}
 		}
 	}
+	HandleAttributeSetsUpdated();
+}
 
-	if (AbilitySystemComponent == CurrentASC)
-	{
-		RefreshLocomotionSet();
-		return;
-	}
-
-	ClearAbilitySystemConnection();
-	// Unavailable can remove this component or replace the ASC/Set from Blueprint.
-	const UIMGPawnExtensionComponent* PawnExtension = PawnExtensionComponent.Get();
-	if (!IsMovementPrerequisiteReady() || !GetIMGCharacterMovementComponent() || !PawnExtension
-		|| !PawnExtension->HasReachedInitState(IMGGameplayTags::InitState_GameplayReady)
-		|| !IsValid(CurrentASC)
-		|| PawnExtension->GetIMGAbilitySystemComponent() != CurrentASC
-		|| CurrentASC->GetAvatarActor() != GetOwner())
+void UIMGLocomotionComponent::HandleAttributeSetsUpdated()
+{
+	if (bLocomotionDisabled || !IsValid(AbilitySystemComponent) || AbilitySystemComponent != GetReadyAbilitySystem())
 	{
 		return;
 	}
-
-	AbilitySystemComponent = CurrentASC;
-	RefreshLocomotionSet();
-
-	if (LocomotionSet)
+	const UIMGLocomotionSet* CurrentSet = AbilitySystemComponent->GetSet<UIMGLocomotionSet>();
+	if (!IsValid(CurrentSet))
 	{
-		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Ready. Owner=[%s] ASC=[%s] Set=[%s]"),
-			*GetNameSafe(GetOwner()), *GetNameSafe(AbilitySystemComponent), *GetNameSafe(LocomotionSet));
+		CurrentSet = nullptr;
 	}
-	else if (UsesLocomotionSet())
+	if (LocomotionSet != CurrentSet)
 	{
-		UE_LOG(LogIMG, Warning,
-			TEXT("Locomotion lifecycle: Ready without LocomotionSet. Attribute notifications are disabled and later dynamic Set changes are not observed. Owner=[%s] ASC=[%s]"),
-			*GetNameSafe(GetOwner()), *GetNameSafe(AbilitySystemComponent));
-	}
-	OnLocomotionReadyNative();
-	if (IsLocomotionReady())
-	{
-		OnLocomotionReady();
+		UE_CLOG(!bLocomotionRefreshPending, LogIMGLocomotion, Verbose, TEXT("%s: Queued LocomotionSet change. Previous=%s Current=%s"),
+			*GetPathName(), *GetPathNameSafe(LocomotionSet.Get()), *GetPathNameSafe(CurrentSet));
+		bLocomotionRefreshPending = true;
+		// Keep the frozen parameters through the end of a physics step.
+		if (const UIMGCharacterMovementComponent* Movement = GetBoundMovement(); Movement && Movement->IsMovementInProgress())
+		{
+			GetIMGCharacter()->OnCharacterMovementUpdated.AddUniqueDynamic(this, &ThisClass::HandleMovementUpdated);
+		}
+		else
+		{
+			ReleaseMovementConnection();
+		}
+		// Run lifecycle callbacks after grants and replication settle.
+		SetComponentTickEnabled(true);
 	}
 }
 
-void UIMGLocomotionComponent::ClearAbilitySystemConnection()
+void UIMGLocomotionComponent::HandleMovementUpdated(float, FVector, FVector)
 {
-	const bool bWasReady = AbilitySystemComponent != nullptr;
-	UnbindLocomotionSet();
-	AbilitySystemComponent = nullptr;
-	if (bWasReady)
+	if (const UIMGCharacterMovementComponent* Movement = GetBoundMovement(); bLocomotionRefreshPending && Movement && !Movement->IsMovementInProgress())
 	{
-		UE_LOG(LogIMG, Log, TEXT("Locomotion lifecycle: Unavailable. Owner=[%s]"), *GetNameSafe(GetOwner()));
-		OnLocomotionUnavailableNative();
-		OnLocomotionUnavailable();
+		ReleaseMovementConnection();
 	}
 }
 
 void UIMGLocomotionComponent::RefreshLocomotionSet()
 {
-	const UIMGLocomotionSet* CurrentSet = nullptr;
-	if (UsesLocomotionSet() && IsLocomotionReady())
-	{
-		CurrentSet = AbilitySystemComponent->GetSet<UIMGLocomotionSet>();
-	}
-
-	if (LocomotionSet == CurrentSet)
+	ClearLocomotionConnection(AbilitySystemComponent != GetReadyAbilitySystem());
+	if (bLocomotionDisabled || !IsValid(AbilitySystemComponent) || AbilitySystemComponent != GetReadyAbilitySystem())
 	{
 		return;
 	}
 
-	UnbindLocomotionSet();
-	if (!IsValid(CurrentSet) || !IsLocomotionReady()
-		|| AbilitySystemComponent->GetSet<UIMGLocomotionSet>() != CurrentSet)
+	const UIMGLocomotionSet* CurrentSet = AbilitySystemComponent->GetSet<UIMGLocomotionSet>();
+	if (!IsValid(CurrentSet))
 	{
+		UE_LOG(LogIMGLocomotion, Log, TEXT("%s: LocomotionSet is unavailable after a Set change. Using native CMC movement. Role=%s ASC=%s"),
+			*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(AbilitySystemComponent.Get()));
 		return;
 	}
 
 	LocomotionSet = CurrentSet;
+	InitializeMovementConnection();
+	if (!BoundMovement.IsValid())
+	{
+		return;
+	}
+	InitializeMovementContext();
+
 	TArray<FGameplayAttribute> BoundAttributes;
-	UAttributeSet::GetAttributesFromSetClass(CurrentSet->GetClass(), BoundAttributes);
+	UAttributeSet::GetAttributesFromSetClass(UIMGLocomotionSet::StaticClass(), BoundAttributes);
 
 	for (const FGameplayAttribute& Attribute : BoundAttributes)
 	{
 		AttributeChangeHandles.Add(Attribute,
 			AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Attribute).AddUObject(this, &ThisClass::HandleAttributeChanged));
 	}
+	bLocomotionRefreshPending = false;
+	SetComponentTickEnabled(true);
+	OnLocomotionReadyNative();
+	if (IsLocomotionReady())
+	{
+		bLocomotionReadyNotified = true;
+		UE_LOG(LogIMGLocomotion, Log, TEXT("%s: Ready. Role=%s ASC=%s Set=%s Walk=%g Run=%g Sprint=%g Crouch=%g"),
+			*GetPathName(), *UEnum::GetValueAsString(GetOwnerRole()), *GetPathNameSafe(AbilitySystemComponent.Get()), *GetPathNameSafe(LocomotionSet.Get()),
+			LocomotionSet->GetWalkSpeed(), LocomotionSet->GetRunSpeed(), LocomotionSet->GetSprintSpeed(), LocomotionSet->GetCrouchSpeed());
+		OnLocomotionReady();
+	}
 }
 
-void UIMGLocomotionComponent::UnbindLocomotionSet()
+void UIMGLocomotionComponent::ClearLocomotionConnection(bool bReleaseAbilitySystem)
 {
+	const bool bHadBindings = !AttributeChangeHandles.IsEmpty();
+	const bool bWasReady = bLocomotionReadyNotified;
+	UE_CLOG(bHadBindings, LogIMGLocomotion, Verbose, TEXT("%s: Releasing bindings. ASC=%s Set=%s DetachASC=%d Disabled=%d"),
+		*GetPathName(), *GetPathNameSafe(AbilitySystemComponent.Get()), *GetPathNameSafe(LocomotionSet.Get()), bReleaseAbilitySystem, bLocomotionDisabled);
+	bLocomotionReadyNotified = false;
+	bLocomotionRefreshPending = false;
+	bWarnedInvalidMovementContext = false;
+	bWarnedInvalidMovementParameters = false;
+	SetComponentTickEnabled(false);
+	ReleaseMovementConnection();
+
 	if (IsValid(AbilitySystemComponent))
 	{
 		for (const TPair<FGameplayAttribute, FDelegateHandle>& Binding : AttributeChangeHandles)
 		{
 			AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Binding.Key).Remove(Binding.Value);
 		}
+		if (bReleaseAbilitySystem)
+		{
+			AbilitySystemComponent->OnAttributeSetsUpdated().Remove(AttributeSetsUpdatedHandle);
+		}
 	}
 
 	AttributeChangeHandles.Reset();
 	LocomotionSet = nullptr;
+	PendingMovementContext = FMovementSimulationContext();
+	if (bReleaseAbilitySystem)
+	{
+		AttributeSetsUpdatedHandle.Reset();
+		AbilitySystemComponent = nullptr;
+	}
+	if (bHadBindings)
+	{
+		OnLocomotionUnavailableNative();
+	}
+	if (bWasReady)
+	{
+		OnLocomotionUnavailable();
+	}
 }
 
 void UIMGLocomotionComponent::HandleAttributeChanged(const FOnAttributeChangeData& ChangeData)
 {
-	if (IsLocomotionReady())
+	if (IsLocomotionReady() && AbilitySystemComponent->GetSet<UIMGLocomotionSet>() == LocomotionSet)
 	{
-		OnLocomotionAttributeChanged(ChangeData.Attribute, ChangeData.OldValue, ChangeData.NewValue);
+		const bool bLocalPrediction = AbilitySystemComponent->GetPredictionKeyForNewAction().IsValidForMorePrediction();
+		const bool bPreserveAuthorityInputs = GetOwner()->GetLocalRole() == ROLE_AutonomousProxy && !bLocalPrediction;
+		const FGameplayAttribute& Attribute = ChangeData.Attribute;
+		int32 Index = INDEX_NONE;
+		if (Attribute == UIMGLocomotionSet::GetWalkSpeedAttribute()) { Index = WalkSpeedParameter; }
+		else if (Attribute == UIMGLocomotionSet::GetRunSpeedAttribute()) { Index = RunSpeedParameter; }
+		else if (Attribute == UIMGLocomotionSet::GetSprintSpeedAttribute()) { Index = SprintSpeedParameter; }
+		else if (Attribute == UIMGLocomotionSet::GetCrouchSpeedAttribute()) { Index = CrouchSpeedParameter; }
+		if (PendingMovementContext.Parameters.IsValidIndex(Index))
+		{
+			const float CurrentValue = Attribute.GetNumericValue(LocomotionSet.Get());
+			PendingMovementContext.Parameters[Index] = FMath::IsFinite(CurrentValue) ? FMath::Max(0.f, CurrentValue) : 0.f;
+			AdvanceMovementContextRevision();
+			// Replicated GAS values can lag a CMC response; only a fresh local prediction supersedes that authority input.
+			if (!bPreserveAuthorityInputs) { PendingMovementContext.ParameterRevisions[Index] = PendingMovementContext.Revision; }
+			OnLocomotionAttributeChanged(Attribute, ChangeData.OldValue, CurrentValue);
+		}
 	}
+}
+
+void UIMGLocomotionComponent::InitializeMovementContext()
+{
+	PendingMovementContext.Parameters = {
+		LocomotionSet->GetWalkSpeed(), LocomotionSet->GetRunSpeed(), LocomotionSet->GetSprintSpeed(), LocomotionSet->GetCrouchSpeed()
+	};
+	AdvanceMovementContextRevision();
+	PendingMovementContext.ParameterRevisions.Init(PendingMovementContext.Revision, LocomotionParameterCount);
+}
+
+void UIMGLocomotionComponent::AdvanceMovementContextRevision()
+{
+	if (++MovementContextRevision == 0) { ++MovementContextRevision; }
+	PendingMovementContext.Revision = MovementContextRevision;
+}
+
+void UIMGLocomotionComponent::InitializeMovementConnection()
+{
+	UIMGCharacterMovementComponent* Movement = GetIMGCharacterMovementComponent();
+	const FCharacterMovementParameters PreviousParameters = FCharacterMovementParameters::Capture(*Movement);
+	if (!Movement->RegisterMovementRequestProvider(this,
+		FMovementRequestCapture::CreateUObject(this, &ThisClass::CaptureMovementRequest),
+		FMovementRequestApply::CreateUObject(this, &ThisClass::ApplyMovementRequest)))
+	{
+		return;
+	}
+	OriginalMovementParameters = PreviousParameters;
+	BoundMovement = Movement;
+}
+
+void UIMGLocomotionComponent::ReleaseMovementConnection()
+{
+	if (AIMGCharacter* Character = GetIMGCharacter(); IsValid(Character))
+	{
+		Character->OnCharacterMovementUpdated.RemoveDynamic(this, &ThisClass::HandleMovementUpdated);
+	}
+	if (UIMGCharacterMovementComponent* Movement = BoundMovement.Get(); Movement &&
+		(Movement->IsMovementRequestProvider(this) || !Movement->HasMovementRequestProvider()))
+	{
+		Movement->UnregisterMovementRequestProvider(this);
+		OriginalMovementParameters.Apply(*Movement);
+	}
+	BoundMovement.Reset();
+}
+
+void UIMGLocomotionComponent::Activate(bool bReset)
+{
+	bLocomotionDisabled = false;
+	Super::Activate(bReset);
+	if (!bLocomotionDisabled)
+	{
+		RefreshAbilitySystemConnection();
+		SetComponentTickEnabled(bLocomotionRefreshPending || IsLocomotionReady());
+	}
+}
+
+void UIMGLocomotionComponent::Deactivate()
+{
+	bLocomotionDisabled = true;
+	ClearLocomotionConnection(true);
+	if (bLocomotionDisabled)
+	{
+		Super::Deactivate();
+	}
+}
+
+bool UIMGLocomotionComponent::CaptureMovementRequest(uint8& OutRequest, FMovementSimulationContext& OutContext)
+{
+	if (!IsLocomotionReady()) { return false; }
+	FMovementSimulationContext Candidate = PendingMovementContext;
+	ExtendMovementContext(Candidate);
+	if (!Candidate.HasSameParameters(PendingMovementContext))
+	{
+		AdvanceMovementContextRevision();
+		Candidate.ParameterRevisions.SetNumZeroed(Candidate.Parameters.Num());
+		for (int32 Index = 0; Index < Candidate.Parameters.Num(); ++Index)
+		{
+			if (!PendingMovementContext.Parameters.IsValidIndex(Index)
+				|| Candidate.Parameters[Index] != PendingMovementContext.Parameters[Index])
+			{
+				Candidate.ParameterRevisions[Index] = PendingMovementContext.Revision;
+			}
+		}
+		PendingMovementContext.Parameters = MoveTemp(Candidate.Parameters);
+		PendingMovementContext.ParameterRevisions = MoveTemp(Candidate.ParameterRevisions);
+	}
+	OutRequest = GetMovementRequest();
+	OutContext = PendingMovementContext;
+	const bool bContextValid = OutContext.IsValid();
+	if (!bContextValid && !bWarnedInvalidMovementContext)
+	{
+		bWarnedInvalidMovementContext = true;
+		const int32 InvalidValueIndex = OutContext.Parameters.IndexOfByPredicate([](float Value)
+		{
+			return !FMath::IsFinite(Value) || Value < 0.f;
+		});
+		UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Rejected captured movement context. Revision=%u Values=%d ValueRevisions=%d InvalidValueIndex=%d InvalidValue=%g"),
+			*GetPathName(), OutContext.Revision, OutContext.Parameters.Num(), OutContext.ParameterRevisions.Num(), InvalidValueIndex,
+			InvalidValueIndex != INDEX_NONE ? OutContext.Parameters[InvalidValueIndex] : 0.f);
+	}
+	return bContextValid;
+}
+
+bool UIMGLocomotionComponent::ApplyMovementRequest(uint8 Request, const FMovementSimulationContext& Context,
+	const FVector& Input, bool bReplay)
+{
+	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	if (!Movement || !IsLocomotionReady() || !Context.IsValid()
+		|| Movement->IsRagdollMovementMode() || Movement->IsRagdollRecovering()) { return false; }
+	FCharacterMovementParameters Parameters = OriginalMovementParameters;
+	const bool bCalculated = CalculateMovementParameters(Request, Context, Input, bReplay, Parameters);
+	if (!bCalculated || !Parameters.IsValid())
+	{
+		if (!bWarnedInvalidMovementParameters)
+		{
+			bWarnedInvalidMovementParameters = true;
+			if (bCalculated)
+			{
+				UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Invalid movement parameters. Revision=%u Request=%u Replay=%d Walk=%g Crouch=%g Acceleration=%g GroundFriction=%g BrakingDeceleration=%g RotationRate=%s"),
+					*GetPathName(), Context.Revision, static_cast<uint32>(Request), bReplay, Parameters.MaxWalkSpeed, Parameters.MaxWalkSpeedCrouched,
+					Parameters.MaxAcceleration, Parameters.GroundFriction, Parameters.BrakingDecelerationWalking, *Parameters.RotationRate.ToCompactString());
+			}
+			else
+			{
+				UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: Movement rules rejected the context. Revision=%u Values=%d Request=%u Replay=%d"),
+					*GetPathName(), Context.Revision, Context.Parameters.Num(), static_cast<uint32>(Request), bReplay);
+			}
+		}
+		return false;
+	}
+	if (BoundMovement.Get() != Movement || !IsLocomotionReady()) { return false; }
+	Parameters.Apply(*Movement);
+	return true;
+}
+
+bool UIMGLocomotionComponent::CalculateMovementParameters(uint8 Request, const FMovementSimulationContext& Context,
+	const FVector& Input, bool bReplay, FCharacterMovementParameters& OutParameters)
+{
+	if (Context.Parameters.Num() < LocomotionParameterCount) { return false; }
+	OutParameters.MaxWalkSpeed = Context.Parameters[RunSpeedParameter];
+	OutParameters.MaxWalkSpeedCrouched = Context.Parameters[CrouchSpeedParameter];
+	OutParameters.MaxAcceleration = BaseMaxAcceleration;
+	OutParameters.BrakingDecelerationWalking = BaseBrakingDecelerationWalking;
+	OutParameters.GroundFriction = BaseGroundFriction;
+	return true;
+}
+
+void UIMGLocomotionComponent::UpdateLocomotionPreCMC_Implementation(float DeltaTime)
+{
+	uint8 Request = 0;
+	FMovementSimulationContext Context;
+	if (CaptureMovementRequest(Request, Context))
+	{
+		if (const UIMGCharacterMovementComponent* Movement = GetBoundMovement(); Movement && IsLocomotionReady())
+		{
+			const AIMGCharacter* Character = GetIMGCharacter();
+			const FVector Input = Character->IsLocallyControlled() ? Character->GetPendingMovementInputVector()
+				: Movement->GetCurrentAcceleration();
+			ApplyMovementRequest(Request, Context, Input, false);
+		}
+	}
+}
+
+UIMGCharacterMovementComponent* UIMGLocomotionComponent::GetBoundMovement() const
+{
+	return BoundMovement.Get();
 }

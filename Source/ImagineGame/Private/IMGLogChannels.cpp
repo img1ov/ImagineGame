@@ -4,6 +4,7 @@
 DEFINE_LOG_CATEGORY(LogIMG);
 DEFINE_LOG_CATEGORY(LogIMGExperience);
 DEFINE_LOG_CATEGORY(LogIMGAbilitySystem);
+DEFINE_LOG_CATEGORY(LogIMGLocomotion);
 DEFINE_LOG_CATEGORY(LogIMGTeams);
 
 FString GetClientServerContextString(UObject* ContextObject)

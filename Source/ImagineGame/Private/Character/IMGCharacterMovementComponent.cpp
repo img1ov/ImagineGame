@@ -19,8 +19,14 @@ DEFINE_LOG_CATEGORY_STATIC(LogIMGMovementNet, Log, All);
 namespace IMGCharacter
 {
 static TAutoConsoleVariable<int32> CVarMovementNetDiagnostics(TEXT("IMG.Movement.NetDiagnostics"), 0,
-	TEXT("0: Off. 1: Packed client corrections. 2: Also log actual velocity simulation inputs/outcomes by move timestamp."),
+	TEXT("0: Off. 1: Packed corrections, movement context differences and owner mesh offsets. 2: Also log velocity simulation inputs and outcomes."),
 	ECVF_Default);
+static TAutoConsoleVariable<bool> CVarAutonomousMeshSmoothing(TEXT("IMG.Movement.AutonomousMeshSmoothing"), true,
+	TEXT("Smooth small post-replay corrections on the owning client's character mesh."), ECVF_Default);
+
+constexpr double AutonomousMeshSmoothingMaxDistance = 40.0;
+constexpr double AutonomousMeshSmoothingTimeConstant = 0.05;
+constexpr double AutonomousMeshSmoothingTolerance = 0.1;
 
 static uint8 QuantizeInputMagnitude(const FVector& InputAcceleration, float MaxAcceleration)
 {
@@ -40,14 +46,9 @@ public:
 	bool bSavedHasMovementRequest = false;
 	uint8 SavedMovementRequest = 0;
 	uint32 SavedMovementRequestGeneration = 0;
-	FRotator SavedRotationRate = FRotator::ZeroRotator;
-	bool bSavedOrientRotationToMovement = false;
-	bool bSavedUseControllerDesiredRotation = false;
-	float SavedMaxAcceleration = 0.f;
-	float SavedMaxWalkSpeed = 0.f;
-	float SavedMaxWalkSpeedCrouched = 0.f;
-	float SavedGroundFriction = 0.f;
-	float SavedBrakingDecelerationWalking = 0.f;
+	FMovementSimulationContext SavedMovementContext;
+	FCharacterMovementParameters SavedMovementParameters;
+	uint32 SavedMovementParameterHash = 0;
 	float SavedBrakingFriction = 0.f;
 	float SavedBrakingFrictionFactor = 0.f;
 	bool bSavedUseSeparateBrakingFriction = false;
@@ -61,14 +62,9 @@ public:
 		bSavedHasMovementRequest = false;
 		SavedMovementRequest = 0;
 		SavedMovementRequestGeneration = 0;
-		SavedRotationRate = FRotator::ZeroRotator;
-		bSavedOrientRotationToMovement = false;
-		bSavedUseControllerDesiredRotation = false;
-		SavedMaxAcceleration = 0.f;
-		SavedMaxWalkSpeed = 0.f;
-		SavedMaxWalkSpeedCrouched = 0.f;
-		SavedGroundFriction = 0.f;
-		SavedBrakingDecelerationWalking = 0.f;
+		SavedMovementContext = FMovementSimulationContext();
+		SavedMovementParameters = FCharacterMovementParameters();
+		SavedMovementParameterHash = 0;
 		SavedBrakingFriction = 0.f;
 		SavedBrakingFrictionFactor = 0.f;
 		bSavedUseSeparateBrakingFriction = false;
@@ -88,16 +84,11 @@ public:
 		return bSavedHasMovementRequest == OtherMove->bSavedHasMovementRequest
 			&& SavedMovementRequest == OtherMove->SavedMovementRequest
 			&& SavedMovementRequestGeneration == OtherMove->SavedMovementRequestGeneration
-			&& (!bSavedHasMovementRequest || (SavedRotationRate == OtherMove->SavedRotationRate
-				&& bSavedOrientRotationToMovement == OtherMove->bSavedOrientRotationToMovement
-				&& bSavedUseControllerDesiredRotation == OtherMove->bSavedUseControllerDesiredRotation))
+			&& SavedMovementContext.Revision == OtherMove->SavedMovementContext.Revision
+			&& SavedMovementContext.HasSameParameters(OtherMove->SavedMovementContext)
 			&& SavedRagdollInput.Session == 0 && OtherMove->SavedRagdollInput.Session == 0
 			&& SavedStance == OtherMove->SavedStance && SavedInputMagnitude == OtherMove->SavedInputMagnitude
-			&& SavedMaxAcceleration == OtherMove->SavedMaxAcceleration
-			&& SavedMaxWalkSpeed == OtherMove->SavedMaxWalkSpeed
-			&& SavedMaxWalkSpeedCrouched == OtherMove->SavedMaxWalkSpeedCrouched
-			&& SavedGroundFriction == OtherMove->SavedGroundFriction
-			&& SavedBrakingDecelerationWalking == OtherMove->SavedBrakingDecelerationWalking
+			&& SavedMovementParameters.Equals(OtherMove->SavedMovementParameters, bSavedHasMovementRequest)
 			&& SavedBrakingFriction == OtherMove->SavedBrakingFriction
 			&& SavedBrakingFrictionFactor == OtherMove->SavedBrakingFrictionFactor
 			&& bSavedUseSeparateBrakingFriction == OtherMove->bSavedUseSeparateBrakingFriction
@@ -109,6 +100,9 @@ public:
 		return !LastAckedMove.IsValid()
 			|| bSavedHasMovementRequest != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->bSavedHasMovementRequest
 			|| SavedMovementRequest != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementRequest
+			|| SavedMovementRequestGeneration != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementRequestGeneration
+			|| SavedMovementContext.Revision != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementContext.Revision
+			|| !SavedMovementContext.HasSameParameters(static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementContext)
 			|| SavedInputMagnitude != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedInputMagnitude
 			|| FSavedMove_Character::IsImportantMove(LastAckedMove);
 	}
@@ -122,14 +116,15 @@ public:
 		bSavedHasMovementRequest = Movement->bHasMovementRequest && Movement->HasMovementRequestProvider();
 		SavedMovementRequest = bSavedHasMovementRequest ? Movement->MovementRequest : 0;
 		SavedMovementRequestGeneration = Movement->MovementRequestGeneration;
-		SavedRotationRate = Movement->RotationRate;
-		bSavedOrientRotationToMovement = Movement->bOrientRotationToMovement;
-		bSavedUseControllerDesiredRotation = Movement->bUseControllerDesiredRotation;
-		SavedMaxAcceleration = Movement->MaxAcceleration;
-		SavedMaxWalkSpeed = Movement->MaxWalkSpeed;
-		SavedMaxWalkSpeedCrouched = Movement->MaxWalkSpeedCrouched;
-		SavedGroundFriction = Movement->GroundFriction;
-		SavedBrakingDecelerationWalking = Movement->BrakingDecelerationWalking;
+		SavedMovementContext = bSavedHasMovementRequest ? Movement->MovementContext : FMovementSimulationContext();
+		if (bSavedHasMovementRequest)
+		{
+			// Use the same rounded direction and input strength as the packed move, before any rewind.
+			Movement->MovementRequestInput = Acceleration;
+			Movement->MovementInputMagnitude = SavedInputMagnitude;
+			Movement->bHasMovementRequestInput = true;
+		}
+		SavedMovementParameters = FCharacterMovementParameters::Capture(*Movement);
 		SavedBrakingFriction = Movement->BrakingFriction;
 		SavedBrakingFrictionFactor = Movement->BrakingFrictionFactor;
 		bSavedUseSeparateBrakingFriction = Movement->bUseSeparateBrakingFriction;
@@ -146,26 +141,26 @@ public:
 		Movement->bHasMovementRequest = Movement->HasMovementRequestProvider()
 			&& bSavedHasMovementRequest && SavedMovementRequestGeneration == Movement->MovementRequestGeneration;
 		Movement->MovementRequest = Movement->bHasMovementRequest ? SavedMovementRequest : 0;
+		Movement->MovementContext = Movement->bHasMovementRequest ? SavedMovementContext : FMovementSimulationContext();
+		Movement->ResolveMovementContext(Movement->MovementContext);
 		// An unloaded provider's old moves must not undo its parameter cleanup.
 		if (!bSavedHasMovementRequest || Movement->bHasMovementRequest)
 		{
-			Movement->MaxAcceleration = SavedMaxAcceleration;
-			Movement->MaxWalkSpeed = SavedMaxWalkSpeed;
-			Movement->MaxWalkSpeedCrouched = SavedMaxWalkSpeedCrouched;
-			Movement->GroundFriction = SavedGroundFriction;
-			Movement->BrakingDecelerationWalking = SavedBrakingDecelerationWalking;
-		}
-		if (Movement->bHasMovementRequest)
-		{
-			Movement->RotationRate = SavedRotationRate;
-			Movement->bOrientRotationToMovement = bSavedOrientRotationToMovement;
-			Movement->bUseControllerDesiredRotation = bSavedUseControllerDesiredRotation;
+			SavedMovementParameters.Apply(*Movement, Movement->bHasMovementRequest);
 		}
 		Movement->BrakingFriction = SavedBrakingFriction;
 		Movement->BrakingFrictionFactor = SavedBrakingFrictionFactor;
 		Movement->bUseSeparateBrakingFriction = bSavedUseSeparateBrakingFriction;
 		Movement->SetDesiredStanceFromMove(SavedStance);
 		Movement->RagdollMode.Input = SavedRagdollInput;
+	}
+
+	virtual void PostUpdate(ACharacter* Character, EPostUpdateMode PostUpdateMode) override
+	{
+		FSavedMove_Character::PostUpdate(Character, PostUpdateMode);
+		const UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
+		SavedMovementParameterHash = Movement->bMovementContextApplied && bSavedHasMovementRequest
+			&& SavedMovementRequestGeneration == Movement->MovementRequestGeneration ? Movement->MovementParameterHash : 0;
 	}
 };
 
@@ -175,6 +170,10 @@ void FIMGCharacterNetworkMoveData::ClientFillNetworkMoveData(const FSavedMove_Ch
 	InputMagnitude = static_cast<const FSavedMove_IMG&>(ClientMove).SavedInputMagnitude;
 	bHasMovementRequest = static_cast<const FSavedMove_IMG&>(ClientMove).bSavedHasMovementRequest;
 	MovementRequest = static_cast<const FSavedMove_IMG&>(ClientMove).SavedMovementRequest;
+	MovementContextRevision = static_cast<const FSavedMove_IMG&>(ClientMove).SavedMovementContext.Revision;
+	MovementContextGeneration = static_cast<const FSavedMove_IMG&>(ClientMove).SavedMovementRequestGeneration;
+	MovementContextHash = static_cast<const FSavedMove_IMG&>(ClientMove).SavedMovementContext.GetParameterHash();
+	MovementParameterHash = static_cast<const FSavedMove_IMG&>(ClientMove).SavedMovementParameterHash;
 	RagdollInput = static_cast<const FSavedMove_IMG&>(ClientMove).SavedRagdollInput;
 }
 
@@ -183,8 +182,20 @@ bool FIMGCharacterNetworkMoveData::Serialize(UCharacterMovementComponent& Charac
 	const bool bBaseSuccess = FCharacterNetworkMoveData::Serialize(CharacterMovement, Ar, PackageMap, MoveType);
 	Ar << InputMagnitude;
 	Ar.SerializeBits(&bHasMovementRequest, 1);
-	if (bHasMovementRequest) { Ar << MovementRequest; }
-	else if (Ar.IsLoading()) { MovementRequest = 0; }
+	if (bHasMovementRequest)
+	{
+		Ar << MovementRequest;
+		Ar.SerializeIntPacked(MovementContextRevision);
+		Ar.SerializeIntPacked(MovementContextGeneration);
+		Ar << MovementContextHash;
+		Ar << MovementParameterHash;
+		if (MovementContextRevision == 0 || MovementContextGeneration == 0) { Ar.SetError(); }
+	}
+	else if (Ar.IsLoading())
+	{
+		MovementRequest = 0;
+		MovementContextRevision = MovementContextGeneration = MovementContextHash = MovementParameterHash = 0;
+	}
 	bool bSuccess = true;
 	RagdollInput.NetSerialize(Ar, PackageMap, bSuccess);
 	return bBaseSuccess && bSuccess && !Ar.IsError();
@@ -201,6 +212,10 @@ void FIMGCharacterMoveResponseDataContainer::ServerFillResponseData(const UChara
 {
 	FCharacterMoveResponseDataContainer::ServerFillResponseData(CharacterMovement, PendingAdjustment);
 	const UIMGCharacterMovementComponent& Movement = *CastChecked<const UIMGCharacterMovementComponent>(&CharacterMovement);
+	bHasMovementContext = Movement.MovementAdjustmentTimeStamp == PendingAdjustment.TimeStamp
+		&& Movement.MovementAdjustmentGeneration != 0 && Movement.MovementAdjustmentContext.IsValid();
+	MovementContext = bHasMovementContext ? Movement.MovementAdjustmentContext : FMovementSimulationContext();
+	MovementContextGeneration = bHasMovementContext ? Movement.MovementAdjustmentGeneration : 0;
 	RagdollState = Movement.GetRagdollMovementState();
 	bHasRagdollState = RagdollState.Revision != 0;
 	bRagdollPlacementReflected = bHasRagdollState && RagdollState.bHasRecovery
@@ -225,6 +240,17 @@ void FIMGCharacterMoveResponseDataContainer::ServerFillResponseData(const UChara
 bool FIMGCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
 {
 	const bool bBaseSuccess = FCharacterMoveResponseDataContainer::Serialize(CharacterMovement, Ar, PackageMap);
+	Ar.SerializeBits(&bHasMovementContext, 1);
+	if (bHasMovementContext)
+	{
+		Ar.SerializeIntPacked(MovementContextGeneration);
+		if (!MovementContext.Serialize(Ar) || MovementContextGeneration == 0) { Ar.SetError(); }
+	}
+	else if (Ar.IsLoading())
+	{
+		MovementContextGeneration = 0;
+		MovementContext = FMovementSimulationContext();
+	}
 	Ar.SerializeBits(&bHasRagdollState, 1);
 	bool bSuccess = true;
 	if (bHasRagdollState)
@@ -266,35 +292,60 @@ UIMGCharacterMovementComponent::UIMGCharacterMovementComponent(const FObjectInit
 bool UIMGCharacterMovementComponent::RegisterMovementRequestProvider(UObject* Source, FMovementRequestCapture Capture,
 	FMovementRequestApply Apply)
 {
-	if (!IsValid(Source) || (MovementRequestSource.IsValid() && MovementRequestSource.Get() != Source)
-		|| Capture.GetUObject() != Source || Apply.GetUObject() != Source)
+	if (!IsValid(Source) || Capture.GetUObject() != Source || Apply.GetUObject() != Source)
 	{
+		UE_LOG(LogIMGMovementNet, Error, TEXT("%s: Invalid movement request provider. Source=%s CaptureOwner=%s ApplyOwner=%s"),
+			*GetPathName(), *GetPathNameSafe(Source), *GetPathNameSafe(Capture.GetUObject()), *GetPathNameSafe(Apply.GetUObject()));
+		return false;
+	}
+	if (MovementRequestSource.IsValid() && MovementRequestSource.Get() != Source)
+	{
+		UE_LOG(LogIMGMovementNet, Error, TEXT("%s: Cannot register movement request provider %s because %s already owns the slot."),
+			*GetPathName(), *GetPathNameSafe(Source), *GetPathNameSafe(MovementRequestSource.Get()));
 		return false;
 	}
 	if (IsMovementRequestProvider(Source)) { return true; }
 	if (CharacterOwner && (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy || CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy)
 		&& !ShouldUsePackedMovementRPCs())
 	{
-		UE_LOG(LogIMGMovementNet, Error, TEXT("Movement request provider on %s requires packed movement RPCs."), *GetNameSafe(CharacterOwner.Get()));
+		UE_LOG(LogIMGMovementNet, Error, TEXT("%s: Movement request provider %s requires Packed Movement RPCs (p.NetUsePackedMovementRPCs)."),
+			*GetPathName(), *GetPathNameSafe(Source));
 		return false;
 	}
-	++MovementRequestGeneration;
+	ResetMovementRequestHistory();
 	MovementRequestSource = Source;
 	CaptureMovementRequest = MoveTemp(Capture);
 	ApplyMovementRequestDelegate = MoveTemp(Apply);
-	bHasMovementRequest = false;
 	return true;
 }
 
 void UIMGCharacterMovementComponent::UnregisterMovementRequestProvider(const UObject* Source)
 {
 	if (MovementRequestSource.IsValid() && MovementRequestSource.Get() != Source) { return; }
-	++MovementRequestGeneration;
+	ResetMovementRequestHistory();
 	MovementRequestSource.Reset();
 	CaptureMovementRequest.Unbind();
 	ApplyMovementRequestDelegate.Unbind();
+}
+
+void UIMGCharacterMovementComponent::ResetMovementRequestHistory()
+{
+	if (++MovementRequestGeneration == 0) { ++MovementRequestGeneration; }
 	bHasMovementRequest = false;
 	MovementRequest = 0;
+	MovementRequestInput = FVector::ZeroVector;
+	MovementInputMagnitude = 0;
+	bHasMovementRequestInput = false;
+	MovementContext = FMovementSimulationContext();
+	AuthorityMovementContext = FMovementSimulationContext();
+	AuthorityParameterRevisions.Reset();
+	AuthorityMovementContextGeneration = 0;
+	bMovementContextApplied = false;
+	MovementParameterHash = 0;
+	MovementContextTimeStamp = 0.f;
+	MovementAdjustmentContext = FMovementSimulationContext();
+	MovementAdjustmentGeneration = 0;
+	MovementAdjustmentTimeStamp = 0.f;
 }
 
 bool UIMGCharacterMovementComponent::HasMovementRequestProvider() const
@@ -302,24 +353,89 @@ bool UIMGCharacterMovementComponent::HasMovementRequestProvider() const
 	return MovementRequestSource.IsValid() && CaptureMovementRequest.IsBound() && ApplyMovementRequestDelegate.IsBound();
 }
 
-void UIMGCharacterMovementComponent::ApplyMovementRequest(const FVector& Input)
+bool UIMGCharacterMovementComponent::ApplyMovementRequest(const FVector& Input)
 {
-	if (bHasMovementRequest && HasMovementRequestProvider() && HasValidData() && IsRegistered() && IsActive())
+	if (!bHasMovementRequest || !HasMovementRequestProvider() || !HasValidData() || !IsRegistered() || !IsActive())
 	{
-		ApplyMovementRequestDelegate.Execute(MovementRequest, Input);
+		return false;
+	}
+	const uint32 Generation = MovementRequestGeneration;
+	const bool bApplied = MovementContext.IsValid() && ApplyMovementRequestDelegate.Execute(
+		MovementRequest, MovementContext, Input, CharacterOwner->bClientUpdating);
+	return bApplied && Generation == MovementRequestGeneration && HasMovementRequestProvider() && HasValidData();
+}
+
+bool UIMGCharacterMovementComponent::CaptureMovementRequestContext(bool bCaptureRequest)
+{
+	if (!HasMovementRequestProvider()) { return false; }
+	const uint32 Generation = MovementRequestGeneration;
+	uint8 Request = 0;
+	FMovementSimulationContext Context;
+	if (!CaptureMovementRequest.Execute(Request, Context) || Generation != MovementRequestGeneration
+		|| !HasMovementRequestProvider() || !Context.IsValid()
+		|| Context.ParameterRevisions.Num() != Context.Parameters.Num()) { return false; }
+	ResolveMovementContext(Context);
+	MovementContext = MoveTemp(Context);
+	if (bCaptureRequest) { MovementRequest = Request; }
+	return true;
+}
+
+void UIMGCharacterMovementComponent::ResolveMovementContext(FMovementSimulationContext& Context) const
+{
+	if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy
+		&& AuthorityMovementContextGeneration == MovementRequestGeneration
+		&& AuthorityMovementContext.IsValid() && Context.Parameters.Num() == AuthorityMovementContext.Parameters.Num()
+		&& Context.ParameterRevisions.Num() == Context.Parameters.Num()
+		&& AuthorityParameterRevisions.Num() == Context.Parameters.Num())
+	{
+		for (int32 Index = 0; Index < Context.Parameters.Num(); ++Index)
+		{
+			if (Context.ParameterRevisions[Index] == AuthorityParameterRevisions[Index])
+			{
+				Context.Parameters[Index] = AuthorityMovementContext.Parameters[Index];
+			}
+		}
 	}
 }
 
 void UIMGCharacterMovementComponent::ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds)
 {
 	if (!HasValidData()) { return; }
-	bHasMovementRequest = HasMovementRequestProvider();
+	TGuardValue<bool> InputScope(bHasMovementRequestInput, false);
+	bHasMovementRequest = CaptureMovementRequestContext();
 	if (bHasMovementRequest)
 	{
-		MovementRequest = CaptureMovementRequest.Execute();
+		// Prepare input scaling here; PerformMovement finalizes the same rules after rewind/jump handling.
 		ApplyMovementRequest(InputVector);
 	}
 	if (HasValidData()) { Super::ControlledCharacterMove(InputVector, DeltaSeconds); }
+}
+
+void UIMGCharacterMovementComponent::PerformMovement(float DeltaSeconds)
+{
+	bMovementContextApplied = false;
+	if (HasValidData() && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		const FVector Input = bHasMovementRequestInput ? MovementRequestInput : Acceleration;
+		// Evaluate against this simulation's velocity, after native combining/replay has restored it.
+		bMovementContextApplied = ApplyMovementRequest(Input);
+		if (bMovementContextApplied) { MovementParameterHash = FCharacterMovementParameters::Capture(*this).GetParameterHash(); }
+		if (bMovementContextApplied && bHasMovementRequestInput)
+		{
+			Acceleration = ConstrainInputAcceleration(Input).GetSafeNormal()
+				* (MovementInputMagnitude / 255.f) * GetMaxAcceleration();
+			AnalogInputModifier = ComputeAnalogInputModifier();
+		}
+	}
+	Super::PerformMovement(DeltaSeconds);
+}
+
+bool UIMGCharacterMovementComponent::ForcePositionUpdate(float DeltaTime)
+{
+	// Keep accepted intent/input, but allow a new authority buff to take effect at this simulation boundary.
+	if (bHasMovementRequest) { bHasMovementRequest = CaptureMovementRequestContext(false); }
+	TGuardValue<bool> InputScope(bHasMovementRequestInput, bHasMovementRequest && HasMovementRequestProvider());
+	return Super::ForcePositionUpdate(DeltaTime);
 }
 
 bool FIMGStanceStateMachine::TransitionTo(UIMGCharacterMovementComponent& Movement, EIMGStance NewStance, bool bClientSimulation)
@@ -785,6 +901,10 @@ void UIMGCharacterMovementComponent::SetReplicatedAcceleration(const FVector& In
 
 float UIMGCharacterMovementComponent::ComputeAnalogInputModifier() const
 {
+	if (bHasMovementRequestInput && bHasMovementRequest && HasMovementRequestProvider())
+	{
+		return Acceleration.IsZero() ? 0.f : MovementInputMagnitude / 255.f;
+	}
 	if (CharacterOwner && (CharacterOwner->HasAuthority() || CharacterOwner->bClientUpdating))
 	{
 		if (const FCharacterNetworkMoveData* Data = GetCurrentNetworkMoveData())
@@ -828,10 +948,11 @@ void UIMGCharacterMovementComponent::CalcVelocity(float DeltaTime, float Frictio
 	Super::CalcVelocity(DeltaTime, Friction, bFluid, BrakingDeceleration);
 	if (!HasValidData()) { return; }
 	UE_LOG(LogIMGMovementNet, Log,
-		TEXT("[VelocityStep] Actor=%s Role=%d Stage=%s Move=%.6f Dt=%.6f Mode=%u Request=%u HasRequest=%d MaxSpeed=%.3f MaxAccel=%.3f Analog=%.6f->%.6f Friction=%.3f Brake=%.3f BrakeFriction=%.3f BrakeFactor=%.3f SeparateBrake=%d Accel=%s Velocity=%s->%s AnimRootMotion=%d"),
+		TEXT("[VelocityStep] Actor=%s Role=%d Stage=%s Move=%.6f Dt=%.6f Mode=%u Request=%u HasRequest=%d Context=%u ContextHash=%u MaxSpeed=%.3f MaxAccel=%.3f Analog=%.6f->%.6f Friction=%.3f Brake=%.3f BrakeFriction=%.3f BrakeFactor=%.3f SeparateBrake=%d Accel=%s Velocity=%s->%s AnimRootMotion=%d"),
 		*GetPathNameSafe(CharacterOwner.Get()), static_cast<int32>(CharacterOwner->GetLocalRole()),
 		CharacterOwner->bClientUpdating ? TEXT("Replay") : (CharacterOwner->HasAuthority() ? TEXT("Authority") : TEXT("Predict")),
-		MoveTime, DeltaTime, static_cast<uint8>(MovementMode), MovementRequest, bHasMovementRequest, SpeedLimit, MaxAccel, AnalogBefore, GetAnalogInputModifier(),
+		MoveTime, DeltaTime, static_cast<uint8>(MovementMode), MovementRequest, bHasMovementRequest,
+		MovementContext.Revision, MovementContext.GetParameterHash(), SpeedLimit, MaxAccel, AnalogBefore, GetAnalogInputModifier(),
 		Friction, BrakingDeceleration, BrakingFriction, BrakingFrictionFactor, bUseSeparateBrakingFriction,
 		*InputAcceleration.ToCompactString(), *Before.ToCompactString(), *Velocity.ToCompactString(), HasAnimRootMotion());
 }
@@ -992,6 +1113,10 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 {
 	const bool bWasTransitioning = bRagdollTransitioning;
 	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	if ((!IsMovingOnGround() && !IsFalling()) || IsRagdollRecovering())
+	{
+		ResetAutonomousMeshSmoothing();
+	}
 	const bool bWasRagdoll = PreviousMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll);
 	const bool bIsRagdoll = IsRagdollMovementMode();
 	if (bWasRagdoll && !bIsRagdoll)
@@ -1032,35 +1157,52 @@ void UIMGCharacterMovementComponent::MoveAutonomous(float ClientTimeStamp, float
 	const FIMGCharacterNetworkMoveData* RequestData = static_cast<const FIMGCharacterNetworkMoveData*>(GetCurrentNetworkMoveData());
 	if (CharacterOwner && !CharacterOwner->bClientUpdating)
 	{
-		bHasMovementRequest = HasMovementRequestProvider() && RequestData && RequestData->bHasMovementRequest;
-		MovementRequest = bHasMovementRequest ? RequestData->MovementRequest : 0;
-		ApplyMovementRequest(NewAccel);
+		if (RequestData)
+		{
+			bHasMovementRequest = RequestData->bHasMovementRequest && CaptureMovementRequestContext(false);
+			MovementRequest = bHasMovementRequest ? RequestData->MovementRequest : 0;
+		}
+		else
+		{
+			// Without packed data, retain the last request instead of sampling live provider intent.
+			bHasMovementRequest &= HasMovementRequestProvider();
+		}
 	}
-	if (const FCharacterNetworkMoveData* Data = GetCurrentNetworkMoveData(); Data && CharacterOwner && CharacterOwner->HasAuthority())
+	TGuardValue<bool> InputScope(bHasMovementRequestInput, bHasMovementRequest && RequestData != nullptr);
+	const uint32 Generation = MovementRequestGeneration;
+	bMovementContextApplied = false;
+	MovementContextTimeStamp = 0.f;
+	MovementRequestInput = NewAccel;
+	if (RequestData) { MovementInputMagnitude = RequestData->InputMagnitude; }
+	if (RequestData && CharacterOwner && CharacterOwner->HasAuthority())
 	{
-		RagdollMode.Input = static_cast<const FIMGCharacterNetworkMoveData*>(Data)->RagdollInput;
+		RagdollMode.Input = RequestData->RagdollInput;
 		if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && RagdollMode.Input.Session == ActiveRagdollState.Session)
 		{
 			RagdollRemoteInputTime = GetWorld()->GetTimeSeconds();
 		}
 	}
 	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAccel);
+	if (CharacterOwner && CharacterOwner->HasAuthority() && bMovementContextApplied
+		&& Generation == MovementRequestGeneration && HasMovementRequestProvider())
+	{
+		MovementContextTimeStamp = ClientTimeStamp;
+	}
 }
 
 bool UIMGCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 {
+	const bool bFinishingMeshCorrection = AutonomousPreCorrectionLocation.IsSet() && HasPredictionData_Client()
+		&& GetPredictionData_Client_Character()->bUpdatePosition;
 	const uint32 Generation = MovementRequestGeneration;
 	const uint8 SavedRequest = MovementRequest;
 	const bool bSavedHasRequest = bHasMovementRequest;
-	const FRotator SavedRotationRate = RotationRate;
-	const bool bSavedOrientToMovement = bOrientRotationToMovement;
-	const bool bSavedControllerDesiredRotation = bUseControllerDesiredRotation;
+	const FVector SavedRequestInput = MovementRequestInput;
+	const uint8 SavedInputMagnitude = MovementInputMagnitude;
+	const bool bSavedHasRequestInput = bHasMovementRequestInput;
+	const FMovementSimulationContext SavedContext = MovementContext;
 	// Replay consumes historical parameters; the next live move keeps this frame's configuration.
-	const float SavedMaxAcceleration = MaxAcceleration;
-	const float SavedMaxWalkSpeed = MaxWalkSpeed;
-	const float SavedMaxCrouchSpeed = MaxWalkSpeedCrouched;
-	const float SavedGroundFriction = GroundFriction;
-	const float SavedBrakingDeceleration = BrakingDecelerationWalking;
+	const FCharacterMovementParameters SavedParameters = FCharacterMovementParameters::Capture(*this);
 	const float SavedBrakingFriction = BrakingFriction;
 	const float SavedBrakingFrictionFactor = BrakingFrictionFactor;
 	const bool bSavedSeparateBrakingFriction = bUseSeparateBrakingFriction;
@@ -1070,22 +1212,168 @@ bool UIMGCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 	{
 		MovementRequest = SavedRequest;
 		bHasMovementRequest = bSavedHasRequest;
-		if (HasMovementRequestProvider())
-		{
-			RotationRate = SavedRotationRate;
-			bOrientRotationToMovement = bSavedOrientToMovement;
-			bUseControllerDesiredRotation = bSavedControllerDesiredRotation;
-		}
-		MaxAcceleration = SavedMaxAcceleration;
-		MaxWalkSpeed = SavedMaxWalkSpeed;
-		MaxWalkSpeedCrouched = SavedMaxCrouchSpeed;
-		GroundFriction = SavedGroundFriction;
-		BrakingDecelerationWalking = SavedBrakingDeceleration;
+		MovementRequestInput = SavedRequestInput;
+		MovementInputMagnitude = SavedInputMagnitude;
+		bHasMovementRequestInput = bSavedHasRequestInput;
+		MovementContext = SavedContext;
+		SavedParameters.Apply(*this, HasMovementRequestProvider());
 	}
 	BrakingFriction = SavedBrakingFriction;
 	BrakingFrictionFactor = SavedBrakingFrictionFactor;
 	bUseSeparateBrakingFriction = bSavedSeparateBrakingFriction;
+	if (bFinishingMeshCorrection)
+	{
+		FinishAutonomousMeshCorrection();
+	}
 	return bResult;
+}
+
+void UIMGCharacterMovementComponent::OnClientCorrectionReceived(FNetworkPredictionData_Client_Character& ClientData, float TimeStamp,
+	FVector NewLocation, FVector NewVelocity, FMovementBaseInterfaceData* NewMovementBaseInterfaceData, FName NewBaseBoneName,
+	bool bHasBase, bool bBaseRelativePosition, uint8 ServerMovementMode, FVector ServerGravityDirection)
+{
+	const FCharacterMoveResponseDataContainer& Response = GetMoveResponseDataContainer();
+	USkeletalMeshComponent* Mesh = GetAutonomousSmoothingMesh();
+	if (Mesh && !Response.bRootMotionMontageCorrection && !Response.bRootMotionSourceCorrection)
+	{
+		if (AutonomousSmoothingMesh.Get() != Mesh)
+		{
+			ResetAutonomousMeshSmoothing();
+			AutonomousSmoothingMesh = Mesh;
+		}
+		// Several corrections can arrive before a single replay. Keep the original displayed position.
+		if (!AutonomousPreCorrectionLocation.IsSet())
+		{
+			AutonomousPreCorrectionLocation = UpdatedComponent->GetComponentLocation();
+		}
+	}
+	else
+	{
+		ResetAutonomousMeshSmoothing();
+	}
+	Super::OnClientCorrectionReceived(ClientData, TimeStamp, NewLocation, NewVelocity, NewMovementBaseInterfaceData, NewBaseBoneName,
+		bHasBase, bBaseRelativePosition, ServerMovementMode, ServerGravityDirection);
+}
+
+USkeletalMeshComponent* UIMGCharacterMovementComponent::GetAutonomousSmoothingMesh() const
+{
+	if (!IMGCharacter::CVarAutonomousMeshSmoothing.GetValueOnGameThread() || !HasValidData() || !IsRegistered() || !IsActive()
+		|| IsBeingDestroyed() || CharacterOwner->IsActorBeingDestroyed() || CharacterOwner->GetLocalRole() != ROLE_AutonomousProxy
+		|| !CharacterOwner->IsLocallyControlled() || (!IsMovingOnGround() && !IsFalling())
+		|| ActiveRagdollState.Phase != EIMGRagdollPhase::Inactive
+		|| (ActiveRagdollState.bHasRecovery && RagdollRecoveryAppliedSession != ActiveRagdollState.Session)
+		|| UpdatedComponent != CharacterOwner->GetCapsuleComponent() || UpdatedComponent->IsSimulatingPhysics() || HasRootMotionSources())
+	{
+		return nullptr;
+	}
+	USkeletalMeshComponent* Mesh = CharacterOwner->GetMesh();
+	if (!IsValid(Mesh) || !Mesh->IsRegistered() || Mesh->IsBeingDestroyed() || Mesh->GetAttachParent() != UpdatedComponent
+		|| Mesh->IsUsingAbsoluteLocation() || Mesh->IsAnySimulatingPhysics())
+	{
+		return nullptr;
+	}
+	return Mesh;
+}
+
+void UIMGCharacterMovementComponent::FinishAutonomousMeshCorrection()
+{
+	if (!AutonomousPreCorrectionLocation.IsSet())
+	{
+		return;
+	}
+	const USkeletalMeshComponent* Mesh = GetAutonomousSmoothingMesh();
+	if (!Mesh || Mesh != AutonomousSmoothingMesh.Get())
+	{
+		ResetAutonomousMeshSmoothing();
+		return;
+	}
+
+	const FVector PostReplayDelta = UpdatedComponent->GetComponentLocation() - AutonomousPreCorrectionLocation.GetValue();
+	AutonomousPreCorrectionLocation.Reset();
+	const bool bSmallCorrection = !PostReplayDelta.ContainsNaN()
+		&& PostReplayDelta.SizeSquared() <= FMath::Square(IMGCharacter::AutonomousMeshSmoothingMaxDistance);
+	if (bSmallCorrection)
+	{
+		const FVector PlanarCorrection = FVector::VectorPlaneProject(PostReplayDelta, GetGravityDirection());
+		AutonomousMeshWorldOffset = (AutonomousMeshWorldOffset - PlanarCorrection)
+			.GetClampedToMaxSize(IMGCharacter::AutonomousMeshSmoothingMaxDistance);
+	}
+	else
+	{
+		AutonomousMeshWorldOffset = FVector::ZeroVector;
+	}
+	if (IMGCharacter::CVarMovementNetDiagnostics.GetValueOnGameThread() >= 1)
+	{
+		UE_LOG(LogIMGMovementNet, Log, TEXT("[AutonomousMeshCorrection] Actor=%s PostReplayDelta=%s MeshOffset=%s WithinLimit=%d"),
+			*GetPathNameSafe(CharacterOwner.Get()), *PostReplayDelta.ToCompactString(), *AutonomousMeshWorldOffset.ToCompactString(), bSmallCorrection);
+	}
+}
+
+void UIMGCharacterMovementComponent::ApplyAutonomousMeshOffset()
+{
+	if (!AutonomousPreCorrectionLocation.IsSet() && AutonomousMeshWorldOffset.IsNearlyZero(IMGCharacter::AutonomousMeshSmoothingTolerance))
+	{
+		AutonomousSmoothingMesh.Reset();
+		AutonomousMeshWorldOffset = FVector::ZeroVector;
+		return;
+	}
+	USkeletalMeshComponent* Mesh = GetAutonomousSmoothingMesh();
+	if (!Mesh || Mesh != AutonomousSmoothingMesh.Get())
+	{
+		ResetAutonomousMeshSmoothing();
+		return;
+	}
+	const FTransform ParentTransform = UpdatedComponent->GetSocketTransform(Mesh->GetAttachSocketName());
+	AppliedAutonomousMeshRelativeOffset = ParentTransform.InverseTransformVector(AutonomousMeshWorldOffset);
+	if (!AppliedAutonomousMeshRelativeOffset.IsZero())
+	{
+		AppliedAutonomousMeshRelativeLocation = Mesh->GetRelativeLocation() + AppliedAutonomousMeshRelativeOffset;
+		// Update the mesh presentation without a movement sweep or a physics transform update.
+		Mesh->SetRelativeLocation_Direct(AppliedAutonomousMeshRelativeLocation);
+		Mesh->UpdateComponentToWorld(EUpdateTransformFlags::SkipPhysicsUpdate);
+	}
+}
+
+void UIMGCharacterMovementComponent::RemoveAutonomousMeshOffset()
+{
+	const FVector RelativeOffset = AppliedAutonomousMeshRelativeOffset;
+	if (RelativeOffset.IsZero())
+	{
+		return;
+	}
+	AppliedAutonomousMeshRelativeOffset = FVector::ZeroVector;
+	if (USkeletalMeshComponent* Mesh = AutonomousSmoothingMesh.Get(); Mesh && !Mesh->IsBeingDestroyed())
+	{
+		const FVector CurrentLocation = Mesh->GetRelativeLocation();
+		FVector RestoredLocation = CurrentLocation;
+		// A stance or another owner may have replaced a relative axis since we applied the offset.
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (CurrentLocation[Axis] == AppliedAutonomousMeshRelativeLocation[Axis])
+			{
+				RestoredLocation[Axis] -= RelativeOffset[Axis];
+			}
+		}
+		if (RestoredLocation != CurrentLocation)
+		{
+			Mesh->SetRelativeLocation_Direct(RestoredLocation);
+			Mesh->UpdateComponentToWorld(EUpdateTransformFlags::SkipPhysicsUpdate);
+		}
+	}
+}
+
+void UIMGCharacterMovementComponent::ResetAutonomousMeshSmoothing()
+{
+	RemoveAutonomousMeshOffset();
+	AutonomousSmoothingMesh.Reset();
+	AutonomousPreCorrectionLocation.Reset();
+	AutonomousMeshWorldOffset = FVector::ZeroVector;
+}
+
+void UIMGCharacterMovementComponent::OnTeleported()
+{
+	ResetAutonomousMeshSmoothing();
+	Super::OnTeleported();
 }
 
 void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
@@ -1097,9 +1385,10 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 	{
 		ReceiveRagdollMovementState(Response.RagdollState);
 	}
+	const FNetworkPredictionData_Client_Character* CurrentClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
 	bool bDiscardCorrection = false;
-	if (HasValidData() && IsActive() && Response.IsCorrection() && !bClientIgnoreMovementCorrections && PreviousClientData
-		&& PreviousClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp) != INDEX_NONE)
+	if (HasValidData() && IsActive() && Response.IsCorrection() && !bClientIgnoreMovementCorrections && CurrentClientData
+		&& CurrentClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp) != INDEX_NONE)
 	{
 		ClientCorrectionFilter.Broadcast(MoveResponse, bDiscardCorrection);
 	}
@@ -1116,6 +1405,31 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 		Super::ClientHandleMoveResponse(MoveResponse);
 	}
 	const FNetworkPredictionData_Client_Character* ClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
+	if (HasValidData() && !bDiscardCorrection && (!Response.IsCorrection() || !bClientIgnoreMovementCorrections)
+		&& Response.bHasMovementContext && HasMovementRequestProvider()
+		&& Response.MovementContextGeneration == MovementRequestGeneration && ClientData
+		&& ClientData->LastAckedMove.IsValid() && ClientData->LastAckedMove != PreviousAckedMove
+		&& ClientData->LastAckedMove->TimeStamp == Response.ClientAdjustment.TimeStamp)
+	{
+		const FSavedMove_IMG& AckedMove = static_cast<const FSavedMove_IMG&>(*ClientData->LastAckedMove);
+		if (AckedMove.bSavedHasMovementRequest && AckedMove.SavedMovementRequestGeneration == MovementRequestGeneration
+			&& AckedMove.SavedMovementContext.Revision == Response.MovementContext.Revision
+			&& AckedMove.SavedMovementContext.Parameters.Num() == Response.MovementContext.Parameters.Num())
+		{
+			// Rebase unchanged inputs independently: a landing or friction change must not resurrect stale speed.
+			AuthorityMovementContext = Response.MovementContext;
+			AuthorityParameterRevisions = AckedMove.SavedMovementContext.ParameterRevisions;
+			AuthorityMovementContextGeneration = MovementRequestGeneration;
+			if (IMGCharacter::CVarMovementNetDiagnostics.GetValueOnGameThread() >= 1
+				&& !AckedMove.SavedMovementContext.HasSameParameters(AuthorityMovementContext))
+			{
+				UE_LOG(LogIMGMovementNet, Log,
+					TEXT("[MovementContext] Actor=%s Move=%.6f Generation=%u Revision=%u PredictedHash=%u AuthorityHash=%u"),
+					*GetPathNameSafe(CharacterOwner.Get()), Response.ClientAdjustment.TimeStamp, MovementRequestGeneration,
+					AuthorityMovementContext.Revision, AckedMove.SavedMovementContext.GetParameterHash(), AuthorityMovementContext.GetParameterHash());
+			}
+		}
+	}
 	if (IMGCharacter::CVarMovementNetDiagnostics.GetValueOnGameThread() >= 1 && Response.IsCorrection())
 	{
 		UE_LOG(LogIMGMovementNet, Log,
@@ -1143,11 +1457,24 @@ void UIMGCharacterMovementComponent::ServerMoveHandleClientError(float ClientTim
 {
 	const uint16 Revision = ActiveRagdollState.Revision;
 	const uint16 PlacementSession = ActiveRagdollState.bHasRecovery ? ActiveRagdollState.Session : 0;
+	const FIMGCharacterNetworkMoveData* MoveData = static_cast<const FIMGCharacterNetworkMoveData*>(GetCurrentNetworkMoveData());
+	const bool bHasContext = MoveData && MoveData->bHasMovementRequest && bMovementContextApplied
+		&& MovementContextTimeStamp == ClientTimeStamp && MovementContext.IsValid();
+	if (bHasContext && MoveData->MovementContextHash != MovementContext.GetParameterHash()
+		&& MoveData->MovementParameterHash != MovementParameterHash)
+	{
+		// Return a position/velocity baseline together with the actual rule inputs, even before position error grows.
+		GetPredictionData_Server_Character()->bForceClientUpdate = true;
+	}
 	Super::ServerMoveHandleClientError(ClientTimeStamp, DeltaTime, Accel, RelativeClientLocation, ClientMovementBaseInterfaceData, ClientBaseBoneName, ClientMovementMode);
 	if (HasPredictionData_Server() && GetPredictionData_Server_Character()->PendingAdjustment.TimeStamp == ClientTimeStamp)
 	{
 		RagdollAdjustmentTimeStamp = ClientTimeStamp;
 		RagdollAdjustmentPlacementSession = ActiveRagdollState.Revision == Revision ? PlacementSession : 0;
+		MovementAdjustmentTimeStamp = ClientTimeStamp;
+		MovementAdjustmentGeneration = bHasContext ? MoveData->MovementContextGeneration : 0;
+		MovementAdjustmentContext = bHasContext ? MovementContext : FMovementSimulationContext();
+		if (bHasContext) { MovementAdjustmentContext.Revision = MoveData->MovementContextRevision; }
 	}
 }
 
@@ -1522,6 +1849,10 @@ void UIMGCharacterMovementComponent::ReceiveRagdollMovementState(const FIMGRagdo
 	}
 	if (State.Session != ActiveRagdollState.Session) { RagdollRecoveryAppliedSession = 0; }
 	ActiveRagdollState = State;
+	if (State.Phase != EIMGRagdollPhase::Inactive || (State.bHasRecovery && RagdollRecoveryAppliedSession != State.Session))
+	{
+		ResetAutonomousMeshSmoothing();
+	}
 	if (HasBegunPlay() && IsActive() && IsRegistered() && IsRagdollRecovering()) { RagdollMode.AcquireOrientation(*this); }
 	if ((!IsActive() || !IsRegistered()) || (State.Phase == EIMGRagdollPhase::Inactive && !IsRagdollMovementMode())) { RagdollMode.ReleaseOrientation(*this); }
 	if (!CharacterOwner || !CharacterOwner->bClientUpdating) { OnRagdollMovementUpdated.Broadcast(); }
@@ -1561,6 +1892,11 @@ void UIMGCharacterMovementComponent::UpdateRagdollMovementState()
 
 void UIMGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	RemoveAutonomousMeshOffset();
+	if (!AutonomousPreCorrectionLocation.IsSet() && !AutonomousMeshWorldOffset.IsZero() && DeltaTime > 0.f)
+	{
+		AutonomousMeshWorldOffset *= FMath::Exp(-DeltaTime / IMGCharacter::AutonomousMeshSmoothingTimeConstant);
+	}
 	UpdateRagdollMovementState();
 	if (IsBeingDestroyed() || !IsRegistered()) { return; }
 	// Packet silence is an authority live-tick concern; saved move replay never consults this clock.
@@ -1584,10 +1920,13 @@ void UIMGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick T
 		else { RagdollRemoteInputTime = -1.0; }
 	}
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	ApplyAutonomousMeshOffset();
 }
 
 void UIMGCharacterMovementComponent::Deactivate()
 {
+	ResetAutonomousMeshSmoothing();
+	ResetMovementRequestHistory();
 	TGuardValue<bool> Transition(bRagdollTransitioning, true);
 	StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
 	if (IsRagdollMovementMode() && HasValidData()) { SetMovementMode(MOVE_Falling); }
@@ -1598,6 +1937,8 @@ void UIMGCharacterMovementComponent::Deactivate()
 
 void UIMGCharacterMovementComponent::OnUnregister()
 {
+	ResetAutonomousMeshSmoothing();
+	ResetMovementRequestHistory();
 	TGuardValue<bool> Transition(bRagdollTransitioning, true);
 	StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
 	if (IsRagdollMovementMode() && HasValidData()) { SetMovementMode(MOVE_Falling); }
@@ -1608,6 +1949,7 @@ void UIMGCharacterMovementComponent::OnUnregister()
 
 void UIMGCharacterMovementComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ResetAutonomousMeshSmoothing();
 	UnregisterMovementRequestProvider(MovementRequestSource.Get());
 	TGuardValue<bool> Transition(bRagdollTransitioning, true);
 	if (HasValidData() && IsRagdollMovementMode()) { SetMovementMode(MOVE_None); }
@@ -1633,6 +1975,8 @@ void UIMGCharacterMovementComponent::OnRep_IsActive()
 	Super::OnRep_IsActive();
 	if (!IsActive())
 	{
+		ResetAutonomousMeshSmoothing();
+		ResetMovementRequestHistory();
 		if (IsRagdollMovementMode() && HasValidData()) { SetMovementMode(MOVE_Falling); }
 		ClearRagdollMovementResources();
 		OnRagdollMovementUpdated.Broadcast();

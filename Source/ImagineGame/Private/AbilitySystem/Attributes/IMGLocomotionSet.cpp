@@ -4,6 +4,22 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGLocomotionSet)
 
+namespace
+{
+	constexpr float DefaultWalkSpeed = 165.f;
+	constexpr float DefaultRunSpeed = 380.f;
+	constexpr float DefaultSprintSpeed = 585.f;
+	constexpr float DefaultCrouchSpeed = 170.f;
+}
+
+UIMGLocomotionSet::UIMGLocomotionSet()
+{
+	InitWalkSpeed(DefaultWalkSpeed);
+	InitRunSpeed(DefaultRunSpeed);
+	InitSprintSpeed(DefaultSprintSpeed);
+	InitCrouchSpeed(DefaultCrouchSpeed);
+}
+
 void UIMGLocomotionSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -12,9 +28,6 @@ void UIMGLocomotionSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, RunSpeed, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, SprintSpeed, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, CrouchSpeed, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, MaxAcceleration, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, BrakingDecelerationWalking, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UIMGLocomotionSet, GroundFriction, COND_None, REPNOTIFY_Always);
 }
 
 void UIMGLocomotionSet::PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const
@@ -34,12 +47,9 @@ void UIMGLocomotionSet::ClampAttribute(const FGameplayAttribute& Attribute, floa
 	if (Attribute == GetWalkSpeedAttribute()
 		|| Attribute == GetRunSpeedAttribute()
 		|| Attribute == GetSprintSpeedAttribute()
-		|| Attribute == GetCrouchSpeedAttribute()
-		|| Attribute == GetMaxAccelerationAttribute()
-		|| Attribute == GetBrakingDecelerationWalkingAttribute()
-		|| Attribute == GetGroundFrictionAttribute())
+		|| Attribute == GetCrouchSpeedAttribute())
 	{
-		NewValue = FMath::Max(NewValue, 0.0f);
+		NewValue = FMath::IsFinite(NewValue) ? FMath::Max(NewValue, 0.0f) : 0.f;
 	}
 }
 
@@ -61,19 +71,4 @@ void UIMGLocomotionSet::OnRep_SprintSpeed(const FGameplayAttributeData& OldValue
 void UIMGLocomotionSet::OnRep_CrouchSpeed(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UIMGLocomotionSet, CrouchSpeed, OldValue);
-}
-
-void UIMGLocomotionSet::OnRep_MaxAcceleration(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UIMGLocomotionSet, MaxAcceleration, OldValue);
-}
-
-void UIMGLocomotionSet::OnRep_BrakingDecelerationWalking(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UIMGLocomotionSet, BrakingDecelerationWalking, OldValue);
-}
-
-void UIMGLocomotionSet::OnRep_GroundFriction(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UIMGLocomotionSet, GroundFriction, OldValue);
 }

@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
+#include "Templates/UnrealTemplate.h"
 #include "AbilitySystem/IMGGlobalAbilitySystem.h"
 #include "System/IMGAssetManager.h"
 #include "System/IMGGameData.h"
@@ -29,6 +30,36 @@ UIMGAbilitySystemComponent::UIMGAbilitySystemComponent(const FObjectInitializer&
 }
 
 UIMGAbilitySystemComponent::~UIMGAbilitySystemComponent() = default;
+
+void UIMGAbilitySystemComponent::AddRuntimeAttributeSet(UAttributeSet* AttributeSet)
+{
+	const int32 PreviousCount = GetSpawnedAttributes().Num();
+	AddSpawnedAttribute(AttributeSet);
+	if (GetSpawnedAttributes().Num() != PreviousCount)
+	{
+		AttributeSetsUpdated.Broadcast();
+	}
+}
+
+void UIMGAbilitySystemComponent::RemoveRuntimeAttributeSet(UAttributeSet* AttributeSet)
+{
+	if (!AttributeSet)
+	{
+		return;
+	}
+	const int32 PreviousCount = GetSpawnedAttributes().Num();
+	RemoveSpawnedAttribute(AttributeSet);
+	if (GetSpawnedAttributes().Num() != PreviousCount)
+	{
+		AttributeSetsUpdated.Broadcast();
+	}
+}
+
+void UIMGAbilitySystemComponent::PostRepNotifies()
+{
+	Super::PostRepNotifies();
+	AttributeSetsUpdated.Broadcast();
+}
 
 void UIMGAbilitySystemComponent::OnRegister()
 {
@@ -59,6 +90,7 @@ void UIMGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 	const bool bHasNewPawnAvatar = Cast<APawn>(InAvatarActor) && (InAvatarActor != ActorInfo->AvatarActor);
 	if (InAvatarActor != ActorInfo->AvatarActor)
 	{
+		ClearAbilityInput();
 		const bool bLeavingAvatar = !ActorInfo->AvatarActor.IsExplicitlyNull();
 		ResetReplicatedMontagePrerequisites();
 		// Keep data received before the first avatar, but never carry a previous avatar's pending playback across the handoff.
@@ -123,6 +155,7 @@ bool UIMGAbilitySystemComponent::FReplicatedMontageInstance::Matches(
 
 void UIMGAbilitySystemComponent::ClearActorInfo()
 {
+	ClearAbilityInput();
 	ResetReplicatedMontagePrerequisites();
 	bPendingMontageRep = false;
 	Super::ClearActorInfo();
@@ -817,21 +850,34 @@ void UIMGAbilitySystemComponent::TryActivateAbilitiesOnSpawn()
 
 void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
+	if (bProcessingAbilityInput) { return; }
+	TGuardValue<bool> ProcessingInput(bProcessingAbilityInput, true);
 	if (HasMatchingGameplayTag(TAG_Gameplay_AbilityInputBlocked))
 	{
 		ClearAbilityInput();
 		return;
 	}
 
-	static TArray<FGameplayAbilitySpecHandle> AbilitiesToActive;
-	AbilitiesToActive.Reset();
+	const uint32 InputGeneration = AbilityInputGeneration;
+	const AActor* InputAvatar = GetAvatarActor();
+	const TArray<FGameplayAbilitySpecHandle, TInlineAllocator<8>> PressedHandles(InputPressedSpecHandles);
+	const TArray<FGameplayAbilitySpecHandle, TInlineAllocator<8>> ReleasedHandles(InputReleasedSpecHandles);
+	const TArray<FGameplayAbilitySpecHandle, TInlineAllocator<8>> HeldHandles(InputHeldSpecHandles);
+	// Inputs queued by ability callbacks belong to the next processing pass.
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+	TArray<FGameplayAbilitySpecHandle, TInlineAllocator<8>> AbilitiesToActive;
+	const auto IsCurrentInput = [this, InputGeneration, InputAvatar]()
+	{
+		return AbilityInputGeneration == InputGeneration && GetAvatarActor() == InputAvatar;
+	};
 
 	//@TODO: See if we can use FScopedServerAbilityRPCBatcher ScopedRPCBatcher in some of these loops
 
 	//
 	// Process all abilities that activate when the input is held.
 	//
-	for (const FGameplayAbilitySpecHandle& SpecHandle : InputHeldSpecHandles)
+	for (const FGameplayAbilitySpecHandle& SpecHandle : HeldHandles)
 	{
 		if (const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle))
 		{
@@ -850,7 +896,7 @@ void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 	//
 	// Process all abilities that had their input pressed this frame.
 	//
-	for (const FGameplayAbilitySpecHandle& SpecHandle : InputPressedSpecHandles)
+	for (const FGameplayAbilitySpecHandle& SpecHandle : PressedHandles)
 	{
 		if (FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle))
 		{
@@ -862,6 +908,7 @@ void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 				{
 					// Ability is active so pass along the input event.
 					AbilitySpecInputPressed(*AbilitySpec);
+					if (!IsCurrentInput()) { return; }
 				}
 				else
 				{
@@ -886,13 +933,14 @@ void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 		for (const FGameplayAbilitySpecHandle& AbilitySpecHandle : AbilitiesToActive)
 		{
 			TryActivateAbility(AbilitySpecHandle);
+			if (!IsCurrentInput()) { return; }
 		}
 	}
 
 	//
 	// Process all abilities that had their input released this frame.
 	//
-	for (const FGameplayAbilitySpecHandle& SpecHandle : InputReleasedSpecHandles)
+	for (const FGameplayAbilitySpecHandle& SpecHandle : ReleasedHandles)
 	{
 		if (FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle))
 		{
@@ -904,20 +952,16 @@ void UIMGAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGame
 				{
 					// Ability is active so pass along the input event.
 					AbilitySpecInputReleased(*AbilitySpec);
+					if (!IsCurrentInput()) { return; }
 				}
 			}
 		}
 	}
-
-	//
-	// Clear the cached ability handles.
-	//
-	InputPressedSpecHandles.Reset();
-	InputReleasedSpecHandles.Reset();
 }
 
 void UIMGAbilitySystemComponent::ClearAbilityInput()
 {
+	++AbilityInputGeneration;
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 	InputHeldSpecHandles.Reset();
@@ -1113,6 +1157,7 @@ void UIMGAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& 
 
 void UIMGAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearAbilityInput();
 	bEndingReplicatedMontage = true;
 	ResetReplicatedMontagePrerequisites();
 	bPendingMontageRep = false;

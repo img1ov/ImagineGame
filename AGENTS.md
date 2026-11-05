@@ -88,8 +88,8 @@
 ### 能力输入绑定
 
 - `FIMGInputAction` 只保存 InputTag/InputAction；`UIMGInputComponent::BindAbilityActions` 对有效 Action/Tag 按 IFE 的 LyraInputComponent 固定绑定 Started→Pressed、Completed→Released，不配置每项 PressedTriggerEvent 或 BindReleaseEvent。NativeAction 仍由调用方显式选择 TriggerEvent。
-- 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn；Started 在输入开始时转发一次 Pressed，Held 状态保持至 Released，避免持续 Triggered 被 WaitInputPress 当作下一次点按。
-- Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。输入解绑的绑定句柄与 ASC.ClearAbilityInput 保持原职责；额外输入配置的移除仍是现有未实现边界，不因固定绑定而视为已解决。
+- 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发当前 Avatar 匹配的 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn；Started 在输入开始时转发一次 Pressed，Held 状态保持至 Released，避免持续 Triggered 被 WaitInputPress 当作下一次点按。
+- Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。ProcessAbilityInput 固定本轮 Pressed/Released/Held 列表，能力回调中新排入的输入留给下一轮；ClearAbilityInput 或 Avatar 切换使旧轮次失效，禁止跨 ASC 共享临时激活列表或重入消费。ASC Avatar 切换、ClearActorInfo、EndPlay 清理输入。输入解绑的绑定句柄与 ASC.ClearAbilityInput 保持原职责；额外输入配置的移除仍是现有未实现边界，不因固定绑定而视为已解决。
 
 ### 复制 Montage 前置条件
 
@@ -111,45 +111,27 @@
 
 ## 角色与普通移动
 
-### Movement Intent 与 CMC
+### 输入、GAS 与 Locomotion 职责
 
-- `UIMGHeroComponent::AddMovementIntent` 是世界空间移动意图统一入口，平滑方向、发急转事件并提交 AddMovementInput；玩家、自动奔跑和外部 AI 驱动复用。持续移动结束/中断须 ResetMovementIntent，输入结束、Controller 切换和 EndPlay 兜底清理。
-- Intent 只塑形方向；`UIMGCharacterMovementComponent` 管姿态、速度、制动、网络预测。原生 AI Path Following 未被该入口接管。
-- 普通移动朝向复用原生 CMC 规则，不按制动速度额外定向；胶囊保留逻辑/权威朝向，表现平滑留给 ABP。
-- UE 网络默认：Exponential；模拟代理位置/旋转平滑 0.10/0.05 秒，Listen Server 远端角色 0.04/0.033 秒，普通/大误差纠偏最小间隔 0.10/0.05 秒。自主代理纠偏后重放 SavedMoves，不由代理插值、NetUpdateFrequency 或 NetworkPrediction 插件缓冲控制。
-- GameNetworkManager 的 MAXPOSITIONERRORSQUARED=3.0，约 1.73 cm；Play As Client 即使不开 Network Emulation 仍走网络移动。先用 `p.NetShowCorrections 1` 定位，再查两端参数和预测，不以放宽容差代替修复。
-- PreCMC 的本地待消费输入与服务端远端 RPC 加速度不可混用。ReplicateUsingRegisteredSubObjectList 只选择子对象复制路径，不自动同步 MaxWalkSpeed 等 CMC 参数。
-- Packed Movement 的 InputMagnitude 为0至255的输入力度，随 FSavedMove_IMG/FIMGCharacterNetworkMoveData 保存、量化和序列化；初次预测从原生已舍入加速度按原规则量化，服务端及重放消费同一字节。有请求提供者时，在实际移动前按该力度、Move 的舍入输入方向和本端规则计算的加速度上限生成物理加速度，避免碰撞降速后以旧上限解释输入。力度变化禁止 Move 合并并参与 ImportantMove 重发判断，不接收客户端移动参数上限。无提供者、AI/本地权威及旧 Movement RPC 路径保留原生输入力度计算；每个 Packed Move 新增1字节，网络各端须使用同版布局。
-- FSavedMove_IMG 保留地面参数历史快照；有请求提供者的重放按历史请求及纠偏后的速度、朝向和移动模式重算动态参数，落地窗口制动值及非本组件所有的制动摩擦仍消费原 Move 快照。无提供者沿原历史参数回放；快照不上传服务端。有请求提供者时另保存朝向配置与本机注册代次，旧提供者的 Move 不覆盖卸载后的参数。ClientUpdatePositionAfterServerUpdate 仅在提供者代次未变化时恢复当前配置和输入上下文，避免覆盖重放期间的清理。
+- `HeroComponent.AddMovementIntent` 统一处理玩家、自动奔跑和外部 AI 的世界空间方向，再提交 AddMovementInput。输入结束、取消自动奔跑、换 Controller 或 EndPlay 清理意图。原生 AI Path Following 独立；急转回调可能同步取消或替换请求，回调后须复核再提交输入。
+- **步态选目标，GE 改目标值。** GA 管准入、互斥和意图释放，HeroLocomotion 用 Sprint/Walk、Aim/Strafe 四个 Tag 形成请求，再按输入方向和姿态选择实际 Gait。只有 Walk/Run/Sprint/Crouch 四项速度属于 `LocomotionSet`，便于各类 GE 共用速度入口，避免 GA 分散写 CMC。Set 构造默认 165/380/585/170，差异由 AbilitySet 初始化 GE 设置基础值。PlayerState 持有的 Set 随 ASC 保留，换 Pawn 读取已有 CurrentValue。
+- Locomotion 汇聚属性与步态，统一计算并写入 CMC。基础加速度、地面摩擦、行走制动为组件配置，默认 800/2/800；Hero 按步态、速度、前侧后倍率和 0.3 秒落地窗口派生。Aim/Strafe 冲刺还须满足 50° 方向条件。Crouch 用独立速度属性，Crawl 沿 CMC 限速。组件配置和曲线在预测历史存在期间保持稳定。
+- **单向接合。** Locomotion 通过通用弱委托注册一个 CMC 提供者，CMC 只理解请求字节及 `IMGMovementSimulationContext.h` 中的通用上下文和参数，字段含义由提供者解释。Controller → PreCMC → CMC 的 Tick 依赖供本地输入与表现更新；蓝图覆写 PreCMC 须调用父实现。远端 RPC 按 Move 自带输入模拟，逐 Move 计算和重放不派发 PreCMC 蓝图事件。
+- **动态 Set。** GameplayReady、当前 ASC/Avatar、真实 Set 与提供者同时有效才 Ready。等待 Set 时关闭 Tick，CMC 按原生移动。AbilitySet/Game Feature 走 ASC 的 `AddRuntimeAttributeSet` / `RemoveRuntimeAttributeSet`，客户端在 `PostRepNotifies` 后重检。下一次 PreCMC 接合并读取已施加初始化 GE 的值。移除或换绑释放旧代次、恢复接管前参数；物理子步中的 Set 变化等当前 Move 结束再释放。授予方先结束依赖 Set 的 GE。停用、注销、EndPlay 精确退订，旧提供者不能覆盖新提供者。换 CMC 须重新注册。
 
-### Locomotion 调度与职责
+### 逐 Move 预测与权威纠偏
 
-- `UIMGMovementPrerequisiteComponent` 为独立于 PawnExt/GAS 的抽象调度基类，缓存通用 Character/CMC并声明 BlueprintNativeEvent UpdateLocomotionPreCMC；仅支持 Character/CMC。独立派生默认 CanUpdateLocomotion=true，额外条件由原生覆写提供；不查 ASC，不主动注销/销毁，不另建复制、RPC 或预测。
-- 默认 TG_PrePhysics，建立 Controller → PreCMC → CMC；弱引用和 ReceiveControllerChangedDelegate 处理 Controller 晚到、切换与解绑。BeginPlay 在蓝图回调前准备引用，回调后复核；重新 OnRegister 恢复调度；EndPlay/OnUnregister 幂等关 Tick、退订、移除依赖、清缓存。运行中更换 CMC 后需重新注册，不用 Tick 发现重绑。
-- `UIMGLocomotionComponent` 适配 PawnExt/ASC/可选 LocomotionSet，CanUpdateLocomotion 返回 IsLocomotionReady；仅在 GameplayReady 且当前 Pawn 的 ASC/Avatar 有效时执行 PreCMC。ASC 解绑停止业务，重绑恢复；子类不重复管理基类缓存、Tick 依赖或更新事件。
-- 只订阅 PawnExtension InitState，不注册独立 feature。调度就绪后 RegisterAndCallForInitStateChange 订阅 GameplayReady并立即回调，再用 RegisterAndCall 订阅 ASC 生命周期；Tick 不轮询 ASC。
-- EndPlay/OnUnregister 先退订并清 PawnExt 订阅状态，再解除属性委托、清 ASC/Set并发 Unavailable，最后由基类释放 CMC/调度；重新注册重建订阅。
-- `UIMGLocomotionSet` 提供七项可复制移动属性，可缺省；缺少时仍 Ready，GetLocomotionSet 返回空并 Warning。组件只读 CurrentValue、订阅变化，不创建 Set、授予 GE 或回写属性；仅在 ASC 初始化时检查 Set，UE 5.8 无公开 SpawnedAttributes 变更委托。
-- 事件：OnLocomotionReady、OnLocomotionAttributeChanged、OnLocomotionUnavailable；C++ 覆写 UpdateLocomotionPreCMC_Implementation。IsMovementPrerequisiteReady 查询调度，IsLocomotionReady 查询业务，不可混用；Unavailable 时 ASC/Set 已清，CMC 有效时仍可用于清理。
-- GetIMGCharacter、GetIMGCharacterMovementComponent、GetIMGAbilitySystemComponent 返回 IMG 类型。基类保留蓝图 PreCMC 扩展；Hero 原生规则由独立派生组件接入逐 Move 模拟，Native Ready/Unavailable 钩子先于蓝图通知。Foley、ABP 转发不属于该基类，不把 Tag 规则或专属表现委托/Tick 塞进 CMC。
+- **把模拟输入钉在 Move 上。** 原生 CMC 已记录原生移动状态和输入；外部写 MaxWalkSpeed/MaxAcceleration 或启用子对象复制不会把值纳入历史。AttributeChanged 只更新下一次捕获的输入。ControlledCharacterMove 在缩放前捕获，SavedMove 保存请求、上下文、提供者代次和参数快照。Hero 上下文是四项速度与落地标志。参数或请求变化阻止跨状态合并，重放按历史输入及纠偏后的起点重算，保留非本组件所有的制动摩擦快照，不回写 GAS 或覆盖实时步态。
+- **区分力度与加速度。** Packed Move 传 0–255 的输入力度和原生舍入方向，服务端及重放按当次加速度上限重建物理加速度，避免碰撞降速或合并回退后以旧上限解释力度。力度和请求、上下文变化参与 ImportantMove。权威端按自身 Set 重算，外推保留已接收的输入并采样当前属性。本地权威/AI 不生成客户端 SavedMove，模拟代理沿原生同步、只做本机表现。
+- **指纹发现分歧，响应接合权威事实。** Packed Move 带本机 Revision/代次及输入、实际参数两份 32 位指纹，按字宽混合并借用 FNV 常量。两份都不同时可提前要求位置/速度纠偏，即使历史位置差很小；仅无关步态属性不同可随 ACK 更新上下文。指纹不授予客户端限速，也不代替原生位置验证。Packed Move/Response 两端须同版。
+- 权威上下文在处理 Move 时留存，响应按 PendingAdjustment 时间戳回传。只在原生推进 ACK、对应 SavedMove 与代次/Revision 匹配、纠偏未被业务过滤时接收。逐属性本机变更标识允许新的合法 GAS 预测覆盖旧权威值；普通 OnRep 保留标识，避免复制乱序让晚到旧值撤销更新。停用/注销/换绑作废旧历史；Ragdoll 和 Traversal 维持各自接管及纠偏规则。
+- **场景 Buff 的时序。** GE 的 Duration 不决定执行端。场景触发按施加目标的 Authority 裁定，避免把非复制触发器 Self 的本机 Role 当成服务端判断。客户端可在合法 GAS 预测窗口预测已知操作；服务端独知的生效/到期仍有信息延迟，可能产生首次纠偏。现有速度上限按 Move 切换；如需平滑模拟目标，两端须按 Move 时间推进并保存过渡状态。
 
-### HeroLocomotion 与逐 Move 预测
+### 自主代理表现与排查
 
-- `UIMGHeroLocomotionComponent` 派生自 `UIMGLocomotionComponent`，文件位于 `Character/IMGHeroLocomotionComponent.h/.cpp`；`EGait` 与 `FCharacterInputState` 声明在该头文件。Hero 使用组件自身配置，不接入 LocomotionSet，也不重复管理 PawnExt/ASC 初始化或 CMC Tick 依赖。
-- Hero 的普通移动计算由原生派生组件提供，蓝图负责配置和装配；同一角色只保留一套 CMC 参数计算入口。
-- 依赖方向为 HeroLocomotion → CMC 请求接口。CMC 只持有弱 UObject 委托、通用请求字节与移动历史，不引用 HeroLocomotion、EGait、意图 Tag 或 GAS 规则；步态选择、配置和参数计算归 HeroLocomotion。
-- 四个意图 Tag 沿原路径 Native 注册：Event.Movement.Gait.Sprint/Walk、Event.Movement.RotationMode.Aim/Strafe。Tag 委托只更新当前请求；每个 Move 保存自己的四 bit 请求，CMC 不解释位含义，也不传速度或加速度上限。GA 继续负责意图 Tag 的激活、互斥和释放，不增加能力准入或代激活路径。
-- 请求意图与实际 Gait 分开：冲刺优先，不能冲刺时按 Walk 意图选 Walk，否则 Run。随移动朝向时允许冲刺；Aim/Strafe 使用 ControllerDesiredRotation，冲刺另查输入方向与胶囊朝向的50度夹角。
-- 默认 Walk=(165,150,130)、Run=(380,350,300)、Sprint=(585,585,585)、Crouch=(170,160,150)。Controller 朝向下，Curve_StrafeSpeedMap 消费 CalculateDirection 对应的速度/角色绝对夹角，在前/侧/后速度间插值；每次计算共用一次曲线采样更新普通/蹲伏速度，随移动方向使用前向值。Walk/Run 加速度500/800，Sprint 按速度[300,700]映射[800,300]；摩擦1/2，Sprint 按速度[0,500]映射[1,2]。普通/落地制动800/2000，落地窗口0.3秒；空中 RotationRate=(0,720,0)，其他为(0,-1,0)。配置在预测历史存在期间应保持稳定，当前没有运行时配置版本同步。
-- 原蓝图 FullMovementInput 固定 true 的行为保留，不增加未生效的 AnalogWalk/RunThreshold 或摇杆档位规则。CalculateBrakingFriction 保留查询但不接入参数写入；Foley、角色自身 JustLanded 表现和其他蓝图接口维持原职责。
-- 原 PreCMC 调度、蓝图事件和各端更新路径保留；本地取 PendingMovementInputVector，远端取 CMC.CurrentAcceleration，沿原顺序更新朝向和移动参数。逐 Move 接点复用内部计算，不额外触发 PreCMC 蓝图事件。
-- CMC 提供单一弱 UObject 请求提供者。ControlledCharacterMove 在输入缩放前准备实时规则，SavedMove 保存舍入输入和力度；MoveAutonomous 装配权威/重放上下文。三条路径统一在 PerformMovement 调用原生实现前按本次模拟起点计算参数并应用输入力度，避免使用合并回退前或纠偏前的速度。ForcePositionUpdate 延续最后批准的输入，不采样当前 Tag；提供者拒绝接管时保留原生移动。没有新增 RPC、MoveResponse 或参数复制。
-- 请求、参数、朝向及注册代次变化阻止跨状态 Move 合并；其余沿原生合并，合并回退完成后再计算实际参数，不统一禁止合并。请求及力度变化参与 ImportantMove。网络自主代理要求 Packed Movement RPC；请求新增1 bit存在标记和可选1字节，各端须使用同版布局。
-- 落地制动保留蓝图0.3秒可重置的本地窗口，用本组件计时器实现；重放不重启实时窗口，历史制动值由原 SavedMove 快照恢复。此窗口未增加服务端纠偏协议，不能视为任意落地物理都已确定性同步。
-- Gait/CharacterInputState 为本机规则输出，不另加属性复制。各端保留原 ASC Tag/PreCMC 更新，自主代理和权威端另按对应 Move 对齐请求；重放只计算历史移动，不覆盖公开的实时意图和步态，不查询当前 Tag 或重启落地计时器。模拟代理不提交移动请求。Ragdoll/恢复接管期间不写普通移动参数。
-- Ready 后精确绑定四个 Tag、Landed 与 CMC 提供者；Unavailable、EndPlay、Unregister、显式 Deactivate 释放本方绑定和缓存，仅仍持有该 CMC 提供者时恢复进入前参数，Activate 在就绪时重绑。CMC 停用/注销失效旧预测代次，结束清提供者；重放期间若提供者被卸载/替换，不恢复旧配置覆盖其清理。CMC 缓存对象替换仍须按基类合同重新注册组件。
-- `IMG.Movement.NetDiagnostics` 默认关闭；1记录纠偏/ACK，2增加每个速度子步消费的 Request、MaxSpeed/MaxAccel/Analog、摩擦/制动与速度。按 Actor/Move 时间戳对照 Predict/Authority/Replay，区分合理权威拒绝、输入时序和物理预测偏差；不以关闭纠偏、放宽误差或加大代理平滑替代收敛。
-- Traversal 的重试/权威结束等待和旧 Walking 纠偏过滤继续独立保留；普通步态同步不提供 Traversal 历史预测，也不替代其生命周期合同。
+- 拥有者纠偏时胶囊立即采用权威位置和速度，再重放 SavedMove。模拟代理插值参数不控制这条链。CMC 仅在本地自主代理的普通地面/下落移动中，以首个已接受纠偏前到重放后的**净位移**补偿网格。40 cm 内反向补偿重力平面分量并限制累计量，按 0.05 秒时间常数衰减。移动 Tick 前撤销、后应用；相机跟胶囊。瞬移、Root Motion、Ragdoll、网格更换和停用清理。
+- Play As Client 即使未开 Network Emulation 也会纠偏。先用 `p.NetShowCorrections 1` 与 `IMG.Movement.NetDiagnostics 1` 对照历史误差、权威响应和 `[AutonomousMeshCorrection]` 的 PostReplayDelta/MeshOffset；历史位置差为零仍可能修正速度。级别 2 对照 Predict/Authority/Replay 的限速、力度、摩擦和制动。用 `IMG.Movement.AutonomousMeshSmoothing 0` 做表现对照。单机也急刹时先查超速制动，两端分歧时查 Move 输入与时序，不靠放宽误差掩盖。
+- `Log LogIMGLocomotion Verbose` 查看 ASC/Set 等待、接管值和释放。权威端初次缺 Set、缺方向曲线、无效上下文或参数记 Warning，客户端复制等待记 Log。提供者冲突或 Packed RPC 未启用见 `LogIMGMovementNet`。
 
 ## Ragdoll 移动基底
 

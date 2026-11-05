@@ -3,17 +3,20 @@
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/CharacterMovementReplication.h"
+#include "Character/IMGMovementSimulationContext.h"
 #include "Character/Ragdoll/IMGCustomMovementMode_Ragdoll.h"
+#include "Misc/Optional.h"
 
 #include "IMGCharacterMovementComponent.generated.h"
 
 #define UE_API IMAGINEGAME_API
 
 class UObject;
+class USkeletalMeshComponent;
 struct FFrame;
 
-DECLARE_DELEGATE_RetVal(uint8, FMovementRequestCapture);
-DECLARE_DELEGATE_TwoParams(FMovementRequestApply, uint8, const FVector&);
+DECLARE_DELEGATE_RetVal_TwoParams(bool, FMovementRequestCapture, uint8&, FMovementSimulationContext&);
+DECLARE_DELEGATE_RetVal_FourParams(bool, FMovementRequestApply, uint8, const FMovementSimulationContext&, const FVector&, bool);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
@@ -31,6 +34,10 @@ struct IMAGINEGAME_API FIMGCharacterNetworkMoveData : FCharacterNetworkMoveData
 	uint8 InputMagnitude = 0;
 	bool bHasMovementRequest = false;
 	uint8 MovementRequest = 0;
+	uint32 MovementContextRevision = 0;
+	uint32 MovementContextGeneration = 0;
+	uint32 MovementContextHash = 0;
+	uint32 MovementParameterHash = 0;
 	FIMGRagdollMovementInput RagdollInput;
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, ENetworkMoveType MoveType) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, ENetworkMoveType MoveType) override;
@@ -44,6 +51,9 @@ struct IMAGINEGAME_API FIMGCharacterNetworkMoveDataContainer : FCharacterNetwork
 
 struct IMAGINEGAME_API FIMGCharacterMoveResponseDataContainer : FCharacterMoveResponseDataContainer
 {
+	bool bHasMovementContext = false;
+	uint32 MovementContextGeneration = 0;
+	FMovementSimulationContext MovementContext;
 	bool bHasRagdollState = false;
 	/** Correlates the native result with placement, even if the snapshot changed before packing. */
 	bool bRagdollPlacementReflected = false;
@@ -130,12 +140,14 @@ public:
 	/** Listeners may only set discard to true. Discarded corrections still ACK through the native path. Packed responses only. */
 	FIMGClientCorrectionFilter ClientCorrectionFilter;
 
-	/** One weak UObject provider; movement only records and transports its request byte. */
+	/** One weak UObject provider; movement records opaque rule inputs and returns timestamp-matched authority context. */
 	UE_API bool RegisterMovementRequestProvider(UObject* Source, FMovementRequestCapture Capture, FMovementRequestApply Apply);
 	UE_API void UnregisterMovementRequestProvider(const UObject* Source);
 	bool IsMovementRequestProvider(const UObject* Source) const { return Source && MovementRequestSource.Get() == Source; }
 	UE_API bool HasMovementRequestProvider() const;
 	UE_API virtual void ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds) override;
+	UE_API virtual void PerformMovement(float DeltaSeconds) override;
+	UE_API virtual bool ForcePositionUpdate(float DeltaTime) override;
 	
 	UE_API virtual bool CanAttemptJump() const override;
 	UE_API virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
@@ -163,6 +175,7 @@ public:
 	UE_API virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
 	UE_API virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
 	UE_API virtual bool ClientUpdatePositionAfterServerUpdate() override;
+	UE_API virtual void OnTeleported() override;
 	using Super::ServerMoveHandleClientError;
 	UE_API virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
 		FMovementBaseInterfaceData* ClientMovementBaseInterfaceData, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
@@ -240,6 +253,10 @@ public:
 
 protected:
 	UE_API virtual float ComputeAnalogInputModifier() const override;
+	using Super::OnClientCorrectionReceived;
+	UE_API virtual void OnClientCorrectionReceived(FNetworkPredictionData_Client_Character& ClientData, float TimeStamp, FVector NewLocation,
+		FVector NewVelocity, FMovementBaseInterfaceData* NewMovementBaseInterfaceData, FName NewBaseBoneName, bool bHasBase,
+		bool bBaseRelativePosition, uint8 ServerMovementMode, FVector ServerGravityDirection) override;
 	FIMGStanceStateMachine StanceMachine;
 	bool CanEnterStance(EIMGStance NewStance) const;
 	bool ApplyStanceTransition(EIMGStance PreviousStance, EIMGStance NewStance, bool bClientSimulation);
@@ -252,13 +269,29 @@ protected:
 	friend struct FIMGStanceStateMachine;
 	friend class FIMGCustomMovementMode_Ragdoll;
 
-	void ApplyMovementRequest(const FVector& Input);
+	bool ApplyMovementRequest(const FVector& Input);
+	bool CaptureMovementRequestContext(bool bCaptureRequest = true);
+	void ResolveMovementContext(FMovementSimulationContext& Context) const;
+	void ResetMovementRequestHistory();
 	TWeakObjectPtr<UObject> MovementRequestSource;
 	FMovementRequestCapture CaptureMovementRequest;
 	FMovementRequestApply ApplyMovementRequestDelegate;
 	uint32 MovementRequestGeneration = 0;
 	uint8 MovementRequest = 0;
 	bool bHasMovementRequest = false;
+	FVector MovementRequestInput = FVector::ZeroVector;
+	uint8 MovementInputMagnitude = 0;
+	bool bHasMovementRequestInput = false;
+	FMovementSimulationContext MovementContext;
+	FMovementSimulationContext AuthorityMovementContext;
+	TArray<uint32, TInlineAllocator<8>> AuthorityParameterRevisions;
+	uint32 AuthorityMovementContextGeneration = 0;
+	bool bMovementContextApplied = false;
+	uint32 MovementParameterHash = 0;
+	float MovementContextTimeStamp = 0.f;
+	FMovementSimulationContext MovementAdjustmentContext;
+	uint32 MovementAdjustmentGeneration = 0;
+	float MovementAdjustmentTimeStamp = 0.f;
 
 	FIMGCustomMovementMode_Ragdoll RagdollMode;
 	FIMGCharacterNetworkMoveDataContainer IMGNetworkMoveData;
@@ -291,6 +324,19 @@ protected:
 	
 	UPROPERTY(Transient)
 	bool bHasReplicatedAcceleration = false;
+
+private:
+	USkeletalMeshComponent* GetAutonomousSmoothingMesh() const;
+	void FinishAutonomousMeshCorrection();
+	void ApplyAutonomousMeshOffset();
+	void RemoveAutonomousMeshOffset();
+	void ResetAutonomousMeshSmoothing();
+
+	TWeakObjectPtr<USkeletalMeshComponent> AutonomousSmoothingMesh;
+	TOptional<FVector> AutonomousPreCorrectionLocation;
+	FVector AutonomousMeshWorldOffset = FVector::ZeroVector;
+	FVector AppliedAutonomousMeshRelativeOffset = FVector::ZeroVector;
+	FVector AppliedAutonomousMeshRelativeLocation = FVector::ZeroVector;
 };
 
 #undef UE_API

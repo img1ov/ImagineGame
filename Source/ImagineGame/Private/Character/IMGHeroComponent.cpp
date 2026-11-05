@@ -185,7 +185,7 @@ UIMGHeroComponent::UIMGHeroComponent(const FObjectInitializer& ObjectInitializer
 void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleValue, bool bForce)
 {
 	APawn* Pawn = GetPawn<APawn>();
-	if (!Pawn)
+	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsRegistered() || IsBeingDestroyed())
 	{
 		ResetMovementIntent();
 		return;
@@ -199,6 +199,8 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 		return;
 	}
 
+	const uint32 RequestSerial = ++MovementIntentSerial;
+	const AController* RequestController = Pawn->GetController();
 	const UWorld* World = GetWorld();
 	bool bTriggeredPivot = false;
 	const FVector MovementIntent = MovementIntentProcessor.UpdateMovementIntent(
@@ -212,7 +214,7 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 	{
 		const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn);
 		UIMGAbilitySystemComponent* IMGASC = PawnExtComp ? PawnExtComp->GetIMGAbilitySystemComponent() : nullptr;
-		if (IMGASC)
+		if (IMGASC && IMGASC->GetAvatarActor() == Pawn)
 		{
 			FGameplayEventData Payload;
 			Payload.EventTag = MovementIntentSettings.PivotGameplayEventTag;
@@ -220,6 +222,15 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 			Payload.Target = Pawn;
 			IMGASC->HandleGameplayEvent(Payload.EventTag, &Payload);
 		}
+	}
+
+	// The event can cancel movement, replace control or destroy this pawn/component synchronously.
+	if (RequestSerial != MovementIntentSerial) { return; }
+	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsRegistered() || IsBeingDestroyed()
+		|| GetPawn<APawn>() != Pawn || Pawn->GetController() != RequestController)
+	{
+		ResetMovementIntent();
+		return;
 	}
 
 	if (!MovementIntent.IsNearlyZero())
@@ -230,6 +241,7 @@ void UIMGHeroComponent::AddMovementIntent(FVector WorldDirection, float ScaleVal
 
 void UIMGHeroComponent::ResetMovementIntent()
 {
+	++MovementIntentSerial;
 	MovementIntentProcessor.Reset();
 }
 
@@ -496,8 +508,7 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 					// Add the key mappings that may have been set by the player
 					IMGIC->AddInputMappings(InputConfig, InputSubsystem);
 
-					// This is where we actually bind and input action to a gameplay tag, which means that Gameplay Ability Blueprints will
-					// be triggered directly by these input actions Triggered events.
+					// Ability actions forward Started/Completed through tags to ASC input processing.
 					TArray<uint32> BindHandles;
 					IMGIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, BindHandles);
 
@@ -525,11 +536,12 @@ void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompon
 
 void UIMGHeroComponent::Input_AbilityInputTagPressed(FGameplayTag InputTag)
 {
+	if (!IsRegistered() || IsBeingDestroyed()) { return; }
 	if (const APawn* Pawn = GetPawn<APawn>())
 	{
 		if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
 		{
-			if (UIMGAbilitySystemComponent* IMGASC = PawnExtComp->GetIMGAbilitySystemComponent())
+			if (UIMGAbilitySystemComponent* IMGASC = PawnExtComp->GetIMGAbilitySystemComponent(); IMGASC && IMGASC->GetAvatarActor() == Pawn)
 			{
 				IMGASC->AbilityInputTagPressed(InputTag);
 			}
@@ -539,11 +551,12 @@ void UIMGHeroComponent::Input_AbilityInputTagPressed(FGameplayTag InputTag)
 
 void UIMGHeroComponent::Input_AbilityInputTagReleased(FGameplayTag InputTag)
 {
+	if (!IsRegistered() || IsBeingDestroyed()) { return; }
 	if (const APawn* Pawn = GetPawn<APawn>())
 	{
 		if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
 		{
-			if (UIMGAbilitySystemComponent* IMGASC = PawnExtComp->GetIMGAbilitySystemComponent())
+			if (UIMGAbilitySystemComponent* IMGASC = PawnExtComp->GetIMGAbilitySystemComponent(); IMGASC && IMGASC->GetAvatarActor() == Pawn)
 			{
 				IMGASC->AbilityInputTagReleased(InputTag);
 			}
@@ -555,7 +568,8 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 {
 	APawn* Pawn = GetPawn<APawn>();
 	AController* Controller = Pawn ? Pawn->GetController() : nullptr;
-	if (!Pawn || !Controller)
+	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsValid(Controller) || Controller->IsActorBeingDestroyed()
+		|| !IsRegistered() || IsBeingDestroyed())
 	{
 		ResetMovementIntent();
 		return;
@@ -565,6 +579,12 @@ void UIMGHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 	if (AIMGPlayerController* IMGController = Cast<AIMGPlayerController>(Controller))
 	{
 		IMGController->SetIsAutoRunning(false);
+	}
+	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsValid(Controller) || Controller->IsActorBeingDestroyed()
+		|| GetPawn<APawn>() != Pawn || Pawn->GetController() != Controller || !IsRegistered() || IsBeingDestroyed())
+	{
+		ResetMovementIntent();
+		return;
 	}
 
 	const FVector2D MoveInput = InputActionValue.Get<FVector2D>();

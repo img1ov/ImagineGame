@@ -12,6 +12,7 @@
 
 class AActor;
 class UAnimMontage;
+class UAttributeSet;
 class UGameplayAbility;
 class UIMGAbilityTagRelationshipMapping;
 class UObject;
@@ -61,6 +62,10 @@ public:
 
 	UE_API virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
 	UE_API virtual void ClearActorInfo() override;
+	UE_API void AddRuntimeAttributeSet(UAttributeSet* AttributeSet);
+	UE_API void RemoveRuntimeAttributeSet(UAttributeSet* AttributeSet);
+	/** Signals local list mutations and completed replication batches. Listeners compare the set they use. */
+	FSimpleMulticastDelegate& OnAttributeSetsUpdated() { return AttributeSetsUpdated; }
 	UE_API virtual float PlayMontageSimulated(
 		UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None) override;
 
@@ -144,6 +149,7 @@ public:
 protected:
 	UE_API virtual void OnRegister() override;
 	UE_API virtual void OnUnregister() override;
+	UE_API virtual void PostRepNotifies() override;
 
 	UE_API virtual void ClientTryActivateAbility_Implementation(FGameplayAbilitySpecHandle AbilityToActivate) override;
 	UE_API virtual void ClientActivateAbilityFailed_Implementation(FGameplayAbilitySpecHandle AbilityToActivate, int16 PredictionKey) override;
@@ -180,11 +186,14 @@ protected:
 
 	// Handles to abilities that have their input held.
 	TArray<FGameplayAbilitySpecHandle> InputHeldSpecHandles;
+	uint32 AbilityInputGeneration = 0;
+	bool bProcessingAbilityInput = false;
 
 	// Number of abilities running in each activation group.
 	int32 ActivationGroupCounts[(uint8)EIMGAbilityActivationGroup::MAX];
 
 private:
+	FSimpleMulticastDelegate AttributeSetsUpdated;
 	struct FReplicatedMontageInstance
 	{
 		TWeakObjectPtr<AActor> Avatar;

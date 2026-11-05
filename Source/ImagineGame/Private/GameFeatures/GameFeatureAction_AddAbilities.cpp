@@ -171,6 +171,7 @@ void UGameFeatureAction_AddAbilities::AddActorAbilities(AActor* Actor, const FGa
 
 	if (UAbilitySystemComponent* AbilitySystemComponent = FindOrAddComponentForActor<UAbilitySystemComponent>(Actor, AbilitiesEntry, ActiveData))
 	{
+		UIMGAbilitySystemComponent* IMGASC = CastChecked<UIMGAbilitySystemComponent>(AbilitySystemComponent);
 		FActorExtensions AddedExtensions;
 		AddedExtensions.Abilities.Reserve(AbilitiesEntry.GrantedAbilities.Num());
 		AddedExtensions.Attributes.Reserve(AbilitiesEntry.GrantedAttributes.Num());
@@ -205,12 +206,11 @@ void UGameFeatureAction_AddAbilities::AddActorAbilities(AActor* Actor, const FGa
 					}
 
 					AddedExtensions.Attributes.Add(NewSet);
-					AbilitySystemComponent->AddAttributeSetSubobject(NewSet);
+					IMGASC->AddRuntimeAttributeSet(NewSet);
 				}
 			}
 		}
 
-		UIMGAbilitySystemComponent* IMGASC = CastChecked<UIMGAbilitySystemComponent>(AbilitySystemComponent);
 		for (const TSoftObjectPtr<const UIMGAbilitySet>& SetPtr : AbilitiesEntry.GrantedAbilitySets)
 		{
 			if (const UIMGAbilitySet* Set = SetPtr.Get())
@@ -233,9 +233,10 @@ void UGameFeatureAction_AddAbilities::RemoveActorAbilities(AActor* Actor, FPerCo
 	{
 		if (UAbilitySystemComponent* AbilitySystemComponent = Actor->FindComponentByClass<UAbilitySystemComponent>())
 		{
+			UIMGAbilitySystemComponent* IMGASC = CastChecked<UIMGAbilitySystemComponent>(AbilitySystemComponent);
 			for (UAttributeSet* AttribSetInstance : ActorExtensions->Attributes)
 			{
-				AbilitySystemComponent->RemoveSpawnedAttribute(AttribSetInstance);
+				IMGASC->RemoveRuntimeAttributeSet(AttribSetInstance);
 			}
 
 			for (FGameplayAbilitySpecHandle AbilityHandle : ActorExtensions->Abilities)
@@ -243,7 +244,6 @@ void UGameFeatureAction_AddAbilities::RemoveActorAbilities(AActor* Actor, FPerCo
 				AbilitySystemComponent->SetRemoveAbilityOnEnd(AbilityHandle);
 			}
 
-			UIMGAbilitySystemComponent* IMGASC = CastChecked<UIMGAbilitySystemComponent>(AbilitySystemComponent);
 			for (FIMGAbilitySet_GrantedHandles& SetHandle : ActorExtensions->AbilitySetHandles)
 			{
 				SetHandle.TakeFromAbilitySystem(IMGASC);

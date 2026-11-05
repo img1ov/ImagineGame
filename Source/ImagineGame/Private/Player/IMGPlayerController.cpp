@@ -549,6 +549,10 @@ void AIMGPlayerController::OnStartAutoRun()
 
 void AIMGPlayerController::OnEndAutoRun()
 {
+	if (UIMGHeroComponent* HeroComponent = UIMGHeroComponent::FindHeroComponent(GetPawn()))
+	{
+		HeroComponent->ResetMovementIntent();
+	}
 	if (UIMGAbilitySystemComponent* IMGASC = GetIMGAbilitySystemComponent())
 	{
 		IMGASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_AutoRunning, 0);
