@@ -92,3 +92,6 @@ $RECYCLE.BIN/
 # Map external packages excluded from version control
 /Content/__ExternalActors__/
 /Content/__ExternalObjects__/
+
+# 打包/临时压缩包：体积超 GitHub 单文件上限，不入库
+*.zip

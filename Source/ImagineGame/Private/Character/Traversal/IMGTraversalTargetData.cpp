@@ -13,6 +13,9 @@ bool FIMGTraversalTargetData::NetSerialize(FArchive& Ar, UPackageMap* Map, bool&
 		return false;
 	}
 	Direction.NetSerialize(Ar, Map, bOutSuccess);
+	bool bIntentSuccess = false;
+	MovementIntent.NetSerialize(Ar, Map, bIntentSuccess);
+	bOutSuccess &= bIntentSuccess;
 	uint8 PackedSource = static_cast<uint8>(Source);
 	Ar.SerializeBits(&PackedSource, 2);
 	if (Ar.IsLoading())

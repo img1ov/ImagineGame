@@ -226,7 +226,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 ### 目录、检测与选择
 
-- 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。Detector 无状态同步查几何；Component 管配置、Warp Target、临时碰撞忽略与代理快照；GA 管检测 → 选择 → 校验/Commit → 播放 → 退出；Types/TargetData 定义数据与请求，Debug 在 Private 同目录。
+- 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。Detector 无状态同步查几何；Component 管配置、Warp Target、临时碰撞忽略、Flying 接管/释放与代理快照；GA 管检测 → 选择 → 校验/Commit → 播放 → 退出。GA 的本地/AI/远端请求共用 OnTargetDataReady → ResolveTraversalRequest → StartTraversalExecution；Component.BeginTraversal/EndTraversal 成对管理执行资源与移动模式，模拟代理只消费复制，不自行裁定模式。Types/TargetData 定义数据与请求，Debug 在 Private 同目录。
 - Detector 内部由 SampleHandhold 采样中心/左右顶部、宽度和楼梯轮廓，MakeCandidate 调度 ValidateCandidateDirection 验证请求/法线方向。同一候选的方向回退复用本次采样，每个方向从原始 Candidate 副本开始，重新计算接近、深度、后沿、净空及坡向；不跨 Detect 调用、帧或网络端缓存采样，不省略服务端重检。
 - 每次激活只作一次尝试，外部决定输入/自动触发，RequestSource 与 ActivationPolicy 独立。本地 CanActivate 先作原生几何/发起预筛，CHT/PoseMatch 仍只在激活后经 PreSelectTraversalAnimation/SelectTraversalAnimation 选单 Montage；角色装配 Traversal/MotionWarping并授予 GA，服务端无 PoseHistory 时需后备。
 - InitiationSettings 在检测后、选择前及 GA 校验/服务端重检消费；bEnabled=false 只跳过本组发起限制。Manual 默认允许150 cm内站立发起；Automatic 默认允许 Falling，要求朝向前沿的有效意图、方向阈值0.8，固定 AutomaticMaxDistance=150 cm，不以实际速度设门槛或二次缩距。
@@ -242,8 +242,9 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 ### 执行、网络与清理
 
-- GAS LocalPredicted：校验 → Commit → 建立 Target/碰撞忽略 → Flying → Montage启动 → 提交 TargetData/发布快照。启动前单次取消；服务端按方向重查来源、Action、时间/倍率、Warp合同和可选 AllowedMontages，不接受客户端几何。CHT 前拒绝不启动执行，Commit 后重入/播放失败走既有退出。
+- GAS LocalPredicted：校验 → Commit → 建立 Target/碰撞忽略 → Flying → Montage启动 → 提交 TargetData/发布快照。启动前单次取消；服务端按方向重查来源、Action、时间/倍率、Warp合同和可选 AllowedMontages，不接受客户端几何。CHT 前拒绝不启动执行，Commit 后重入/播放失败走既有退出。激活/请求处理栈未退出时禁止重用同一 GA 实例；处理期间保留 TargetData 句柄，避免同步回调消费 GAS 缓存后引用失效。
 - GA 本地结束后默认 RetryInterval=0.25秒再允许尝试；自主代理同时等待同 Avatar/Spec/预测键的权威结束或激活拒绝，保留 WhileInputActive 的持续尝试语义。ASC.AbilityNetworkTermination 透传现有可靠 ClientEnd/Cancel/ActivateFailed，含本机已结束的实例，不新增 RPC；远端 Traversal 权威退出须发送终止通知。权威等待 TargetData 默认 TargetDataTimeout=2秒，开始执行时复用计时器转为目标复核。
+- 玩家本次发起的搜索朝向与移动意图随同一份 TargetData 提交，检测后、选片后和 Commit 后使用该次意图。服务端把两者作为请求输入，用自身位置、移动状态和几何重新计算前沿、角度、距离及落点；发起角度以请求朝向和服务端检测到的前沿比较，不以收包时的角色朝向或 Acceleration 代替。零意图不满足 Automatic，Manual 按站立配置处理。TargetData 两端须同版。
 - CMC.ClientCorrectionFilter 是仅用于 Packed MoveResponse 的通用本机过滤入口；只有仍能匹配 SavedMove 的纠偏才询问监听者，丢弃时保留原生 ACK/缓存释放，不应用位置、模式或 Root Motion，也不作为恢复落位已消费的证明。CMC 不依赖 Traversal；GA 弱绑定、按句柄注销，只在本方仍活动且 Flying 时过滤开始前已记录的待确认 Move，超过时间戳重置安全窗口则放行。开始后的纠偏和权威拒绝仍生效；该机制不提供完整 Traversal 历史重放或动态载体回滚。
 - 正常完成以 PlayMontageAndWait.OnCompleted 为退出边界，包含正常 BlendOut；面向站稳落地的单 Montage 动作须按站稳后混出制作。检测几何、选片后的落位校验及 CompensatePlacement 为 Warp 提供目标依据，不据此推断胶囊已实际到达，也不因预计算落点、Warp 窗口结束或途中接触而提前切 Walking；现有合同不增加持续落地检测或独立落地阶段复制。结束时的实际支撑查询仍须保留，以处理执行偏差和环境变化。
 - 完成/中断/取消/死亡/目标失效/ASC解绑幂等清理 Target、碰撞忽略、委托、计时器。Ragdoll 等外部移动模式接管与正常落地分开处理，由能力取消或 CheckActiveTarget 发现离开 Flying 后走中断清理，不等待蒙太奇正常结束。恢复碰撞后，仅角色存活且仍 Flying 时按实际支撑切 Walking/Falling，不覆盖接管方设置的新模式；PawnExt 解绑顺序见 ASC 生命周期。

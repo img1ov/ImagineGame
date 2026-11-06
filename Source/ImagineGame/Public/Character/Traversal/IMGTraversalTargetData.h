@@ -5,7 +5,7 @@
 
 #include "IMGTraversalTargetData.generated.h"
 
-/** Client selection only. Authority repeats geometry detection and checks this request. */
+/** Client intent and animation selection. Authority resolves geometry and checks the request. */
 USTRUCT()
 struct FIMGTraversalTargetData : public FGameplayAbilityTargetData
 {
@@ -13,6 +13,9 @@ struct FIMGTraversalTargetData : public FGameplayAbilityTargetData
 
 	UPROPERTY()
 	FVector_NetQuantizeNormal Direction = FVector::ForwardVector;
+
+	UPROPERTY()
+	FVector_NetQuantizeNormal MovementIntent = FVector::ZeroVector;
 
 	UPROPERTY()
 	EIMGTraversalRequestSource Source = EIMGTraversalRequestSource::Manual;

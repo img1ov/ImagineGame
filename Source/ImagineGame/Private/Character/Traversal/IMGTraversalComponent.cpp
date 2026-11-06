@@ -5,6 +5,7 @@
 #include "AnimNotifyState_MotionWarping.h"
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
+#include "Character/IMGHealthComponent.h"
 #include "Character/IMGPawnExtensionComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -24,30 +25,29 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTraversalComponent)
 
-namespace
+FVector UIMGTraversalComponent::GetMovementIntent(EIMGTraversalRequestSource Source) const
 {
-FVector GetTraversalMovementIntent(const AIMGCharacter& Character, EIMGTraversalRequestSource Source)
-{
-	FVector Intent = Character.GetPendingMovementInputVector().GetSafeNormal2D();
+	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	if (!IsValid(Character)) { return FVector::ZeroVector; }
+	FVector Intent = Character->GetPendingMovementInputVector().GetSafeNormal2D();
 	if (Intent.IsNearlyZero())
 	{
-		const UIMGCharacterMovementComponent* Movement = Character.GetIMGMovementComponent();
+		const UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
 		Intent = Movement ? Movement->GetCurrentAcceleration().GetSafeNormal2D() : FVector::ZeroVector;
 	}
 	if (Intent.IsNearlyZero() && Source == EIMGTraversalRequestSource::AI)
 	{
-		const AController* Controller = Character.GetController();
+		const AController* Controller = Character->GetController();
 		const UPathFollowingComponent* PathFollowing =
 		    IsValid(Controller) ? Controller->FindComponentByClass<UPathFollowingComponent>() : nullptr;
 		// Direct-velocity path following need not populate CMC acceleration, even while pushing into a wall.
 		if (IsValid(PathFollowing) && PathFollowing->GetStatus() == EPathFollowingStatus::Moving && PathFollowing->HasValidPath())
 		{
-			Intent = PathFollowing->GetCurrentTargetLocation() - Character.GetActorLocation();
+			Intent = PathFollowing->GetCurrentTargetLocation() - Character->GetActorLocation();
 		}
 	}
 	return Intent.ContainsNaN() ? FVector::ZeroVector : Intent.GetSafeNormal2D();
 }
-} // namespace
 
 UIMGTraversalComponent::UIMGTraversalComponent(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -85,7 +85,7 @@ bool UIMGTraversalComponent::Detect(FIMGTraversalCandidate& OutCandidate, EIMGTr
 	Query.Character = Character;
 	if (Direction.IsNearlyZero() && Character && Source == EIMGTraversalRequestSource::AI)
 	{
-		Direction = GetTraversalMovementIntent(*Character, Source);
+		Direction = GetMovementIntent(Source);
 	}
 	Query.Direction = Direction.IsNearlyZero() && Character ? Character->GetActorForwardVector() : Direction;
 	Query.Source = Source;
@@ -98,7 +98,8 @@ UMotionWarpingComponent* UIMGTraversalComponent::GetMotionWarpingComponent() con
 	return GetOwner() ? GetOwner()->FindComponentByClass<UMotionWarpingComponent>() : nullptr;
 }
 
-bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate, bool bRemoteRequest) const
+bool UIMGTraversalComponent::CanInitiate(
+    const FIMGTraversalCandidate& Candidate, const FVector& MovementIntent, bool bRemoteRequest) const
 {
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
@@ -129,14 +130,17 @@ bool UIMGTraversalComponent::CanInitiate(const FIMGTraversalCandidate& Candidate
 		return false;
 	}
 	const FVector ToLedge = (Candidate.FrontLedge.GetLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+	// A player request carries the facing used for its search. AI can search along its path before turning.
+	const FVector Facing = Candidate.RequestSource == EIMGTraversalRequestSource::AI
+	    ? Character->GetActorForwardVector().GetSafeNormal2D() : Candidate.ApproachDirection;
 	const float MinFacingDot = Candidate.RequestSource == EIMGTraversalRequestSource::Automatic
 	    ? DetectorSettings.AutomaticMinFacingDot : DetectorSettings.MinFacingDot;
 	if (!FMath::IsFinite(MinFacingDot) || FMath::Abs(MinFacingDot) > 1.f ||
-	    FVector::DotProduct(Character->GetActorForwardVector().GetSafeNormal2D(), ToLedge) < MinFacingDot)
+	    FVector::DotProduct(Facing, ToLedge) < MinFacingDot)
 	{
 		return false;
 	}
-	const FVector Intent = GetTraversalMovementIntent(*Character, Candidate.RequestSource);
+	const FVector Intent = MovementIntent.GetSafeNormal2D();
 	const bool bAutomatic = Candidate.RequestSource == EIMGTraversalRequestSource::Automatic;
 	const float DistanceTolerance = bRemoteRequest ? Settings.ServerDistanceTolerance : 0.f;
 	float AllowedDistance = 0.f;
@@ -420,10 +424,16 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 	}
 }
 
-void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
+bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets)
 {
-	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
+	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	if (!IsTraversalAvailable() || ActiveState.bActive || !IsValid(Character) || Character->IsActorBeingDestroyed() ||
+	    Character->GetLocalRole() == ROLE_SimulatedProxy || !Movement || Movement != Character->GetIMGMovementComponent())
+	{
+		return false;
+	}
 	ActiveState = FIMGTraversalRepState();
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
 	ActiveState.Action = Selection.Action;
@@ -445,6 +455,10 @@ void UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	SetTargetTickPrerequisites(true);
 	RefreshWarpTargets();
 	SetComponentTickEnabled(true);
+	Movement->SetMovementMode(MOVE_Flying);
+	// Movement-mode callbacks may synchronously cancel the ability or release this component.
+	return IsTraversalAvailable() && ActiveState.bActive && IsValid(Character) &&
+	    BoundMovement.Get() == Movement && IsValid(Movement) && Movement->IsFlying();
 }
 
 bool UIMGTraversalComponent::PublishTraversalState(uint8 MontagePlayInstanceId)
@@ -485,6 +499,7 @@ void UIMGTraversalComponent::EndTraversal()
 	{
 		ASC->RetryReplicatedMontage();
 	}
+	RestoreMovementMode();
 }
 
 void UIMGTraversalComponent::OnRep_TraversalState()
@@ -581,6 +596,25 @@ void UIMGTraversalComponent::RestoreMovementIgnores()
 		}
 	}
 	AddedMovementIgnores.Reset();
+}
+
+void UIMGTraversalComponent::RestoreMovementMode()
+{
+	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	if (!IsValid(Character) || Character->IsActorBeingDestroyed() || Character->GetLocalRole() == ROLE_SimulatedProxy ||
+	    !Movement || Movement != Character->GetIMGMovementComponent() || !Movement->IsFlying() || !Movement->UpdatedComponent)
+	{
+		return;
+	}
+	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
+	if (Health && Health->IsDeadOrDying()) { return; }
+	FFindFloorResult Floor;
+	Movement->FindFloor(Movement->UpdatedComponent->GetComponentLocation(), Floor, false);
+	if (BoundMovement.Get() == Movement && IsValid(Movement) && !ActiveState.bActive && Movement->IsFlying())
+	{
+		Movement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
+	}
 }
 
 void UIMGTraversalComponent::HandleMotionWarpingPreUpdate(UMotionWarpingComponent* Warping)
@@ -796,8 +830,6 @@ void UIMGTraversalComponent::ReleaseBindings()
 {
 	if (bReleasingBindings) { return; }
 	TGuardValue<bool> Releasing(bReleasingBindings, true);
-	const bool bWasActive = ActiveState.bActive;
-	const TWeakObjectPtr<UIMGCharacterMovementComponent> ExecutionMovement = BoundMovement;
 	SetComponentTickEnabled(false);
 	if (UMotionWarpingComponent* Warping = BoundMotionWarpingComponent.Get())
 	{
@@ -813,19 +845,9 @@ void UIMGTraversalComponent::ReleaseBindings()
 	{
 		Movement->RemoveTickPrerequisiteComponent(this);
 	}
-	BoundMovement.Reset();
 	EndTraversal();
+	BoundMovement.Reset();
 	BoundMotionWarpingComponent.Reset();
-	if (bWasActive && ExecutionMovement.IsValid() && GetOwner() && GetOwner()->GetLocalRole() != ROLE_SimulatedProxy
-		&& !GetOwner()->IsActorBeingDestroyed() && ExecutionMovement->IsFlying() && ExecutionMovement->UpdatedComponent)
-	{
-		FFindFloorResult Floor;
-		ExecutionMovement->FindFloor(ExecutionMovement->UpdatedComponent->GetComponentLocation(), Floor, false);
-		if (ExecutionMovement.IsValid() && ExecutionMovement->IsFlying())
-		{
-			ExecutionMovement->SetMovementMode(Floor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
-		}
-	}
 }
 
 void UIMGTraversalComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

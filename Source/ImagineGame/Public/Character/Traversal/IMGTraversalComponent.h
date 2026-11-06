@@ -39,7 +39,8 @@ public:
 	}
 	const FIMGTraversalAnimationSettings* FindAnimationSettings(
 	    EIMGTraversalAction Action, const UAnimMontage* Montage) const;
-	bool CanInitiate(const FIMGTraversalCandidate& Candidate, bool bRemoteRequest = false) const;
+	FVector GetMovementIntent(EIMGTraversalRequestSource Source) const;
+	bool CanInitiate(const FIMGTraversalCandidate& Candidate, const FVector& MovementIntent, bool bRemoteRequest = false) const;
 	void GetWarpWindows(const UAnimMontage* Montage, TArray<FIMGTraversalWarpWindow>& OutWindows) const;
 	static const FIMGTraversalWarpWindow* FindTranslationWindow(TConstArrayView<FIMGTraversalWarpWindow> Windows,
 	    FName TargetName, int32 WindowIndex, float MinEndTime, float MaxEndTime);
@@ -47,7 +48,8 @@ public:
 	{
 		return TargetValidationInterval;
 	}
-	void BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
+	/** Acquires targets/collision ignores and enters Flying; EndTraversal releases them before restoring movement. */
+	bool BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
 	    const TArray<FIMGTraversalWarpTarget>& WarpTargets);
 	bool PublishTraversalState(uint8 MontagePlayInstanceId);
 	void EndTraversal();
@@ -130,6 +132,7 @@ private:
 	void RemoveWarpTargets();
 	void RefreshMovementIgnores();
 	void RestoreMovementIgnores();
+	void RestoreMovementMode();
 	bool ShouldDeferSimulatedEnd() const;
 	void SetTargetTickPrerequisites(bool bAdd);
 	void HandleAbilitySystemInitialized();

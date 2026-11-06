@@ -11,6 +11,7 @@ class UIMGCharacterMovementComponent;
 class UIMGAbilitySystemComponent;
 class UPrimitiveComponent;
 struct FCharacterMoveResponseDataContainer;
+struct FIMGTraversalTargetData;
 
 /** Single-montage traversal. Blueprint selects the action/montage; native code owns geometry and lifetime. */
 UCLASS(Abstract, Blueprintable)
@@ -74,16 +75,23 @@ protected:
 private:
 	void LogTraversalEvent(const TCHAR* Event, const FString& Detail, bool bWarning = false) const;
 	void OnTargetDataReady(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag);
+	bool ResolveTraversalRequest(const FIMGTraversalTargetData& Request, bool bRemoteRequest,
+	    FIMGTraversalCandidate& OutCandidate, FIMGTraversalAnimationSelection& OutSelection) const;
+	bool StartTraversalExecution(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
+	    const FVector& MovementIntent, bool bRemoteRequest);
+	bool IsTraversalExecutionValid() const;
+	void TrackActiveTargets(const FIMGTraversalCandidate& Candidate, const TArray<FIMGTraversalWarpTarget>& WarpTargets);
 	void OnTargetDataCancelled();
 	void SendPendingTargetDataCancellation();
 	void CancelPendingTargetData();
 	bool IsSelectionValid(const FIMGTraversalAnimationSelection& Selection, const FIMGTraversalCandidate& Candidate,
-	    bool bRemoteRequest) const;
+	    const FVector& MovementIntent, bool bRemoteRequest) const;
 	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
 	    TArray<FIMGTraversalWarpTarget>& OutTargets) const;
 	void CheckActiveTarget();
 	void OnTargetDataTimedOut();
 	void FilterClientCorrection(const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection);
+	void RegisterCorrectionFilter();
 	void ClearCorrectionFilter();
 	void OnNetworkTermination(FGameplayAbilitySpecHandle Handle, int16 PredictionKey, bool bRejected);
 	void ClearNetworkTracking();
@@ -114,6 +122,8 @@ private:
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
 	TArray<FTransform> PreviousObstacleTransforms;
 	float PreviousTargetCheckTime = 0.f;
+	// Do not reuse this per-actor instance while a previous activation/request is still unwinding.
+	bool bProcessingTraversalRequest = false;
 	bool bLocalRequest = false;
 	bool bTraversalStarted = false;
 	bool bMontageCompleted = false;
