@@ -95,3 +95,9 @@ $RECYCLE.BIN/
 
 # 打包/临时压缩包：体积超 GitHub 单文件上限，不入库
 *.zip
+
+# DSH agent workspace (local helper, not tracked)
+/.dsh/
+
+# JetBrains Rider IDE bridge plugin (installed per machine by Rider, not project source)
+/Plugins/Developer/RiderLink/
