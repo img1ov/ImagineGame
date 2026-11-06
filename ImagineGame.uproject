@@ -314,6 +314,18 @@
 		{
 			"Name": "AnimationAssistantToolset",
 			"Enabled": true
+		},
+		{
+			"Name": "HairStrandsMutable",
+			"Enabled": true
+		},
+		{
+			"Name": "AnimationLayering",
+			"Enabled": true
+		},
+		{
+			"Name": "MovieScenePoseSearchTracks",
+			"Enabled": true
 		}
 	]
 }

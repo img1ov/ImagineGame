@@ -16,6 +16,7 @@
 #include "RootMotionModifier.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+#include "Math/RotationMatrix.h"
 #include "MotionWarpingComponent.h"
 #include "Character/Traversal/IMGTraversalComponent.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
@@ -712,8 +713,43 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		{
 			RootOffset.ScaleTranslation(Character->GetMesh()->GetComponentScale());
 		}
-		// The modifier determines window-end versus animation-end alignment; do not append a blend-out tail here.
 		RootTarget = RootOffset * WarpTarget;
+		if (&Window == FinalTranslationWindow && !Modifier->bSubtractRemainingRootMotion)
+		{
+			// The attach alignment can precede standing. Project the capsule, not the execution target,
+			// through the remaining root motion before querying its platform support.
+			float PlacementTime = Selection.Montage->GetPlayLength();
+			if (Selection.Montage->bEnableAutoBlendOut && Selection.Montage->BlendOutTriggerTime >= 0.f)
+			{
+				const float Rate = Selection.PlayRate * Selection.Montage->RateScale;
+				const float BlendStart = FMath::Max(Selection.StartTime,
+				    PlacementTime - Selection.Montage->BlendOutTriggerTime * Rate);
+				PlacementTime = FMath::Min(PlacementTime,
+				    BlendStart + Selection.Montage->BlendOut.GetBlendTime() * Rate);
+			}
+			if (PlacementTime < Window.EndTime)
+			{
+				return false;
+			}
+			FVector Remaining = UMotionWarpingUtilities::ExtractRootMotionFromAnimation(
+			    Selection.Montage, Window.EndTime, PlacementTime).GetTranslation();
+			if (Character->GetMesh())
+			{
+				Remaining *= Character->GetMesh()->GetComponentScale();
+			}
+			FQuat EndRotation = Character->GetActorQuat();
+			if (Modifier->bWarpRotation)
+			{
+				EndRotation = RootTarget.GetRotation();
+				if (Modifier->RotationType == EMotionWarpRotationType::Facing)
+				{
+					const FVector Facing = (RootTarget.GetLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+					EndRotation = FRotationMatrix::MakeFromXZ(Facing, FVector::UpVector).ToQuat();
+				}
+				EndRotation = Modifier->AdditionalRotationOffset.Quaternion() * EndRotation;
+			}
+			RootTarget.AddToTranslation((EndRotation * Character->GetBaseRotationOffset()).RotateVector(Remaining));
+		}
 		return RootTarget.IsValid();
 	};
 	auto CompensatePlacement = [&](const FIMGTraversalWarpWindow& Window, const FTransform& Anchor,
