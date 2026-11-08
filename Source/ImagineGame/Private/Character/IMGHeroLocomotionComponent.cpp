@@ -130,7 +130,7 @@ bool UIMGHeroLocomotionComponent::CalculateMovementParameters(uint8 Request, con
 	OutParameters.MaxWalkSpeedCrouched *= GetDirectionScale(CrouchDirectionScale, Map);
 	OutParameters.bOrientRotationToMovement = !bControllerFacing;
 	OutParameters.bUseControllerDesiredRotation = bControllerFacing;
-	OutParameters.RotationRate = Movement->IsFalling() ? FRotator(0.f, 720.f, 0.f) : FRotator(0.f, -1.f, 0.f);
+	OutParameters.RotationRate = Movement->IsFalling() ? AirRotationRate : GroundRotationRate;
 	// Component baselines retain the original gait/speed relationships at their default values.
 	const float AccelerationScale = MoveGait == EGait::Sprint
 		? static_cast<float>(FMath::GetMappedRangeValueClamped(FVector2D(300.f, 700.f), FVector2D(1.f, 0.375f), Speed))

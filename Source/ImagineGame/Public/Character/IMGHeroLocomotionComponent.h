@@ -47,6 +47,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	TObjectPtr<UCurveFloat> StrafeSpeedMapCurve;
 
+	/** Rotation rate in degrees per second when not falling. Negative axes turn instantly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
+	FRotator GroundRotationRate = FRotator(0.f, -1.f, 0.f);
+
+	/** Rotation rate in degrees per second while falling. Negative axes turn instantly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
+	FRotator AirRotationRate = FRotator(0.f, 720.f, 0.f);
+
 	UPROPERTY(BlueprintReadOnly, Category = "Locomotion")
 	EGait Gait = EGait::Run;
 	UPROPERTY(BlueprintReadOnly, Category = "Locomotion")

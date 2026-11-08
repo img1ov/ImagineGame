@@ -1,11 +1,11 @@
-#include "AnimationModifiers/IMGAnimationModifier_ApplyAnimationCurves.h"
+#include "AnimationModifiers/IMGAnimationModifier_AddAnimationCurves.h"
 
 #include "Animation/AnimCurveTypes.h"
 #include "Animation/AnimData/IAnimationDataController.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "Animation/AnimSequence.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(IMGAnimationModifier_ApplyAnimationCurves)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(IMGAnimationModifier_AddAnimationCurves)
 
 namespace IMG::AnimationModifiers
 {
@@ -24,7 +24,7 @@ namespace IMG::AnimationModifiers
 	}
 }
 
-void UIMGAnimationModifier_ApplyAnimationCurves::OnApply_Implementation(UAnimSequence* Animation)
+void UIMGAnimationModifier_AddAnimationCurves::OnApply_Implementation(UAnimSequence* Animation)
 {
 	if (Animation == nullptr)
 	{

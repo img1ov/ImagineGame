@@ -2,7 +2,7 @@
 
 #include "AnimationModifiers/IMGOneShotAnimationModifier.h"
 
-#include "IMGAnimationModifier_ApplyAnimationCurves.generated.h"
+#include "IMGAnimationModifier_AddAnimationCurves.generated.h"
 
 USTRUCT(BlueprintType)
 struct FIMGAnimationCurveDefinition
@@ -19,8 +19,8 @@ struct FIMGAnimationCurveDefinition
 };
 
 /** Adds constant-initialized float curves to an animation sequence. */
-UCLASS(DisplayName = "AnimationModifier_ApplyAnimationCurves")
-class UIMGAnimationModifier_ApplyAnimationCurves : public UIMGOneShotAnimationModifier
+UCLASS(DisplayName = "AnimationModifier_AddAnimationCurves")
+class UIMGAnimationModifier_AddAnimationCurves : public UIMGOneShotAnimationModifier
 {
 	GENERATED_BODY()
 
