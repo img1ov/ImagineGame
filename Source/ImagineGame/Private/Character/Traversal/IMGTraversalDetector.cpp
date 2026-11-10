@@ -780,6 +780,17 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 		return false;
 	}
 
+	const double CenterTopZ = Handhold.FrontLedge.GetLocation().Z;
+	Out.TopSupportHeightRange = FVector2D(CenterTopZ, CenterTopZ);
+	auto IncludeTopHeight = [&Out](double SampleZ)
+	{
+		Out.TopSupportHeightRange.X = FMath::Min(Out.TopSupportHeightRange.X, SampleZ);
+		Out.TopSupportHeightRange.Y = FMath::Max(Out.TopSupportHeightRange.Y, SampleZ);
+	};
+	IncludeTopHeight(FrontPoint.Z);
+	IncludeTopHeight(SideTop[0].ImpactPoint.Z);
+	IncludeTopHeight(SideTop[1].ImpactPoint.Z);
+
 	FVector LastTopPoint = FrontPoint;
 	UPrimitiveComponent* LastTopComponent = TopComponent;
 	FVector FirstInvalidPoint = FrontPoint;
@@ -892,6 +903,7 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 				Failure = EIMGTraversalFailure::InvalidSurface;
 				return false;
 			}
+			IncludeTopHeight(LastTopPoint.Z);
 		}
 		PreviousPoint = Hit.ImpactPoint;
 		if (FirstChangedIndex != INDEX_NONE && Index + 1 >= MinimumSamples)
@@ -920,6 +932,7 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 					return false;
 				}
 				LastTopComponent = RefineHit.GetComponent();
+				IncludeTopHeight(ValidPoint.Z);
 			}
 			else
 			{

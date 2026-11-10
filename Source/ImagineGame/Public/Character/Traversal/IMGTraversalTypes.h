@@ -395,6 +395,9 @@ struct FIMGTraversalCandidate
 
 	UPROPERTY(BlueprintReadOnly)
 	FTransform BackFloor = FTransform::Identity;
+	/** Min/max world Z of the sampled obstacle top, up to its first depth discontinuity. */
+	UPROPERTY()
+	FVector2D TopSupportHeightRange = FVector2D::ZeroVector;
 
 	UPROPERTY(BlueprintReadOnly)
 	FTransform LocalFrontLedge = FTransform::Identity;
