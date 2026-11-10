@@ -25,7 +25,7 @@ namespace HeroMovement
 UIMGHeroLocomotionComponent::UIMGHeroLocomotionComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	static ConstructorHelpers::FObjectFinder<UCurveFloat> Curve(TEXT("/Game/Characters/Heroes/Mannequin/Animations/Data/Curve_StrafeSpeedMap.Curve_StrafeSpeedMap"));
+	static ConstructorHelpers::FObjectFinder<UCurveFloat> Curve(TEXT("/Game/Characters/Blueprints/Data/Curve_StrafeSpeedMap.Curve_StrafeSpeedMap"));
 	StrafeSpeedMapCurve = Curve.Object;
 }
 
