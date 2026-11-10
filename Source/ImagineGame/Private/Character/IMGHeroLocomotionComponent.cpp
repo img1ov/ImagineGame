@@ -9,7 +9,6 @@
 #include "IMGLogChannels.h"
 #include "Math/RotationMatrix.h"
 #include "TimerManager.h"
-#include "UObject/ConstructorHelpers.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGHeroLocomotionComponent)
 
@@ -22,20 +21,22 @@ namespace HeroMovement
 	constexpr uint8 Mask = Sprint | Walk | Aim | Strafe;
 }
 
-UIMGHeroLocomotionComponent::UIMGHeroLocomotionComponent(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-	static ConstructorHelpers::FObjectFinder<UCurveFloat> Curve(TEXT("/Game/Characters/Blueprints/Data/Curve_StrafeSpeedMap.Curve_StrafeSpeedMap"));
-	StrafeSpeedMapCurve = Curve.Object;
-}
-
 void UIMGHeroLocomotionComponent::BeginPlay()
 {
-	Super::BeginPlay();
-	if (!StrafeSpeedMapCurve)
+	// The base class can connect locomotion during BeginPlay.
+	ResolvedStrafeSpeedMapCurve = StrafeSpeedMapCurve.LoadSynchronous();
+	if (!IsValid(ResolvedStrafeSpeedMapCurve))
 	{
-		UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: StrafeSpeedMapCurve is missing. Aim and Strafe use the forward speed scale."), *GetPathName());
+		UE_LOG(LogIMGLocomotion, Warning, TEXT("%s: StrafeSpeedMapCurve is unset or could not be loaded (%s). Aim and Strafe use the forward speed scale."),
+			*GetPathName(), *StrafeSpeedMapCurve.ToSoftObjectPath().ToString());
 	}
+	Super::BeginPlay();
+}
+
+void UIMGHeroLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	ResolvedStrafeSpeedMapCurve = nullptr;
 }
 
 void UIMGHeroLocomotionComponent::OnLocomotionReadyNative()
@@ -152,11 +153,11 @@ bool UIMGHeroLocomotionComponent::CalculateMovementParameters(uint8 Request, con
 float UIMGHeroLocomotionComponent::GetDirectionMap(bool bControllerFacing) const
 {
 	const UIMGCharacterMovementComponent* Movement = GetBoundMovement();
-	if (!Movement || !bControllerFacing || !StrafeSpeedMapCurve) { return 0.f; }
+	if (!Movement || !bControllerFacing || !IsValid(ResolvedStrafeSpeedMapCurve)) { return 0.f; }
 	const FVector Forward = FRotationMatrix(GetIMGCharacter()->GetActorRotation()).GetScaledAxis(EAxis::X);
 	const float Cosine = static_cast<float>(FVector::DotProduct(Forward, Movement->Velocity.GetSafeNormal2D()));
 	const float Angle = Movement->Velocity.IsNearlyZero() ? 0.f : FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Cosine, -1.f, 1.f)));
-	const float Value = StrafeSpeedMapCurve->GetFloatValue(FMath::Abs(Angle));
+	const float Value = ResolvedStrafeSpeedMapCurve->GetFloatValue(FMath::Abs(Angle));
 	return FMath::IsFinite(Value) ? FMath::Clamp(Value, 0.f, 2.f) : 0.f;
 }
 

@@ -3,6 +3,7 @@
 #include "Character/IMGLocomotionComponent.h"
 #include "Engine/TimerHandle.h"
 #include "GameplayTagContainer.h"
+#include "UObject/SoftObjectPtr.h"
 #include "IMGHeroLocomotionComponent.generated.h"
 
 class UCurveFloat;
@@ -34,8 +35,6 @@ class IMAGINEGAME_API UIMGHeroLocomotionComponent : public UIMGLocomotionCompone
 {
 	GENERATED_BODY()
 public:
-	UIMGHeroLocomotionComponent(const FObjectInitializer& ObjectInitializer);
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	FVector WalkDirectionScale = FVector(1.f, 150.f / 165.f, 130.f / 165.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
@@ -44,8 +43,10 @@ public:
 	FVector SprintDirectionScale = FVector(1.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	FVector CrouchDirectionScale = FVector(1.f, 160.f / 170.f, 150.f / 170.f);
+
+	/** Optional angle-to-direction curve. Missing curves use the forward speed scale. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
-	TObjectPtr<UCurveFloat> StrafeSpeedMapCurve;
+	TSoftObjectPtr<UCurveFloat> StrafeSpeedMapCurve;
 
 	/** Rotation rate in degrees per second when not falling. Negative axes turn instantly. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
@@ -65,6 +66,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnLocomotionReadyNative() override;
 	virtual void OnLocomotionUnavailableNative() override;
 	virtual uint8 GetMovementRequest() const override { return CurrentRequest; }
@@ -81,6 +83,9 @@ private:
 	float GetDirectionScale(const FVector& Scales, float Map) const;
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
+
+	UPROPERTY(Transient, DuplicateTransient)
+	TObjectPtr<UCurveFloat> ResolvedStrafeSpeedMapCurve;
 
 	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundASC;
 	TMap<FGameplayTag, FDelegateHandle> IntentTagHandles;

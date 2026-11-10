@@ -116,6 +116,7 @@
 - `HeroComponent.AddMovementIntent` 统一处理玩家、自动奔跑和外部 AI 的世界空间方向，再提交 AddMovementInput。输入结束、取消自动奔跑、换 Controller 或 EndPlay 清理意图。原生 AI Path Following 独立；急转回调可能同步取消或替换请求，回调后须复核再提交输入。
 - **步态选目标，GE 改目标值。** GA 管准入、互斥和意图释放，HeroLocomotion 用 Sprint/Walk、Aim/Strafe 四个 Tag 形成请求，再按输入方向和姿态选择实际 Gait。只有 Walk/Run/Sprint/Crouch 四项速度属于 `LocomotionSet`，便于各类 GE 共用速度入口，避免 GA 分散写 CMC。Set 构造默认 165/380/585/170，差异由 AbilitySet 初始化 GE 设置基础值。PlayerState 持有的 Set 随 ASC 保留，换 Pawn 读取已有 CurrentValue。
 - Locomotion 汇聚属性与步态，统一计算并写入 CMC。基础加速度、地面摩擦、行走制动为组件配置，默认 800/2/800；Hero 按步态、速度、前侧后倍率和 0.3 秒落地窗口派生。Aim/Strafe 冲刺还须满足 50° 方向条件。Crouch 用独立速度属性，Crawl 沿 CMC 限速。组件配置和曲线在预测历史存在期间保持稳定。
+- HeroLocomotion 的 `StrafeSpeedMapCurve` 在组件类默认值中配置为可选软引用。BeginPlay 在接合 CMC 前解析一次，未配置或加载失败时记 Warning 并使用前向倍率。权威端与自主代理使用一致的配置，EndPlay 解除移动绑定后释放曲线缓存。
 - **单向接合。** Locomotion 通过通用弱委托注册一个 CMC 提供者，CMC 只理解请求字节及 `IMGMovementSimulationContext.h` 中的通用上下文和参数，字段含义由提供者解释。Controller → PreCMC → CMC 的 Tick 依赖供本地输入与表现更新；蓝图覆写 PreCMC 须调用父实现。远端 RPC 按 Move 自带输入模拟，逐 Move 计算和重放不派发 PreCMC 蓝图事件。
 - **动态 Set。** GameplayReady、当前 ASC/Avatar、真实 Set 与提供者同时有效才 Ready。等待 Set 时关闭 Tick，CMC 按原生移动。AbilitySet/Game Feature 走 ASC 的 `AddRuntimeAttributeSet` / `RemoveRuntimeAttributeSet`，客户端在 `PostRepNotifies` 后重检。下一次 PreCMC 接合并读取已施加初始化 GE 的值。移除或换绑释放旧代次、恢复接管前参数；物理子步中的 Set 变化等当前 Move 结束再释放。授予方先结束依赖 Set 的 GE。停用、注销、EndPlay 精确退订，旧提供者不能覆盖新提供者。换 CMC 须重新注册。
 
