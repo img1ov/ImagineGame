@@ -2,13 +2,13 @@
 
 ## 工作约定
 
+- **最高优先级｜沉淀每次探索的新发现。** 每次源码、配置、资产或工具调查收尾前，将新发现逐项归入本文件对应小节。已有条目直接补充或纠正，结构变化时清理过时内容。已验证事实、线索和待验证项分开写，保留可复核入口。调查过程与逐轮结果留在当次回复。
 - 事实优先：先核对本地源码、官方资料或可复核案例，区分已验证事实、资产名线索和待验证项。改代码前找到调用链、同类实现与所属模块，在原职责处扩展，避免重复状态、分支和抽象。
 - 新增 struct：用户指定目标 `.h` 时写入该文件；未指定时先调查合适位置，再请用户确定头文件。
 - 保持单向有效依赖和模块独立性。仅在关键约束、不直观的生命周期与边界处写短注释；回复只给关键结论、证据、变更和必要风险。
 - 未明确要求不编译；C++ 变更仍须核对引擎接口、访问权限、构建依赖、调用链和差异。不调查或修改 Content，除非用户要求。
 - 不编写测试代码；运行测试由用户自行完成，发现问题后按反馈修复。交付前仍须完成必要的静态核对，不以此替代运行验证。
-- 先扫本文标题，只读相关小节。AGENTS 只维护长期有效的工程导航、职责边界、接口合同、已确认限制、待办及必要调试用法；结构变化时清理过时内容。
-- 修复过程、编译/测试结果和逐轮审查记录放当次回复，不追加到 AGENTS，也不另建说明 Markdown。只将其中影响后续工作的稳定约束归入对应小节。
+- 先扫本文标题，只读相关小节。工程导航、职责边界、接口合同、已确认限制、待办及必要调试用法统一归入 AGENTS。修复过程、编译/测试结果和逐轮审查记录留在当次回复。
 
 ### 收尾检查
 
@@ -16,6 +16,30 @@
 - 检查失败回滚、取消/中断、重复激活、对象失效与清理。涉及网络时分别追踪权威端、自主代理、模拟代理，核对预测与服务端重检、复制乱序、引用晚到及开始/结束先后关系。
 - 核对配置是否实际生效、默认值与接口是否一致，临时状态是否成对恢复，委托、计时器、Tick 依赖和引用是否正确释放；发现问题在原职责内修复。
 - 结论须说明实际检查范围和未验证项。差异格式检查、静态审查、编译和运行验证各有边界，不能相互替代；遵守用户对编译/测试的限制。
+
+## 装备、背包与射击
+
+### 组件、资产与授予
+
+- 背包、装备、快捷栏、通用开火/换弹/自动换弹和远程追踪归 ImagineGame。具体武器资产、快捷栏输入、丢弃和原生拾取派生入口归 ShooterCore。PlayerController 装配 `UIMGInventoryManagerComponent`、`UIMGQuickBarComponent` 和 `UIMGWeaponStateComponent`，Pawn 装配 `UIMGEquipmentManagerComponent`。可在射击 Experience 或其 ActionSet 中用 Add Components 为对应类配置服务端与客户端组件。WeaponState 驱动当前远程武器的散布 Tick，并确认命中标记。
+- `UIMGInventoryItemDefinition` 蓝图的 `EquippableItem.EquipmentDefinition` 指向 `UIMGEquipmentDefinition` 蓝图，`SetStats.InitialItemStats` 初始化每个物品实例的弹匣余量、备弹余量和弹匣容量。三个 Tag 由资产指定，各消费者使用同一组 Tag。准星和快捷栏图标分别配置 `ReticleConfig` 和 `QuickBarIcon` 片段。
+- `EquipmentDefinition.InstanceType` 指向 `UIMGRangedWeaponInstance` 或其蓝图子类，`AbilitySetsToGrant` 引用武器 `UIMGAbilitySet`。`ActorsToSpawn` 配置枪体 Actor、`AttachSocket` 和 `AttachTransform`，角色装备挂到角色 Mesh。需要远端显示时由枪体 Actor 配置复制。
+- 服务端发放沿 `AddItemDefinition` → `AddItemToSlot` → `SetActiveSlotIndex`。EquipmentManager 在当前 Pawn 的 ASC 上授予能力，Spec 的 SourceObject 为装备实例，QuickBar 随后将物品实例设为装备的 Instigator。开火/换弹用这两个引用读取武器和弹药，故由装备 AbilitySet 授予并保留 `InstancedPerActor`。切槽卸下旧装备并清除其能力、效果和枪体，弹药随仍在背包里的物品实例保留。初始发放和死亡清理依赖蓝图装配。
+
+### 输入、开火与换弹
+
+- `UIMGAbilitySet.GrantedGameplayAbilities[].InputTag` 与 `UIMGInputConfig.AbilityInputActions` 精确匹配，IMC 将按键映射到对应 Input Action。InputConfig 可由 PawnData 提供，或由射击 Game Feature 的 `Add Input Binds` 提供，IMC 由 Hero 的默认映射或 `Add Input Mapping` 装载。
+- 开火 GA 继承 `UIMGGameplayAbility_WeaponFire`，必填 `MagazineAmmoTag` 和 `DamageEffect`。`OnInputTriggered` 每次按下尝试一发，`WhileInputActive` 按住时在上一发 GA 结束后重新尝试。`FireIntervalSeconds` 默认 0.1 秒。开火 Montage 和 Fire/Impact Cue 可选。C++ 已在提交射击时由服务端扣一发弹匣余量，额外 InventoryItem Cost 会再次扣同一弹药。
+- 换弹 GA 继承 `UIMGGameplayAbility_WeaponReload`，设置 `MagazineAmmoTag`、`SpareAmmoTag`、`MagazineSizeTag`。无 `ReloadMontage` 时以 `ReloadDurationSeconds` 完成，默认 1 秒。有 Montage 时由完成回调或指定的 `ReloadCompleteEventTag` 完成，先到者生效。提交后服务端按弹匣缺口与备弹取较小值转移弹药。需用 Notify 提前完成时，确保服务端也收到该事件。换弹持有 `Ability.Weapon.NoFiring`，开火 GA 的 `ActivationBlockedTags` 配置同一 Tag 才能覆盖普通按键激活，基类的 `SourceBlockedTags` 只检查传入的来源标签。
+- 自动换弹 GA 继承 `UIMGGameplayAbility_AutoReload`，保留 `OnSpawn` / `LocalOnly`，与开火、换弹一起由装备授予，输入 Tag 留空。配置弹匣、备弹 Tag 和 `ReloadEventTag`，在换弹 GA 的 `Ability Triggers` 添加同一 Tag，触发源选 Gameplay Event。默认每 0.25 秒检查，距装备或上次开火至少 0.5 秒、空仓且有备弹时发送换弹请求。请求 Tag 与 Montage 完成 Tag 分开。
+
+### 命中、伤害与拾取
+
+- 开火走 `CameraTowardsFocus` 的即时追踪。玩家从最终视点计算方向和起点，服务端校验 TargetData 的起点距离、射程、条数及遮挡。`BulletsPerCartridge` 是每次消耗一发弹药产生的射线数，`MaxDamageRange` 单位 cm，`BulletTraceSweepRadius` 默认为 0。散布用热量三条曲线和姿态倍率，ADS 倍率读取镜头模式 Tag `IMG.Weapon.SteadyAimingCamera` 的混合权重。`SpreadRecoveryCooldownDelay` 当前读取的 `LastFireTime` 未随开火更新，开火后延迟恢复仍需修复。
+- 追踪与重检都使用 `IMG_TraceChannel_Weapon`（`ECC_GameTraceChannel2`）。项目 `Config/DefaultEngine.ini` 当前只登记了 `Traversable`（Channel1），缺少武器 Channel2 及 `AIMGCharacter` 请求的 `IMGPawnCapsule` / `IMGPawnMesh` Profile。若按 Physics Asset 命中装配，固定使用 Channel2，胶囊设 Ignore，有查询碰撞的角色 Mesh/Physics Asset 与应挡弹的场景设 Block。用 `IMG.Weapon.DrawBulletTraceDuration 2` 对照射线与碰撞响应。
+- 常规 `DamageEffect` 用 Instant GE 的 `UIMGDamageExecution`。执行读取射手 `UIMGCombatSet.BaseDamage`（C++ 默认 0），再乘距离曲线、物理材质 Tag 倍率和 TeamSubsystem 裁决。基础伤害由射手 ASC 的初始化 GE 提供，按武器变化可由装备 AbilitySet 授予随卸下移除的持续 GE。目标需 ASC 和 HealthSet。首轮验收用异队目标，观察服务端生命与物品弹药。
+- 场景拾取用 `AIMGShooterWeaponSpawner`，实例 `WeaponDefinition` 指向 `UIMGWeaponPickupDefinition`，填物品定义、展示 Mesh、正数冷却和 Pawn Overlap。基类 `AIMGWeaponSpawner` 的发放走蓝图 `GiveWeapon`。Shooter 派生类服务端发物品并放入空槽，默认选中该槽，`BlockAutoEquipTag` 可阻止切换。启用 `bRefillDuplicateWeaponAmmo` 时，按同一 `SpareAmmoTag` 将已有武器的备弹补至物品默认值。`UIMGGameplayAbility_QuickBarSlots` 监听选槽和前后切槽事件，选槽索引用 `EventMagnitude`，从 0 开始。`DropWeapon` 当前移除快捷栏及背包物品，地面掉落实体待接入。
+- 源码与项目配置可确定以上装配合同，现有 Content 的类继承、字段取值和联机表现待验收。
 
 ## 工程方向与参考源码
 
@@ -25,7 +49,7 @@
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
 - GTA 参考：`C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码：`D:/Application/UnrealEngine/UE_5.8/Engine/Source`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- UE 源码位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ### GTA 3C 源码导航与映射
 
@@ -343,16 +367,10 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 实际引脚名以 `node.get_pins()` 为准：当前 `RigUnit_BeginExecution`、`RigUnit_SetCurveValue` 等 RigUnit 使用 `ExecutePin`；Variable Setter 和函数引用使用 `ExecuteContext`。连线用 `c.add_link(source_path,target_path)`，对返回值做检查；浮点类型、Getter/Setter 和子引脚也先回读，不能从节点标题推测接口。
 - 编辑前检查 dirty 状态，并备份磁盘资产、实时 `c.export_nodes_to_text(...)`、节点坐标/连线和 `ed.generate_python_commands()`。分步创建变量/Hierarchy Curve、创建节点、设置默认值、接线、`ed.recompile_vm()`；使用事务/UndoBracket，批量操作期间暂停自动 VM 重编译并在 finally 恢复。回读检查只移除预期旧连线、保留既有节点/用户修改；仅保存目标资产。
 - 需要通用 Python API 而 MCP 工具签名不兼容时，可使用引擎自带 `PythonScriptPlugin/Content/Python/remote_execution.py` 的本机入口；先核对绑定为 `127.0.0.1`、匹配 `project_root/project_name`，记录并恢复 Remote Execution 原开关。该入口用于编辑资产，不修改 C++ 或工具插件源码。独立验证可用 `ed.create_rig_vm_host()`，执行 Construction/Forwards Solve，避免直接改运行角色或资产默认配置。
-- 当前安装引擎实际根目录为 `D:/Application/UnrealEngine/UE_5.8/Engine`（日志确认5.8.4），旧 `D:/Workspace/UnrealEngine/UE_5.8` 在当前机器不存在；此处工具/源码调查优先实际安装路径。引擎 Python 为 `Binaries/ThirdParty/Python3/Win64/python.exe`，系统 `python.exe` 可能只是不可用的 WindowsApps 别名。本机接口发现不到节点时区分沙箱网络可见性与编辑器设置，不能据此反复改配置；Remote Execution 属于安全相关设置，调查资产本身不自动授权开启，须遵守审批并在授权使用后恢复原值。
+- 引擎目录以「工程方向与参考源码」为准。引擎 Python 为 `Engine/Binaries/ThirdParty/Python3/Win64/python.exe`，系统 `python.exe` 可能只是不可用的 WindowsApps 别名。本机接口发现不到节点时区分沙箱网络可见性与编辑器设置，不能据此反复改配置；Remote Execution 属于安全相关设置，调查资产本身不自动授权开启，须遵守审批并在授权使用后恢复原值。
 - 只读 Rig 图可用 `ed.get_all_models()` 覆盖主图、函数库及聚合子图；节点取 `get_all_pins_recursively()`，引脚取 `get_pin_path/get_cpp_type/get_default_value/get_linked_source_pins/get_linked_target_pins`，坐标用 `node.get_position()`，默认配置用 `ed.get_asset_variables()`。调查快照位于 `Saved/Codex/FootPlacement/live_rig.json`，仅作导航/证据；修改前仍按现有要求回读实时目标图，不用快照覆盖资产。
 - 已有角色 Rig 的只读查询：`unreal.ControlRig.find_control_rigs(actor, unreal.ControlRig)`，再用 `rig.get_hierarchy()`、`get_variable_as_string(name)`；Outer=None 会返回空，不表示没有实例。`RigElementKey` 构造使用 `type=unreal.RigElementType.CONTROL, name='...'` 等关键字，不能按 name/type 的位置顺序传参。动画只读接口为 `unreal.AnimationLibrary.get_float_keys(seq,name)` 和 `get_bone_pose_for_time(seq,bone,time,extract_root_motion)`，当前不是 `AnimationBlueprintLibrary`；前者返回两组 UE Array，须转 list 才能看到值。没有运行实例时不将资产默认值当作运行时数据，不为调查自行启动 PIE 或构造验证运行。
 - 需要明确骨骼采样空间时，可用 `unreal.AnimPoseExtensions.get_anim_pose_at_time(seq,time,unreal.AnimPoseEvaluationOptions(...))` 取得 AnimPose，再 `get_bone_pose(pose,bone,space=...)`；后者默认 `AnimPoseSpaces.LOCAL`，须区分局部、组件与去 Root Motion 后的高度，不能直接把局部 Z 当脚底离地高度。`Saved/Codex/FootPlacement/live_pelvis.json` 与 live_rig.json 同样只作导航，不覆盖实时资产。
-
-## 装备、背包与射击
-
-- 装备、背包、快捷栏、远程追踪、武器生成器基类保持原职责；快捷栏/物品实例可跨模块使用。装备授予能力后，由快捷栏为装备实例关联物品。
-- 通用开火、换弹、自动换弹位于 `ImagineGame/Weapons`；具体武器、快捷栏输入、丢弃/拾取派生逻辑位于 ShooterCoreRuntime。开火复用远程追踪，派生处理 TargetData、服务端校验与弹药成本。
-- DropWeapon 只移除快捷栏/背包物品，未生成地面拾取物；初始发放和死亡清理依赖蓝图装配。校验阈值、自动装弹轮询与资产/实机链路仍需针对性验收。
 
 ## UI 与设置
 
