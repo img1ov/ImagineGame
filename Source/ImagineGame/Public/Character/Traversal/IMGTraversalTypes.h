@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
+#include "GameplayAbilitySpecHandle.h"
 #include "Physics/IMGCollisionChannels.h"
 #include "RootMotionModifier.h"
 #include "IMGTraversalTypes.generated.h"
@@ -645,7 +646,7 @@ struct FIMGTraversalMontageSettings
 	FIMGTraversalAnimationSettings Settings;
 };
 
-/** Resolved targets, not client-authored geometry, are replicated to simulated proxies. */
+/** Resolved authority targets are shared with the owning prediction and simulated proxies. */
 USTRUCT()
 struct FIMGTraversalWarpTarget
 {
@@ -663,6 +664,7 @@ struct FIMGTraversalWarpTarget
 
 struct FIMGTraversalWarpWindow
 {
+	/** Null preserves a non-Warp modifier's range so placement cannot silently omit its effect. */
 	const URootMotionModifier_Warp* Modifier = nullptr;
 	float StartTime = 0.f;
 	float EndTime = 0.f;
@@ -700,7 +702,7 @@ struct FIMGTraversalAllowedMontage
 	TObjectPtr<UAnimMontage> Montage = nullptr;
 };
 
-/** Server-owned state for simulated proxies; GAS continues to replicate montage playback. */
+/** Server-owned targets and proxy presentation state; GAS owns ability and montage lifetime. */
 USTRUCT()
 struct FIMGTraversalRepState
 {
@@ -708,6 +710,12 @@ struct FIMGTraversalRepState
 
 	UPROPERTY()
 	uint16 Sequence = 0;
+
+	UPROPERTY()
+	FGameplayAbilitySpecHandle AbilitySpec;
+
+	UPROPERTY()
+	int16 ActivationPredictionKey = 0;
 
 	UPROPERTY()
 	EIMGTraversalAction Action = EIMGTraversalAction::None;

@@ -2,6 +2,7 @@
 
 #include "Components/PawnComponent.h"
 #include "RootMotionModifier.h"
+#include "Templates/Function.h"
 #include "Character/Traversal/IMGTraversalTypes.h"
 
 #include "IMGTraversalComponent.generated.h"
@@ -12,6 +13,7 @@ class UIMGAbilitySystemComponent;
 class UIMGPawnExtensionComponent;
 class UIMGCharacterMovementComponent;
 struct FIMGReplicatedMontagePrerequisiteResult;
+class FSavedMove_Character;
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -50,13 +52,16 @@ public:
 	}
 	/** Acquires targets/collision ignores and enters Flying; EndTraversal releases them before restoring movement. */
 	bool BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
-	    const TArray<FIMGTraversalWarpTarget>& WarpTargets);
+	    const TArray<FIMGTraversalWarpTarget>& WarpTargets, FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey);
 	bool PublishTraversalState(uint8 MontagePlayInstanceId);
 	void EndTraversal();
+	void RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey);
 	bool IsTraversalActive() const
 	{
 		return ActiveState.bActive;
 	}
+	const FIMGTraversalRepState& GetActiveTraversalState() const { return ActiveState; }
+	uint32 GetTraversalTargetsRevision() const { return TraversalTargetsRevision; }
 	bool IsTraversalAvailable() const
 	{
 		return IsRegistered() && IsActive() && !bReleasingBindings && !IsBeingDestroyed();
@@ -127,6 +132,8 @@ private:
 	void HandleMotionWarpingPreUpdate(UMotionWarpingComponent* Warping);
 
 	void RefreshWarpTargets();
+	void ReconcilePredictedTargets();
+	void CaptureMovementReplay(const FSavedMove_Character& Move, TArray<TFunction<TFunction<void()>()>>& OutSetups);
 	void InitializeBindings();
 	void ReleaseBindings();
 	void RemoveWarpTargets();
@@ -156,5 +163,14 @@ private:
 	FDelegateHandle MontagePrerequisiteHandle;
 	TWeakObjectPtr<UIMGPawnExtensionComponent> BoundPawnExtension;
 	TWeakObjectPtr<UIMGCharacterMovementComponent> BoundMovement;
+	FDelegateHandle MovementReplayCaptureHandle;
+	TFunction<void()> RecordWarpContext;
+	TSharedPtr<bool> ReplaySessionValid;
+	bool bReplayingTraversalMove = false;
+	bool bCaptureTraversalExit = false;
+	uint32 TraversalTargetsRevision = 0;
+	uint16 AppliedAuthoritySequence = 0;
+	bool bLocallyPredictedTraversal = false;
+	bool bAuthorityTargetsApplied = false;
 	bool bReleasingBindings = false;
 };

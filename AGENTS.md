@@ -249,55 +249,111 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 ## Traversal
 
-### 目录、检测与选择
+### 职责与装配
 
-- 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。Detector 无状态同步查几何；Component 管配置、Warp Target、临时碰撞忽略、Flying 接管/释放与代理快照；GA 管检测 → 选择 → 校验/Commit → 播放 → 退出。GA 的本地/AI/远端请求共用 OnTargetDataReady → ResolveTraversalRequest → StartTraversalExecution；Component.BeginTraversal/EndTraversal 成对管理执行资源与移动模式，模拟代理只消费复制，不自行裁定模式。Types/TargetData 定义数据与请求，Debug 在 Private 同目录。
-- Detector 内部由 SampleHandhold 采样中心/左右顶部、宽度和楼梯轮廓，MakeCandidate 调度 ValidateCandidateDirection 验证请求/法线方向。同一候选的方向回退复用本次采样，每个方向从原始 Candidate 副本开始，重新计算接近、深度、后沿、净空及坡向；不跨 Detect 调用、帧或网络端缓存采样，不省略服务端重检。
-- 每次激活只作一次尝试，外部决定输入/自动触发，RequestSource 与 ActivationPolicy 独立。本地 CanActivate 先作原生几何/发起预筛，CHT/PoseMatch 在激活后经 PreSelectTraversalAnimation/SelectTraversalAnimation 选单 Montage。Chooser 消费入场时的 MovementMode、Gait 和 Speed，须在 BeginTraversal 切 Flying 前完成。角色装配 Traversal/MotionWarping并授予 GA，服务端无 PoseHistory 时需后备。
-- InitiationSettings 在检测后、选择前及 GA 校验/服务端重检消费；bEnabled=false 只跳过本组发起限制。Manual 默认允许150 cm内站立发起；Automatic 默认允许 Falling，要求朝向前沿的有效意图、方向阈值0.8，固定 AutomaticMaxDistance=150 cm，不以实际速度设门槛或二次缩距。
-- 意图优先待消费输入，再 CMC.Acceleration；AI 复用 Manual，在两者为空时可读 Moving 的 PathFollowing 当前段目标，不以实际 Velocity 替代意图。普通玩家按 GA.RequestSource，服务端 AI 强制 AI 来源；AI 检测/发起共用意图，无意图时可向前按手动站立规则尝试。
-- ServerDistanceTolerance 仅补偿远端发起距离。速度缩放用于 Detector 搜索长度；Candidate.Speed/RunningSpeedThreshold 仅供选择建议，不限制原生 Supports，外部 CHT/蓝图可另筛。MaxMovingSpeed/MaxAngularSpeedDegrees 用于障碍/载体运动，检测、落点和执行继续复核。
-- 几何/坡面/净空/动作支持与最终动画覆盖分开；自动深度安全限制、高位开放接近拒绝及楼梯下行方向限制仅用于 Automatic，楼梯轮廓过滤也用于 Manual/AI。ActionSettings 提供默认执行规则，MontageSettings 按 Action/Montage 整份覆盖；WarpBindings/RequiredTargets 管锚点/接触，Notify 管窗口，Landing 管曲线/落点。最终复核表面、落差、可走支撑和完整胶囊，Root Motion/MotionWarping 执行位移。
-- **平台可走坡度。** Traversal 的 BackFloor 采样、落位补偿及最终支撑校验沿用 CMC 的可走判定。角色通用上限在角色蓝图的 Character Movement → Walking → Walkable Floor Angle 配置，UE 5.8 原生默认约 44.8°，实际值以角色组件配置为准。单独调整平台时，在实际承载碰撞的组件的 Physics 高级设置中启用 Walkable Slope Override，可放宽、收紧或设为不可走。DetectorSettings.MaxClearanceSlopeAngle（默认 42.5°）只控制净空探针方向。
-- Traversal 的 GroundLocation 只取 CMC.CurrentFloor 的有效可走支撑；空中或缺少有效支撑（含无碰撞支撑的 NavWalking）回退当前缩放胶囊底部，不消费 GetGroundInfo 的长距离下探。坡面/脚下楼梯判定只消费有效支撑；接近角度和自动落差检查共用该参考。bUseGroundPositionForHeight 默认 false；开启后也按同一支撑/脚底回退，不把远处地面当高度基准。
-- 手点按 GTA 的中心/左右顶部探针取实际接触位置；探针位于前侧命中点正上方，不向内固定平移，也不把顶部/左右命中投影回前侧平面。低障碍在高度小于 DetectorSettings.UseRequestDirectionBelowHeight（默认80 cm）时优先保留请求方向，允许斜向越过边沿；设为0仅关闭低障碍分支。请求方向通过左右实际接触点连线求交并插值高度，调整范围50 cm，仍是近似，不替代双手局部 IK；候选失败后以原始顶部接触和墙面法线重新校验。MinFacingDot（Manual/AI默认0.3）和 AutomaticMinFacingDot（默认0.8）限制接近角度；HClear/VClear 为净空测量，不是动画轨迹。
-- DetectorSettings.AngularSurfaceTag 默认 Traversal.Angular，消费前侧/顶部碰撞组件或所属 Actor 的普通 FName 标签，映射 GTA 车辆棱面策略，不依赖车辆类。带标签且请求与入面方向 dot>0.95 时，高障碍也可保留请求方向，失败回退法线；不引入车辆滑行动作或自动翻越禁令。低障碍、带标签表面及 Automatic 均要求双侧支撑；其余 Manual/AI 可追加外侧探针后重定中心，新中心组件也须纳入障碍校验/执行清理。DebugDraw 3 的青点为中心实际命中，黄点为最终检测手点；Handhold: angular request heading 区分高位棱面方向策略。各端标签/DetectorSettings 须一致；最终动画落位与统一落位补偿沿 GA 合同执行。
-- 楼梯语义由 DetectorSettings.StairSurfaceTag 指定，默认 Traversal.Stairs；加在实际碰撞组件的 Component Tags 或所属 Actor 的 Tags，使用普通 FName 标签。命中前侧/顶部带标签，或角色在地面且脚下带标签时启用楼梯轮廓过滤；未标记不保证从几何识别楼梯。默认边缘采样垂直跨度截止值22.5 cm，命中楼梯表面时30 cm；与 GTA 参考一致，严格小于截止值才拒绝，不额外添加容差，等于截止值仍可通过本项。跨度小于40 cm且水平漂移大于10 cm也拒绝。Span不是台阶高度，Height默认相对胶囊底部；顶部平台为独立组件/Actor时须覆盖实际命中边缘，不能仅依赖下面阶梯的标签。DebugDraw 2 的 Stair profile 显示标签、前侧/顶部/支撑命中状态、精确跨度和截止值；标签不表示禁止全部攀爬。
-- 表面策略在 Traversal组件类默认值的 DetectorSettings 中配置：AutomaticBlockedSurfaceTags 仅拒绝 Automatic，BlockedSurfaceTags 拒绝所有来源。例如给局部楼梯/顶部边缘加 Traversal.NoAuto，并将同名标签加入 AutomaticBlockedSurfaceTags，可禁止该表面自动翻越、保留手动检测；此自定义名字须显式加入列表才生效。Actor标签影响其全部碰撞组件，局部限制优先用 Component Tags；Traversal.Stairs 启用过滤，不等于禁止全部攀爬。
+- 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。以 UE 合同为准：GAS 管能力和 Montage 生命周期，CMC 管权威移动、预测与纠偏，MotionWarping 修改根运动；GTA 只对照职责与算法意图。
 
-### Warp 窗口与胶囊落位
+| 入口 | 职责 |
+| --- | --- |
+| `IMGTraversalDetector` | 无状态同步几何查询，产生候选和建议动作，不选择动画。 |
+| `IMGGameplayAbility_Traversal` | 检测、CHT/PoseMatch 选片、校验/Commit、播放和退出。请求共用 `OnTargetDataReady → ResolveTraversalRequest → StartTraversalExecution`。 |
+| `IMGTraversalComponent` | 配置、Target、临时碰撞忽略、Flying 接管/释放和复制快照。 |
+| Private `IMGTraversalPlacement` | 实际播放路径、窗口链、落点、可选补偿和显式 Landing 校验。 |
+| Private `IMGTraversalReplay.cpp` | 同一 Component 的逐 Move 上下文记录/恢复，无独立复制服务。 |
+| Types / TargetData / Debug | 公共数据、客户端请求、同目录私有诊断。 |
 
-- 一次 Traversal 播放一个 Montage，平移和旋转可由多个 Notify 窗口共同控制。按实际 Modifier 配置处理目标名、轴和时间，窗口可以共用 Target。顺序 Skew Warp 从 Selection.StartTime 与角色入场位姿推算，跳过已结束窗口，窗口内起播只推进剩余区间。逐段组合窗间根运动与各窗约束，IgnoreZAxis 窗口的预计终点沿用入窗高度，未约束朝向沿用动画。预计混出后才开始的窗口不计入落位。单窗、重叠、被混出截断的窗口及其他 Modifier 沿用末平移窗口估算。
-- Warp 窗口按 Bone/Static/None 参照把 Target 换算为胶囊位置。Skew Warp 有动画平移时按 BaseTranslationOffset 换算胶囊中心，关闭 WarpToFeetLocation 时清除该偏移的 Z。无动画平移时按胶囊脚底换算。窗口后根运动计至预计混出结束，默认取 Montage 末尾。bSubtractRemainingRootMotion 下，Skew Warp 有动画平移时分别计入原生扣除的完整尾段与预计实际播放的尾段。
-- 几何检测和选片后的落位校验负责准入。CompensatePlacement 以可走支撑上的安全胶囊中心为依据，减去 Warp 参照和剩余根运动造成的高度偏移，反推执行 Target 的 Z。Attach 高度可上下修正，支撑层位容差与修正幅度独立。前后与左右由动画、绑定及窗口约束决定。补偿不改检测锚点、Target XY 或旋转，不新增发起条件或在 Montage 期间驱动胶囊位置。
-- 默认 Mantle 落在障碍顶面。bHasBackFloor 只表示采到后方可走支撑。显式 Landing 或控制 Z／末平移窗口直接绑定 BackFloor 时，Mantle 才可使用后方支撑。线探测和胶囊扫掠均须校验 CMC 可走性与支撑归属。顶面限定同时检查 TopSupportHeightRange，取中心、两侧和首次深度断层前的连续顶面采样及后沿细化，容差复用 DepthHeightTolerance。车顶和低层共用碰撞组件时，仅比较组件会把低层错认成车顶并把同名 Target 的多个窗口一并下拉。
-- 未限定顶面时，探测范围由胶囊、锚点距离和 CMC／表面可走坡度推导。支撑候选限于锚点载体、检测障碍集及适用的 BackFloor。完整胶囊扫掠须通过边缘容差及重叠复核，安全中心保留 CMC 目标地面间隙。顺序预测由最后一个控制 Z 的窗口提供修正 Target，改写后复算完整窗口链，失败则恢复原 Target。向下补偿保留独立支撑的碰撞，向上补偿通过复核后才可加入临时碰撞忽略。
-- 显式 Landing 的窗口须在预计混出结束前完成。按选中窗口校验，末平移窗口计入尾段，较早的 Landing 不由后窗覆盖共享的同名 Target。Landing.CapsuleClearance 仅为校验余量。没有合格支撑时保留原 Target，沿既有校验与退出链处理。执行结果随既有载体局部 Target 复制。
-- 分段预估假定窗口正常推进。原生 Facing、限速、轴间耦合、混合、跳段和 CMC 扫掠仍影响实际终点。抓沿窗的请求位移被地面挡掉时，后段从胶囊实际到达的位置继续应用根运动，可能把窗口末端的偏差带到动作末端。落位反推不补做运行时轨迹或二次 Warp，结束时仍查实际支撑。
+- 保持来源组件 → Traversal → CMC 的源码依赖；CMC 只暴露通用委托/闭包接口，不包含 Traversal 类型。热插拔指组件与能力运行时接合/释放，不表示共享运行时可作为独立插件卸载。
+- Pawn 装配 Traversal、MotionWarping 并由 ASC 授予 GA。`ActionSettings` 提供动作通用执行规则；`MontageSettings` 按 Action/Montage 整份覆盖，不合并字段。`WarpBindings/RequiredTargets` 管接触目标，Notify 管窗口，`Landing` 管落地合同。选片只返回一个 Montage；服务端本地/AI 选片缺少 PoseHistory 时须有后备，远端请求使用客户端选择并由服务端重检。
 
-### 执行、网络与清理
+### 检测、发起与选片
 
-- GAS LocalPredicted：校验 → Commit → 建立 Target/碰撞忽略 → Flying → Montage启动 → 提交 TargetData/发布快照。启动前单次取消；服务端按方向重查来源、Action、时间/倍率、Warp合同和可选 AllowedMontages，不接受客户端几何。CHT 前拒绝不启动执行，Commit 后重入/播放失败走既有退出。激活/请求处理栈未退出时禁止重用同一 GA 实例；处理期间保留 TargetData 句柄，避免同步回调消费 GAS 缓存后引用失效。
-- GA 本地结束后默认 RetryInterval=0.25秒再允许尝试；自主代理同时等待同 Avatar/Spec/预测键的权威结束或激活拒绝，保留 WhileInputActive 的持续尝试语义。ASC.AbilityNetworkTermination 透传现有可靠 ClientEnd/Cancel/ActivateFailed，含本机已结束的实例，不新增 RPC；远端 Traversal 权威退出须发送终止通知。权威等待 TargetData 默认 TargetDataTimeout=2秒，开始执行时复用计时器转为目标复核。
-- 玩家本次发起的搜索朝向与移动意图随同一份 TargetData 提交，检测后、选片后和 Commit 后使用该次意图。服务端把两者作为请求输入，用自身位置、移动状态和几何重新计算前沿、角度、距离及落点；发起角度以请求朝向和服务端检测到的前沿比较，不以收包时的角色朝向或 Acceleration 代替。零意图不满足 Automatic，Manual 按站立配置处理。TargetData 两端须同版。
-- CMC.ClientCorrectionFilter 是仅用于 Packed MoveResponse 的通用本机过滤入口；只有仍能匹配 SavedMove 的纠偏才询问监听者，丢弃时保留原生 ACK/缓存释放，不应用位置、模式或 Root Motion，也不作为恢复落位已消费的证明。CMC 不依赖 Traversal；GA 弱绑定、按句柄注销，只在本方仍活动且 Flying 时过滤开始前已记录的待确认 Move，超过时间戳重置安全窗口则放行。开始后的纠偏和权威拒绝仍生效；该机制不提供完整 Traversal 历史重放或动态载体回滚。
-- 正常完成以 PlayMontageAndWait.OnCompleted 为退出边界，包含正常 BlendOut；面向站稳落地的单 Montage 动作须按站稳后混出制作。检测几何、选片后的落位校验及 CompensatePlacement 为 Warp 提供目标依据，不据此推断胶囊已实际到达，也不因预计算落点、Warp 窗口结束或途中接触而提前切 Walking；现有合同不增加持续落地检测或独立落地阶段复制。结束时的实际支撑查询仍须保留，以处理执行偏差和环境变化。
-- 完成/中断/取消/死亡/目标失效/ASC解绑幂等清理 Target、碰撞忽略、委托、计时器。Ragdoll 等外部移动模式接管与正常落地分开处理，由能力取消或 CheckActiveTarget 发现离开 Flying 后走中断清理，不等待蒙太奇正常结束。恢复碰撞后，仅角色存活且仍 Flying 时按实际支撑切 Walking/Falling，不覆盖接管方设置的新模式；PawnExt 解绑顺序见 ASC 生命周期。
-- 模拟代理消费 COND_SkipOwner 快照、GAS Montage和 CMC，按 Montage/PlayInstanceId 等待引用、Target、碰撞忽略和 Flying。结束快照先到保留本机实例至退出（含 BlendOut），同实例引用补齐不反复拆建；Target 恢复历史来自权威，非 Flying 到达后先恢复碰撞再查支撑。
-- Traversal 通过独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 非空时，选片与复制归属仅接受此列表及 MontageSettings 中的资产，仍可复用 ActionSettings，不再按 Target 同名推断；空列表保留现有推断以兼容装配，多 Warp 系统应配置各端一致的明确列表。结束快照保留 Montage/PlayInstanceId，开始被合并或结束先到且尚未播放时丢弃该次表现，不能被晚引用重新启动。
-- 来源组件 → Traversal → CMC，组件仅活动时 Tick；MotionWarping.OnPreUpdate 在实际采样前刷新 Target。默认0.05秒复核载体，运动上限500 cm/s、85 deg/s，候选时效0.25秒。局部 Target 跟随不等于完整支持动态平台；BasedMovement/动态 Bone、输入历史/退出延迟、异步检测、悬挂/Shimmy/梯子另行设计。
-- BeginPlay/激活/重新注册建立 MotionWarping、PawnExt/ASC及精确 CMC 依赖；停用/注销/EndPlay 释放绑定、Target、碰撞忽略，清理期间 IsTraversalAvailable=false，非活动时晚快照不重启执行。只有本组件仍有活动 Traversal且 CMC Flying 时恢复移动；拒绝缺少 Root Motion、非正/非有限 RateScale，检测通道须有效。
+- 每次激活只尝试一次，外部决定触发时机，`RequestSource` 与 `ActivationPolicy` 独立。`CanActivate` 作本地几何/发起预筛，激活后依次执行 `PreSelectTraversalAnimation`、`SelectTraversalAnimation`。Chooser 消费入场 MovementMode/Gait/Speed，必须早于 `BeginTraversal` 切 Flying。
+- `SampleHandhold` 采样中心/左右顶部、宽度和楼梯轮廓，`MakeCandidate → ValidateCandidateDirection` 验证方向。方向回退复用本次公共采样，但从原始候选副本重算深度、后沿、净空和坡向；不跨 Detect 调用、帧或网络端缓存，不省略服务端重检。
+- `InitiationSettings.bEnabled=false` 仅跳过发起限制。Manual 默认允许站立、范围150 cm；Automatic 默认允许 Falling，要求有效意图、朝向点积≥0.8、固定范围150 cm，不按速度二次缩距。速度缩放只影响搜索长度；`Candidate.Speed/RunningSpeedThreshold` 仅供建议/选片，不限制原生 Supports。
+- 意图优先待消费输入，再取 CMC.Acceleration，不以 Velocity 替代。玩家使用 GA.RequestSource；服务端 AI 强制 AI 来源，复用 Manual 规则，无输入/加速度时可取 Moving 的 PathFollowing 当前段目标，无意图时可按手动站立规则向前尝试。
+- 发起距离由当前 Actor 与前沿重新计算 XY；`Candidate.PlanarDistanceToLedge` 保留检测时的选片/诊断值。`ServerDistanceTolerance` 只放宽远端发起距离，不扩大服务端几何搜索。发起角度使用本次请求方向和重检前沿，不换成收包时朝向。
+- PreSelect、Select、Commit 回调后复核原 ASC/Avatar/Component。Commit 后还须核对入场位姿、胶囊、Mesh/AnimInstance、BaseOffset 和参与表面的变换，防止旧落位结果应用到已变化的对象。候选默认时效 `MaxCandidateAge=0.25 s`。
+- Supports 与推荐动作分开：Mantle 要求前沿，Vault/Hurdle 要求前沿+后沿；`RecommendedAction` 是独立选片建议。`bHasBackFloor=false` 表示尚未确认后方支撑，不能当作落点。空中 Height 随当前脚底升高而减小，需结合 StartTime 和选片核对。
 
-### 调试与 GTA 参考
+### 手点、坡面与表面规则
 
-- 绘图默认关闭，受 ENABLE_DRAW_DEBUG 保护。`IMG.Traversal.DebugDraw`：0关、1输出/活动Target、2搜索失败、3全部探针；DebugStages 掩码：搜索1、命中2、手点4、体积8、输出16、执行32。
-- 格式化探针/执行调试文本须先检查级别和阶段，再构造 FString。候选快照包含公共采样与方向验证两层检查点，方向失败只回滚验证记录，候选整体失败再回滚公共采样；成功历史保留一份公共采样及最终通过方向。
-- 完整观察：`IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`。`IMG.Traversal.DebugLog 2` 记录启用阶段且须开启绘图；按角色/Role 区分，几何标记 pre-selection，执行输出在动画落点解析后更新。
-- `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose` 按 Avatar/Spec/PredKey 对照，结束恢复 Log。PredictionRejected 表示激活拒绝；TargetData 重检失败发生在激活后；AuthorityEndedPredictedTraversal 只说明权威先结束，不能据此认定预测错误。
-- 排查落位时分别记录检测锚点、执行 WarpTarget、预测安全胶囊和实际胶囊。执行阶段青点和带正负号的 placement 是 Target 修正，橙色胶囊是修正前的预计终点，绿色胶囊是通过校验的安全落位。Target Z 与胶囊中心 Z 需按动画参照换算，不能直接比较。结合 `a.MotionWarping.Debug 1` 对照各窗的起止时间、目标与请求位移，再和 CMC 扫掠后的胶囊位置核对。遇到 PlacementReprojectionRejected 时查同名 Target 对其他窗口的影响。
-- GTA 检测/手点：`task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`；发起：`task/Default/TaskPlayer.cpp`；Jump/Vault 分流：`task/Movement/Jumping/TaskJump.*`；执行/清理：`task/Movement/Climbing/TaskVault.*`。
-- GTA 本地 CTaskVault 按手点、DropPoint、GroundToRootOffset 与动画相位计算目标位移，CalcTotalAnimatedDisplacement 和 SetDesiredVelocityAdjustmentRange 分别核对动画位移及其调整区间。可参考目标几何与动画位移分开计算的职责。其附着、碰撞切换和 Capsule 策略依赖 RAGE，本工程沿用 UE MotionWarping、CMC 与 GAS。
-- GTA 人形搜索绕 Z、多层球扫水平、坡面后筛；SearchForHandHold 探针来自固定层值/覆写，GetClimbDetectorParam 的 MBR 插值影响发起范围，JumpVault 有步态门槛，AutoVault 结合摇杆、受阻降步态和冷却且纯自动要求落地。本工程速度搜索缩放、固定发起范围及默认允许空中属项目策略；不机械移植动画表、手动位移或网络协议。
+- GroundLocation 只取 CMC.CurrentFloor 的有效可走支撑；空中或无有效支撑（含无碰撞支撑的 NavWalking）回退当前缩放胶囊底部，不读取 GetGroundInfo 的长距离下探。`bUseGroundPositionForHeight` 默认 false，开启后仍使用同一回退规则；坡面/脚下楼梯只消费有效支撑。
+- 手点取前侧命中点上方的中心/左右实际顶部接触，不固定向内平移或投影回前侧平面。`UseRequestDirectionBelowHeight=80 cm` 以下优先请求方向，设0关闭；左右接触连线求交并插值高度，调整范围50 cm，失败再用原始手点/墙面法线重检。此近似不替代双手 IK。`MinFacingDot` 默认 Manual/AI=0.3、Automatic=0.8；HClear/VClear 是净空，不是动画轨迹。
+- `AngularSurfaceTag` 默认 `Traversal.Angular`，读取命中组件或所属 Actor 的 FName 标签。请求与入面方向 dot>0.95 时，高障碍也可保留请求方向，失败回退法线。低障碍、棱面或 Automatic 要求双侧支撑；其余 Manual/AI 可追加外侧探针并重定中心，新中心组件须纳入障碍跟踪。标签不引入车辆滑行动作。
+- 楼梯由 `StairSurfaceTag=Traversal.Stairs` 指定：前侧/顶部命中带标签，或站立时脚下带标签，启用轮廓过滤；未标记不保证识别。边缘跨度截止值默认22.5 cm、命中楼梯表面时30 cm，严格小于才拒绝，等于可过；跨度<40 cm且水平漂移>10 cm也拒绝。Span 不等于台阶高度，Height 默认相对脚底；独立顶部组件也须覆盖标签。
+- `BlockedSurfaceTags` 拒绝全部来源；`AutomaticBlockedSurfaceTags` 仅拒绝 Automatic。Actor Tags 作用于全部组件，局部限制优先 Component Tags。例如 `Traversal.NoAuto` 必须显式加入自动禁用列表才生效；`Traversal.Stairs` 只是启用过滤，不禁止全部攀爬。自动深度限制、高位开放接近拒绝和楼梯下行方向限制只用于 Automatic，楼梯轮廓也用于 Manual/AI。
+- 深度断层可能在曲面上形成后沿。`AutomaticMinDepthSamples` 是结束扫描前的最小扫描次数，不是连续顶面通过次数。`Candidate.GroundNormal` 是深度命中的平均法线，不能替代补偿实际命中的法线或可走判定。
+- **平台可走坡度归 CMC。** BackFloor、补偿与落地检查使用 CMC.IsWalkable。通用上限为角色 Character Movement → Walking → Walkable Floor Angle（UE 5.8 原生约44.8°，以组件实际配置为准）；局部平台用碰撞组件 Physics → Walkable Slope Override。`MaxClearanceSlopeAngle=42.5°` 只控制净空探针方向。`MaxMovingSpeed=500 cm/s`、`MaxAngularSpeedDegrees=85°/s` 限制载体运动，检测及执行均复核。
+
+### 播放路径与预测能力
+
+- GA 以 `StartSection=NAME_None`、Selection.StartTime 启播。资产 `GetPlayLength()` 不代表本次末端；Placement 从 StartTime 所属 Section 沿资产 NextSectionName 解析有限路径，合并相邻段，将前跳/后跳映射到顺序播放时间轴。根运动、DistanceCurve 和窗口筛选只累计实际路径，显式窗口编号保留资产原始序号。循环、无效链或活动 Warp 跨非连续边界在 Commit 前拒绝。
+- 跳过起播前已结束及预计混出后才开始的窗口，窗内起播只算剩余区间；显式提前混出从末 Section 计算。逐段组合窗间根运动和各窗约束，IgnoreZAxis 沿用入窗高度，未约束旋转沿用动画。窗口可共用 Target，单窗/多窗共用预测与修正后复算；骨点参照和原生尾段按窗口缓存。
+- 原生 `bSubtractRemainingRootMotion` 扣除的是 Window.EndTime → **资产全长**，实际后续播放位移才按 Section 路径累计。`ResolveWindowPose.NativeTail` 必须匹配原生扣除，不能统一替换为 SectionEnd。DistanceCurve 按路径分段累计，再分别处理接触/落地窗的原生扣余量参照偏移。
+- Bone/Static/None 参照将 Target 换算成胶囊位置。有动画平移时按 BaseTranslationOffset 换算中心，关闭 WarpToFeetLocation 则清除该偏移的 Z；无平移时按脚底换算。Target 与胶囊中心不应直接比较。窗口后根运动累计到预计混出末端。
+- 自动补偿的模型支持完整、顺序、不重叠、未限速的原生 Skew 窗口，要求单位 Actor/Mesh 世界缩放、直立胶囊；旋转为 Default/Slerp，时间倍率在(0,1]。非 Warp Modifier 也保留范围，以空 Modifier 标记降级，防止漏算 Scale/自定义效果。超出模型范围时普通 Mantle 保留原目标执行；显式 Landing 仍要求可靠预测。重叠窗口当前不自动补偿，不能把此限制当作动画整体准入条件。
+
+### 高度补偿与显式落地
+
+- 补偿只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。适用 Mantle、显式 Landing，或末平移/末高度窗口绑定 BackFloor 的动作；普通 Vault/Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。
+- 普通 Mantle 的补偿是可选修正。平面支撑、完整胶囊扫掠、CMC可走性、归属、层位、边缘容差、重叠及全窗口链复算通过才写回；失败恢复/保留原目标，不追加名义终点贴地硬门槛，全 IgnoreZ 同样处理。`FinalPlacementCenter` 只缓存校正成功的安全中心。降级不证明最终站稳；几何、表面、绑定、RequiredTargets 和有限路径校验仍生效。
+- 默认 Mantle 限定障碍顶层；仅显式 Landing 或控制 Z/末平移窗绑定 BackFloor 时可用后方支撑。顶层取 `TopSupportHeightRange ± DepthHeightTolerance`，范围来自中心、两侧、首个断层前连续顶面和后沿细化。仅比较组件不足以区分同一车身上的车顶与低层斜面。
+- 非顶层支撑范围由胶囊、锚点距离及 CMC/组件可走坡度推导；支撑限锚点载体、障碍集和适用的 BackFloor，安全中心保留 CMC 地面间隙。最后控制 Z 的窗口提供修正 Target，改后复算完整链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
+- 显式 Landing 需 BackFloor 绑定和预计混出前完成的平移窗。按选中窗口校验；末平移窗计尾段，较早 Landing 不让后窗覆盖共享同名 Target。CapsuleClearance 只加校验余量；预测、可走落点、落差、完整胶囊、实际根位置支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
+
+### 执行与三端网络
+
+- LocalPredicted 顺序：校验 → Commit → 获取 Target/碰撞忽略 → Flying → 启动 Montage → 提交 TargetData/发布快照。本地即时播放，不等待权威落点。服务端重检来源、方向/意图、几何、Action、时间/倍率、Warp 合同和可选 AllowedMontages，不接受客户端几何；请求不携带检测位姿/时间戳，不回溯世界。两端数据结构及配置须一致。
+- 启动前只发一次取消；Commit 后重入或播放失败共用退出链。激活/请求栈退出前禁止复用同一 GA 实例；处理时保留 TargetData 句柄，防止同步回调消费 GAS 缓存后悬空。远端等待 TargetData 默认2秒，开始后复用计时器，以默认0.05秒检查目标。
+- `WhileInputActive` 在 Spec 不活动时持续尝试。已激活尝试的 RetryInterval 默认0.25秒，**只从本地 EndAbility 计时**；自主代理另等匹配 Avatar/Spec/预测键的权威终止，晚通知只释放门、不重计间隔。等待门/间隔先于 GAS 常规准入和几何扫描判断。ASC.AbilityNetworkTermination 透传可靠 ClientEnd/Cancel/ActivateFailed，含本地已结束实例；远端权威退出须发送终止。
+
+| 角色 | 执行合同 |
+| --- | --- |
+| 权威端 | 独立重检并计算 Target，复制执行快照；生命周期沿 GAS，移动沿 CMC。 |
+| 自主代理 | 本地先执行；仅活动且 Avatar/Spec/预测键/Action/Montage/StartTime 匹配时回填权威 Target/障碍。引用未齐继续预测并在活动 Tick 重试；保留本机 PreviousWarpTargets，版本变化后 GA 重建表面复核快照。晚到/结束快照不启动或结束本地会话。 |
+| 模拟代理 | 不选片、不重检几何；按 Montage/PlayInstanceId 等待快照引用、Target、碰撞忽略和 Flying。结束先到时保留已播放实例至退出（含混出），未播放终态实例丢弃，晚引用不得复活。恢复 Target 使用权威历史，非 Flying 到达后先恢复碰撞再查支撑。 |
+
+- Component 按独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 非空时，选片/复制归属仅接受其列表及 MontageSettings，仍可复用 ActionSettings；空列表保留目标名推断以兼容装配，多 Warp 系统应配置明确列表。同实例引用补齐不重复拆建，结束快照保留 Montage/PlayInstanceId。
+- `CMC.ClientCorrectionFilter` 仅处理 Packed MoveResponse 中仍匹配 SavedMove 的纠偏。GA 只在本方活动且 Flying 时过滤启动前已记录的待确认 Move；保留原生 ACK/缓存释放，不应用该次位置/模式/根运动，超出时间戳重置安全窗口则放行。启动后的纠偏和权威拒绝仍有效，不能据过滤推断落位已被权威消费。
+- UE 的 ASC.PrePredictionActivation 和 GameplayAbility.PreActivate 已有激活前 FlushServerMoves 路径；沿用它们，不额外发送或增加确认等待。
+
+### 重放、生命周期与退出
+
+- 原生 SavedMove 保存原始动画根运动，MotionWarpingCharacterAdapter 在 bClientUpdating 时再次处理。Traversal 经 CMC 通用 MovementReplayCapture 保留逐 Move 的 setup/restore 闭包；在原生 OnPreUpdate（发现窗口后、更新 Modifier 前）记录世界 Target、SwapState 和本方碰撞忽略，记录/重放不合并 Move。
+- 重放临时安装历史上下文，以原生 Modifier 副本计算并屏蔽重复 Notify gameplay 回调，随后恢复当前会话。副本仅首次重放创建，后续重置状态复用，FreeMove/Clear 释放历史引用；无额外 Tick/保活计时器。历史 Flying/退出边界可重放，不强制接管外部 Custom/物理模式。
+- 权威终止/取消/拒绝按 Avatar/Spec/预测键退休对应上下文；组件停用、注销、销毁、ASC解绑或换绑同样使其失效。旧 Move 仍可能进入 PrepMoveFor，失效分支须清除属于该历史 Montage 的 RootMotionParams，不能只提前返回。闭包弱引用组件；不承诺回滚世界碰撞、动态载体或自定义 Modifier 外部副作用。
+- 正常完成以 PlayMontageAndWait.OnCompleted（含 BlendOut）为边界。有限动作要求开启 AutoBlendOut 且时间有限，否则 Commit 前拒绝。站稳动作应在站稳后混出；预测落点、Warp 窗口结束或途中接触不提前切 Walking，也不增加独立落地阶段复制。
+- 完成、中断、取消、死亡、失效或 ASC解绑均幂等释放 Target、碰撞忽略、Tick依赖、委托和计时器。恢复碰撞后，仅存活且仍 Flying 时按实际支撑切 Walking/Falling；Ragdoll 等接管的新模式不得覆盖，退出无需等待 Montage 自然结束。
+- BeginPlay/Activate/重新注册接合 MotionWarping、PawnExt/ASC 和 CMC。Deactivate/OnUnregister/EndPlay 释放接合，期间 IsTraversalAvailable=false，晚快照不重启。拒绝无根运动、非正/非有限 RateScale 和无效检测通道；PawnExt 解绑顺序见 ASC 生命周期。
+
+### 性能与诊断
+
+- 按频率与查询类型计量：检测含分层球扫、顶部/两侧、深度、后沿细化和净空，不是固定几条射线。默认最多6层搜索、5次深度采样、4步细化；一次 Detect 最多尝试12组边缘候选，提前退出/方向回退改变查询数。成功发起通常本地 CanActivate/Activate 各检一次，服务端另检一次，模拟代理不检。
+- 按住且无表面时，预筛失败不会激活/EndAbility，故 RetryInterval 不限制这条逐输入帧扫描路径。补偿在已选片的启动准备阶段每次算一次，失败尝试也可能计算；执行中不重算整链，但活动 Tick/OnPreUpdate 刷新目标、定时复核表面、自主代理逐 Move 记录历史，纠偏时才重放。
+- 测量须分开探测、选片/骨骼采样、执行、历史记录/重放及 Debug。关闭绘图/日志后量本体；源码计数不等于实测耗时，多客户端同进程 PIE 总成本不等于单角色预算。
+- 绘图默认关闭并受 ENABLE_DRAW_DEBUG 保护。DebugDraw：0关、1候选/活动Target、2搜索/失败、3全部探针；DebugStages：搜索1、命中2、手点4、体积8、输出16、执行32。完整探针历史用 `IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`；`IMG.Traversal.DebugLog 2` 需开启绘图。几何输出标记 pre-selection，执行输出在解析落点后更新。
+- 源码诊断用 `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose`，结束恢复 Log；窗口原生位移用 `a.MotionWarping.Debug 1`。按角色/连接、Spec、激活 PredKey 关联，事件含 Loc/Velocity/MoveMode。LocalRequestPrepared 与 ServerDetectionRejected 对照起点和意图；同键两端各一条不等于重复执行，不同键/键号跳号不能证明输入重复或丢包。
+
+| 事件/标记 | 应如何解释 |
+| --- | --- |
+| WarpTargetsRejected，Local=1/Auth=0/Started=0/Sent=0 | 本地启动前拒绝；Sent 是 Traversal TargetData，不是 GAS 激活 RPC，不能直接归因延迟/回滚。 |
+| PlacementPredictionFallback / PlacementCompensationSkipped | Verbose 正常降级，保留原目标；Plane/CapsuleSupport 提供失败细节，不按 Warning 刷屏。 |
+| Overlap / OverlapWith | 同一播放路径内的窗口时间重叠。比较两窗六位小数起止、目标及 Translation/IgnoreZ/Rotation，不代表重复输入。 |
+| ServerDetectionRejected / NoSurface | 请求已到服务端，当前几何检测失败；需查两端位置/时序/碰撞。Reliable RPC 也不能证明底层无丢包，须另测重传/延迟。 |
+| AuthorityEndedPredictedTraversal | 同键 GAS 权威终止先于本地完成，不是 CMC 重放或预测错误的单独证据。PredictionRejected 才表示激活拒绝。 |
+| Safe capsule / PlacementReprojectionRejected | 仅证明模型支撑/复算结果；缺少拒绝日志不证明进入过复算。全链复算只在预测可用且高度修正非零时执行。 |
+
+- DebugDraw 3 的手点青色为中心实际接触，黄色为最终检测手点；执行青点和正负 placement 为 Target 修正，橙色胶囊为修正前预计终点，绿色为安全落位。分开核对锚点、Target、预测胶囊和 CMC 扫掠后的实际胶囊；大幅修正需查实际半高、命中组件/法线、RootOffset、缩放、尾段和窗口模式。
+- 构造调试 FString 前先检查级别/阶段。候选快照分公共采样与方向验证：方向失败回滚验证记录，候选失败再回滚公共采样，成功只保留一份公共记录及最终方向。楼梯诊断看标签/前侧/顶部/支撑、Span/cutoff/drift；棱面方向看 Handhold: angular request heading。
+
+### GTA 对照与已知边界
+
+- GTA 路径相对 `src/dev_ng/game`：检测/手点 `task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`，发起 `task/Default/TaskPlayer.cpp`，Jump/Vault 分流 `task/Movement/Jumping/TaskJump.*`，执行/清理 `task/Movement/Climbing/TaskVault.*`。GTA Clone 同步不等同 UE 的 CMC Replay。
+- CTaskVault 按手点、DropPoint、GroundToRootOffset 和动画相位求目标位移，`CalcTotalAnimatedDisplacement`、`SetDesiredVelocityAdjustmentRange` 分别处理动画位移/调整区间。`ClimbDetector::ValidateHandHoldAndDetermineVolume` 调 `CTaskVault::IsHandholdSupported` 校验出口，不能把几何通过等同动画可落位；IMG 分层落实为选片后绑定、可选补偿和显式 Landing 合同。
+- `ms_VaultExitConditions` 的 eVEC_Slide 属于独立滑行动作且禁自动 Vault，IMG 推荐表只保留对应普通 Vault 的六条。27.5 cm深度球、55 cm步距、20 cm断层等保持既有映射，不以调阈值替代执行语义。GTA 多层搜索/坡面后筛、MBR发起范围、JumpVault步态门槛及 AutoVault摇杆/受阻/冷却可作对照；纯自动落地要求与 IMG 默认允许空中属于策略差异。
+- 当前预测假设资产默认有限 Section 链正常推进。运行时改链、混合权重、限速/轴耦合和 CMC 碰撞截断会改变实际落位；抓沿下移受阻后，后段会从实际高度继续根运动，预计算不能修复此执行偏差。结束时必须查实际支撑，不补做运行时轨迹或第二次 Warp。
+- 局部 Target 跟随不等于完整动态平台支持。BasedMovement/动态 Bone、世界回滚、异步检测、持续悬挂/Shimmy/梯子另行设计；沿用 UE/GAS/CMC，不移植 RAGE 的附着、Capsule、手动位移或网络协议。
+- **待运行验收：** 各 Action、窗内起播/跨 Section、上下补偿、失败/中断、专服/Listen Server 的自主与模拟代理、引用晚到及延迟/丢包纠偏。源码合同、静态检查及三客户端 PIE 总帧数均不能替代资产表现与联机验收。
 
 ## 镜头
 

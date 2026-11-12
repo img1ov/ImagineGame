@@ -53,6 +53,8 @@ public:
 	float SavedBrakingFrictionFactor = 0.f;
 	bool bSavedUseSeparateBrakingFriction = false;
 	FIMGRagdollMovementInput SavedRagdollInput;
+	TArray<FMovementReplaySetup> SavedReplaySetups;
+	TArray<FMovementReplayRestore> ReplayRestores;
 
 	virtual void Clear() override
 	{
@@ -69,6 +71,8 @@ public:
 		SavedBrakingFrictionFactor = 0.f;
 		bSavedUseSeparateBrakingFriction = false;
 		SavedRagdollInput = FIMGRagdollMovementInput();
+		SavedReplaySetups.Reset();
+		ReplayRestores.Reset();
 	}
 
 	virtual uint8 GetCompressedFlags() const override
@@ -111,6 +115,9 @@ public:
 	{
 		FSavedMove_Character::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
 		UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
+		SavedReplaySetups.Reset();
+		Movement->MovementReplayCapture.Broadcast(*this, SavedReplaySetups);
+		bForceNoCombine |= !SavedReplaySetups.IsEmpty();
 		// Match the rounded acceleration that ReplicateMoveToServer will use for the initial prediction.
 		SavedInputMagnitude = IMGCharacter::QuantizeInputMagnitude(Acceleration, Movement->GetMaxAcceleration());
 		bSavedHasMovementRequest = Movement->bHasMovementRequest && Movement->HasMovementRequestProvider();
@@ -137,6 +144,10 @@ public:
 	virtual void PrepMoveFor(ACharacter* Character) override
 	{
 		FSavedMove_Character::PrepMoveFor(Character);
+		for (const FMovementReplaySetup& Setup : SavedReplaySetups)
+		{
+			ReplayRestores.Add(Setup());
+		}
 		UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
 		Movement->bHasMovementRequest = Movement->HasMovementRequestProvider()
 			&& bSavedHasMovementRequest && SavedMovementRequestGeneration == Movement->MovementRequestGeneration;
@@ -157,6 +168,14 @@ public:
 
 	virtual void PostUpdate(ACharacter* Character, EPostUpdateMode PostUpdateMode) override
 	{
+		if (PostUpdateMode == PostUpdate_Replay)
+		{
+			for (int32 Index = ReplayRestores.Num() - 1; Index >= 0; --Index)
+			{
+				if (ReplayRestores[Index]) { ReplayRestores[Index](); }
+			}
+			ReplayRestores.Reset();
+		}
 		FSavedMove_Character::PostUpdate(Character, PostUpdateMode);
 		const UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
 		SavedMovementParameterHash = Movement->bMovementContextApplied && bSavedHasMovementRequest
@@ -270,6 +289,11 @@ public:
 		: FNetworkPredictionData_Client_Character(Movement) {}
 
 	virtual FSavedMovePtr AllocateNewMove() override { return FSavedMovePtr(new FSavedMove_IMG()); }
+	virtual void FreeMove(const FSavedMovePtr& Move) override
+	{
+		if (Move.IsValid()) { static_cast<FSavedMove_IMG*>(Move.Get())->SavedReplaySetups.Reset(); }
+		FNetworkPredictionData_Client_Character::FreeMove(Move);
+	}
 };
 
 namespace IMGCharacter

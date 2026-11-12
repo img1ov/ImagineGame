@@ -48,7 +48,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 
-	/** Minimum local delay after an attempt ends or authority rejects it; held input remains eligible afterwards. */
+	/** Minimum delay from local end; authority termination releases its gate without restarting this interval. */
 	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network", meta = (ClampMin = "0.01"))
 	float RetryInterval = 0.25f;
 
@@ -122,6 +122,7 @@ private:
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
 	TArray<FTransform> PreviousObstacleTransforms;
 	float PreviousTargetCheckTime = 0.f;
+	uint32 TrackedTargetsRevision = 0;
 	// Do not reuse this per-actor instance while a previous activation/request is still unwinding.
 	bool bProcessingTraversalRequest = false;
 	bool bLocalRequest = false;

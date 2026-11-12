@@ -282,7 +282,6 @@ bool MatchesVaultRecommendation(const FIMGTraversalCandidate& Candidate, bool bR
 	    {80.f, TNumericLimits<float>::Max(), 0.f, 20.f, 35.f, 32.5f, 50.f, 0.f, 65.f, false},
 	    {80.f, TNumericLimits<float>::Max(), 0.f, 50.f, 50.f, 50.f, TNumericLimits<float>::Max(), 0.f, 75.f, false},
 	    {80.f, TNumericLimits<float>::Max(), 0.f, 70.f, 70.f, 50.f, TNumericLimits<float>::Max(), 0.f, 75.f, false},
-	    {60.f, 120.f, 100.f, 200.f, 200.f, 60.f, 250.f, 0.f, 100.f, false},
 	};
 
 	for (const FExitCondition& Condition : Conditions)

@@ -121,15 +121,16 @@ bool UIMGTraversalComponent::CanInitiate(
 			return false;
 		}
 	}
+	const FVector ToLedgeOffset = Candidate.FrontLedge.GetLocation() - Character->GetActorLocation();
+	const double PlanarDistance = ToLedgeOffset.Size2D();
 	if (!FMath::IsFinite(Settings.ManualMovementDirectionDot) ||
 	    FMath::Abs(Settings.ManualMovementDirectionDot) > 1.f ||
 	    !FMath::IsFinite(Settings.AutomaticMovementDirectionDot) ||
-	    FMath::Abs(Settings.AutomaticMovementDirectionDot) > 1.f || !FMath::IsFinite(Candidate.PlanarDistanceToLedge) ||
-	    Candidate.PlanarDistanceToLedge < 0.f)
+	    FMath::Abs(Settings.AutomaticMovementDirectionDot) > 1.f || !FMath::IsFinite(PlanarDistance))
 	{
 		return false;
 	}
-	const FVector ToLedge = (Candidate.FrontLedge.GetLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+	const FVector ToLedge = ToLedgeOffset.GetSafeNormal2D();
 	// A player request carries the facing used for its search. AI can search along its path before turning.
 	const FVector Facing = Candidate.RequestSource == EIMGTraversalRequestSource::AI
 	    ? Character->GetActorForwardVector().GetSafeNormal2D() : Candidate.ApproachDirection;
@@ -170,12 +171,12 @@ bool UIMGTraversalComponent::CanInitiate(
 			AllowedDistance = FMath::Max(AllowedDistance, Settings.ManualMaxDistance);
 		}
 	}
-	const bool bAllowed = Candidate.PlanarDistanceToLedge <= AllowedDistance + DistanceTolerance;
+	const bool bAllowed = PlanarDistance <= AllowedDistance + DistanceTolerance;
 #if ENABLE_DRAW_DEBUG
 	if (!bAllowed)
 	{
 		IMGTraversalDebug::String(GetWorld(), Candidate.FrontLedge.GetLocation() + FVector::UpVector * 45.f,
-		    FString::Printf(TEXT("Initiation: planar %.0f > %.0f"), Candidate.PlanarDistanceToLedge,
+		    FString::Printf(TEXT("Initiation: planar %.0f > %.0f"), PlanarDistance,
 		        AllowedDistance + DistanceTolerance),
 		    FColor::Yellow, 2);
 	}
@@ -254,10 +255,6 @@ void UIMGTraversalComponent::GetWarpWindows(
 			}
 			ModifierRanges.Add(Range);
 			const URootMotionModifier_Warp* Modifier = Cast<URootMotionModifier_Warp>(Notify->RootMotionModifier);
-			if (!Modifier)
-			{
-				continue;
-			}
 			FIMGTraversalWarpWindow& Window = OutWindows.AddDefaulted_GetRef();
 			Window.Modifier = Modifier;
 			Window.StartTime = Start;
@@ -366,7 +363,15 @@ void UIMGTraversalComponent::InitializeBindings()
 	{
 		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())
 		{
-			if (BoundMovement.IsValid() && BoundMovement != Movement) { BoundMovement->RemoveTickPrerequisiteComponent(this); }
+			if (BoundMovement != Movement)
+			{
+				if (BoundMovement.IsValid())
+				{
+					BoundMovement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
+					BoundMovement->RemoveTickPrerequisiteComponent(this);
+				}
+				MovementReplayCaptureHandle = Movement->MovementReplayCapture.AddUObject(this, &ThisClass::CaptureMovementReplay);
+			}
 			BoundMovement = Movement;
 			// Proxy collision restoration must precede CMC floor queries, even without a root-motion update.
 			Movement->AddTickPrerequisiteComponent(this);
@@ -425,23 +430,31 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 }
 
 bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
-    const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets)
+    const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets,
+    FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey)
 {
 	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
-	if (!IsTraversalAvailable() || ActiveState.bActive || !IsValid(Character) || Character->IsActorBeingDestroyed() ||
+	if (!IsTraversalAvailable() || bReplayingTraversalMove || ActiveState.bActive || !IsValid(Character) || Character->IsActorBeingDestroyed() ||
 	    Character->GetLocalRole() == ROLE_SimulatedProxy || !Movement || Movement != Character->GetIMGMovementComponent())
 	{
 		return false;
 	}
+	if (!Movement->IsRegistered() || !Movement->IsActive()) { return false; }
 	ActiveState = FIMGTraversalRepState();
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
+	ActiveState.AbilitySpec = AbilitySpec;
+	ActiveState.ActivationPredictionKey = PredictionKey;
 	ActiveState.Action = Selection.Action;
 	ActiveState.Montage = Selection.Montage;
 	ActiveState.MontageStartTime = Selection.StartTime;
 	ActiveState.ObstacleComponents = Candidate.ObstacleComponents;
 	ActiveState.WarpTargets = WarpTargets;
 	ActiveState.bActive = true;
+	bLocallyPredictedTraversal = Character->GetLocalRole() == ROLE_AutonomousProxy;
+	ReplaySessionValid = bLocallyPredictedTraversal ? MakeShared<bool>(true) : TSharedPtr<bool>();
+	bAuthorityTargetsApplied = false;
+	++TraversalTargetsRevision;
 	if (const UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
 	{
 		for (const FIMGTraversalWarpTarget& Target : WarpTargets)
@@ -485,10 +498,16 @@ void UIMGTraversalComponent::EndTraversal()
 	// A terminal snapshot must identify the instance even if its start snapshot was never received.
 	EndState.Montage = ActiveState.Montage;
 	EndState.MontagePlayInstanceId = ActiveState.MontagePlayInstanceId;
+	EndState.AbilitySpec = ActiveState.AbilitySpec;
+	EndState.ActivationPredictionKey = ActiveState.ActivationPredictionKey;
 	SetTargetTickPrerequisites(false);
 	RestoreMovementIgnores();
 	RemoveWarpTargets();
 	ActiveState = MoveTemp(EndState);
+	++TraversalTargetsRevision;
+	bCaptureTraversalExit |= GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy && !bReplayingTraversalMove;
+	bLocallyPredictedTraversal = false;
+	bAuthorityTargetsApplied = false;
 	SetComponentTickEnabled(false);
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
@@ -505,6 +524,11 @@ void UIMGTraversalComponent::EndTraversal()
 void UIMGTraversalComponent::OnRep_TraversalState()
 {
 	if (bReleasingBindings || !HasBegunPlay() || !IsRegistered() || !IsActive()) { return; }
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
+	{
+		ReconcilePredictedTargets();
+		return;
+	}
 	if (!ReplicatedState.bActive && ShouldDeferSimulatedEnd())
 	{
 		if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
@@ -533,6 +557,51 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 	{
 		ASC->RetryReplicatedMontage();
 	}
+}
+
+void UIMGTraversalComponent::ReconcilePredictedTargets()
+{
+	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	if (!bLocallyPredictedTraversal || !ActiveState.bActive || !ReplicatedState.bActive ||
+	    !Character || Character->GetLocalRole() != ROLE_AutonomousProxy || !BoundMovement.IsValid() ||
+	    BoundMovement.Get() != Character->GetIMGMovementComponent() || !BoundMovement->IsFlying() ||
+	    ActiveState.AbilitySpec != ReplicatedState.AbilitySpec || ActiveState.Action != ReplicatedState.Action ||
+	    ActiveState.ActivationPredictionKey == 0 ||
+	    ActiveState.ActivationPredictionKey != ReplicatedState.ActivationPredictionKey ||
+	    ActiveState.Montage != ReplicatedState.Montage || ActiveState.MontageStartTime != ReplicatedState.MontageStartTime ||
+	    (bAuthorityTargetsApplied && AppliedAuthoritySequence == ReplicatedState.Sequence))
+	{
+		return;
+	}
+	// References may resolve after the snapshot. Keep predicting until the entire target set is ready.
+	if (ReplicatedState.WarpTargets.Num() != ActiveState.WarpTargets.Num()) { return; }
+	for (const UPrimitiveComponent* Obstacle : ReplicatedState.ObstacleComponents)
+	{
+		if (!IsValid(Obstacle)) { return; }
+	}
+	for (const FIMGTraversalWarpTarget& Target : ReplicatedState.WarpTargets)
+	{
+		if (!IsValid(Target.Component) || !Target.LocalTransform.IsValid() ||
+		    !(Target.LocalTransform * Target.Component->GetComponentTransform()).IsValid() ||
+		    !ActiveState.WarpTargets.ContainsByPredicate(
+		        [&Target](const FIMGTraversalWarpTarget& Existing) { return Existing.Name == Target.Name; }))
+		{
+			return;
+		}
+	}
+	SetTargetTickPrerequisites(false);
+	RestoreMovementIgnores();
+	ActiveState.ObstacleComponents = ReplicatedState.ObstacleComponents;
+	ActiveState.WarpTargets = ReplicatedState.WarpTargets;
+	// The owner restores its own pre-traversal targets, independently of the authority's history.
+	AppliedAuthoritySequence = ReplicatedState.Sequence;
+	bAuthorityTargetsApplied = true;
+	++TraversalTargetsRevision;
+	RefreshWarpTargets();
+	UE_LOG(LogIMGAbilitySystem, Verbose,
+	    TEXT("Traversal owner targets reconciled: Avatar=[%s] Spec=%s PredKey=%d Sequence=%u Targets=%d"),
+	    *GetNameSafe(Character), *ActiveState.AbilitySpec.ToString(), ActiveState.ActivationPredictionKey,
+	    AppliedAuthoritySequence, ActiveState.WarpTargets.Num());
 }
 
 bool UIMGTraversalComponent::ShouldDeferSimulatedEnd() const
@@ -619,10 +688,16 @@ void UIMGTraversalComponent::RestoreMovementMode()
 
 void UIMGTraversalComponent::HandleMotionWarpingPreUpdate(UMotionWarpingComponent* Warping)
 {
+	if (bReplayingTraversalMove) { return; }
 	if (ActiveState.bActive && Warping == BoundMotionWarpingComponent.Get())
 	{
 		// Native target replication can arrive independently of the traversal snapshot.
 		RefreshWarpTargets();
+	}
+	if (RecordWarpContext)
+	{
+		TFunction<void()> Record = MoveTemp(RecordWarpContext);
+		Record();
 	}
 }
 
@@ -653,6 +728,7 @@ void UIMGTraversalComponent::HandleAbilitySystemInitialized()
 
 void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 {
+	if (ReplaySessionValid) { *ReplaySessionValid = false; }
 	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
 	{
 		ASC->UnregisterReplicatedMontagePrerequisite(MontagePrerequisiteHandle);
@@ -700,7 +776,7 @@ FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedM
 			}
 			for (const FIMGTraversalWarpWindow& Window : Windows)
 			{
-				if (Settings->WarpBindings.ContainsByPredicate([&Window](const FIMGTraversalWarpBinding& Binding)
+				if (Window.Modifier && Settings->WarpBindings.ContainsByPredicate([&Window](const FIMGTraversalWarpBinding& Binding)
 				        { return Binding.TargetName == Window.Modifier->WarpTargetName; }))
 				{
 					return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalSnapshot")};
@@ -713,7 +789,8 @@ FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedM
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
 	// Movement mode and GAS montage arrive through different actors; do not start with falling Z constraints.
-	if (!Warping || !Character || !Character->GetCapsuleComponent() || !Movement || !Movement->IsFlying())
+	if (!Warping || !Character || !Character->GetCapsuleComponent() || !Movement ||
+	    !Movement->IsRegistered() || !Movement->IsActive() || !Movement->IsFlying())
 	{
 		return {EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalMovementMode")};
 	}
@@ -811,6 +888,7 @@ void UIMGTraversalComponent::TickComponent(
 	}
 	if (ActiveState.bActive)
 	{
+		ReconcilePredictedTargets();
 		RefreshWarpTargets();
 		// A replicated component reference may resolve after the snapshot's first OnRep.
 		if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
@@ -843,8 +921,14 @@ void UIMGTraversalComponent::ReleaseBindings()
 	HandleAbilitySystemUninitialized();
 	if (UIMGCharacterMovementComponent* Movement = BoundMovement.Get())
 	{
+		Movement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
 		Movement->RemoveTickPrerequisiteComponent(this);
 	}
+	MovementReplayCaptureHandle.Reset();
+	RecordWarpContext = nullptr;
+	bCaptureTraversalExit = false;
+	if (ReplaySessionValid) { *ReplaySessionValid = false; }
+	ReplaySessionValid.Reset();
 	EndTraversal();
 	BoundMovement.Reset();
 	BoundMotionWarpingComponent.Reset();
@@ -853,5 +937,5 @@ void UIMGTraversalComponent::ReleaseBindings()
 void UIMGTraversalComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION(UIMGTraversalComponent, ReplicatedState, COND_SkipOwner);
+	DOREPLIFETIME(UIMGTraversalComponent, ReplicatedState);
 }

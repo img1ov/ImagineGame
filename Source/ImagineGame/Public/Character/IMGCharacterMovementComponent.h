@@ -6,6 +6,7 @@
 #include "Character/IMGMovementSimulationContext.h"
 #include "Character/Ragdoll/IMGCustomMovementMode_Ragdoll.h"
 #include "Misc/Optional.h"
+#include "Templates/Function.h"
 
 #include "IMGCharacterMovementComponent.generated.h"
 
@@ -21,6 +22,10 @@ DECLARE_DELEGATE_RetVal_FourParams(bool, FMovementRequestApply, uint8, const FMo
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
 	const FCharacterMoveResponseDataContainer&, bool& /* bDiscardCorrection */);
+
+using FMovementReplayRestore = TFunction<void()>;
+using FMovementReplaySetup = TFunction<FMovementReplayRestore()>;
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMovementReplayCapture, const FSavedMove_Character&, TArray<FMovementReplaySetup>&);
 
 UENUM(BlueprintType)
 enum class EIMGCustomMovementMode : uint8
@@ -139,6 +144,8 @@ public:
 
 	/** Listeners may only set discard to true. Discarded corrections still ACK through the native path. Packed responses only. */
 	FIMGClientCorrectionFilter ClientCorrectionFilter;
+	/** Capture local execution context per move; setup/restore bracket each correction replay. */
+	FMovementReplayCapture MovementReplayCapture;
 
 	/** One weak UObject provider; movement records opaque rule inputs and returns timestamp-matched authority context. */
 	UE_API bool RegisterMovementRequestProvider(UObject* Source, FMovementRequestCapture Capture, FMovementRequestApply Apply);
