@@ -103,6 +103,11 @@ private:
 	UFUNCTION()
 	void OnMontageInterrupted();
 
+	UFUNCTION()
+	void OnMontageCancelled();
+
+	void HandleMontageStopped(const TCHAR* Event, const TCHAR* Reason);
+
 	FDelegateHandle TargetDataDelegateHandle;
 	FDelegateHandle TargetDataCancelledDelegateHandle;
 	FDelegateHandle CorrectionFilterHandle;

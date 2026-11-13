@@ -293,7 +293,8 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 意图优先待消费输入，再取 CMC.Acceleration，不以 Velocity 替代。玩家使用 GA.RequestSource；服务端 AI 强制 AI 来源，复用 Manual 规则，无输入/加速度时可取 Moving 的 PathFollowing 当前段目标，无意图时可按手动站立规则向前尝试。
 - 发起距离由当前 Actor 与前沿重新计算 XY；`Candidate.PlanarDistanceToLedge` 保留检测时的选片/诊断值。`ServerDistanceTolerance` 只放宽远端发起距离，不扩大服务端几何搜索。发起角度使用本次请求方向和重检前沿，不换成收包时朝向。
 - PreSelect、Select、Commit 回调后复核原 ASC/Avatar/Component。Commit 后还须核对入场位姿、胶囊、Mesh/AnimInstance、BaseOffset 和参与表面的变换，防止旧落位结果应用到已变化的对象。候选默认时效 `MaxCandidateAge=0.25 s`。
-- Supports 与推荐动作分开：Mantle 要求前沿，Vault/Hurdle 要求前沿+后沿；`RecommendedAction` 是独立选片建议。`bHasBackFloor=false` 表示尚未确认后方支撑，不能当作落点。空中 Height 随当前脚底升高而减小，需结合 StartTime 和选片核对。
+- Supports 与推荐动作分开：Mantle 是登顶，要求前沿；Hurdle 是有后方支撑的翻越，要求前沿+后沿+`bHasBackFloor`；Vault 是没有确认后方支撑的翻越，要求前沿+后沿且 `!bHasBackFloor`。Mantle 可与其中一种翻越同时可选，由 CHT 决定覆盖与优先级；高度/深度/速度不在 Supports 中硬编码。`RecommendedAction` 仅作建议，Hurdle/Vault 各用自己的推荐高度限制，不因 Hurdle 超出建议高度改推有地面的 Vault。
+- `bHasBackFloor=false` 表示探测范围内尚未确认可用后方支撑，不证明世界中不存在地面，也不能当作落点。`BackLedge` 在 `bHasBackLedge=false` 时仍保留最后顶面采样位置，坐标与 ObstacleDepth 都不能代替已确认后沿。空中 Height 随当前脚底升高而减小，需结合 StartTime 和选片核对。
 
 ### 手点、坡面与表面规则
 
@@ -311,20 +312,20 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - Motion Matching/PoseMatch返回的StartTime经Selection → TargetData.NetSerialize → ResolveTraversalRequest → PrepareTargets及PlayMontageAndWait原值传递；不按0起播，也不在服务端另选时间。ProjectPlacement的Cursor从PlaybackStart开始，窗内起播只Advance剩余区间；SkewWarp的有/无平移分支判定仍用完整窗口位移，与原生TotalRootMotionWithinWindow一致，不能误改成剩余位移判定。DistanceCurve的接触窗末→落地窗末距离是两锚点间距，不应减去StartTime；它与当前胶囊→落地的剩余位移不是同一量。
 - 跳过起播前已结束及预计混出后才开始的窗口，窗内起播只算剩余区间；显式提前混出从末 Section 计算。逐段组合窗间根运动和各窗约束，IgnoreZAxis 沿用入窗高度，未约束旋转沿用动画。窗口可共用 Target，单窗/多窗共用预测与修正后复算；骨点参照和原生尾段按窗口缓存。
 - 原生 `bSubtractRemainingRootMotion` 扣除的是 Window.EndTime → **资产全长**，实际后续播放位移才按 Section 路径累计。`ResolveWindowPose.NativeTail` 必须匹配原生扣除，不能统一替换为 SectionEnd。DistanceCurve 按路径分段累计，再分别处理接触/落地窗的原生扣余量参照偏移。
-- Bone/Static/None 参照将 Target 换算成胶囊位置。有动画平移时按 BaseTranslationOffset 换算中心，关闭 WarpToFeetLocation 则清除该偏移的 Z；无平移时按脚底换算。Target 与胶囊中心不应直接比较。窗口后根运动累计到预计混出末端。
-- 自动补偿的模型支持完整、顺序、不重叠、未限速的原生 Skew 窗口，要求单位 Actor/Mesh 世界缩放、直立胶囊；旋转为 Default/Slerp，时间倍率在(0,1]。非 Warp Modifier 也保留范围，以空 Modifier 标记降级，防止漏算 Scale/自定义效果。超出模型范围时普通 Mantle 保留原目标执行；显式 Landing 仍要求可靠预测。重叠窗口当前不自动补偿，不能把此限制当作动画整体准入条件。
+- Bone/Static/None 参照将 Target 换算成胶囊位置。有动画平移时按 BaseTranslationOffset 换算中心，关闭 WarpToFeetLocation 则清除该偏移的 Z；无平移时按脚底换算。Target 与胶囊中心不应直接比较。支撑求值只累计至所选接触窗口末端，不累计其后的走位；播放路径及预计混出时间仍用于筛选可到达窗口，不承担动作接触终点的含义。
+- 自动补偿的模型支持完整、顺序、不重叠、未限速的原生 Skew 窗口，要求单位 Actor/Mesh 世界缩放、直立胶囊；旋转为 Default/Slerp，时间倍率在(0,1]。非 Warp Modifier 也保留范围，以空 Modifier 标记降级，防止漏算 Scale/自定义效果。超出模型范围时 Mantle、Landing=None 的 Hurdle 保留原目标执行；显式 Landing 仍要求可靠预测。重叠窗口当前不自动补偿，不能把此限制当作动画整体准入条件。
 
 ### 高度补偿与显式落地
 
-- 补偿只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。适用 Mantle、显式 Landing，或末平移/末高度窗口绑定 BackFloor 的动作；普通 Vault/Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。
+- 补偿只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。Mantle 在最后可到达平移窗末检查登顶；Hurdle 有显式 Landing 时用所选落地窗，否则仅在有 BackFloor 平移窗时用最后一个此类窗。Vault 不做支撑补偿；Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。
 - 普通 Mantle 的补偿是可选修正。平面支撑、完整胶囊扫掠、CMC可走性、归属、层位、边缘容差、重叠及全窗口链复算通过才写回；失败恢复/保留原目标，不追加名义终点贴地硬门槛，全 IgnoreZ 同样处理。`CompensatedPlacementCenter` 只缓存所选求值终点上校正成功的安全中心。降级不证明最终站稳；几何、表面、绑定、RequiredTargets 和有限路径校验仍生效。
-- 默认 Mantle 限定障碍顶层；仅显式 Landing 或控制 Z/末平移窗绑定 BackFloor 时可用后方支撑。顶层取 `TopSupportHeightRange ± DepthHeightTolerance`，范围来自中心、两侧、首个断层前连续顶面和后沿细化。仅比较组件不足以区分同一车身上的车顶与低层斜面。
-- 非顶层支撑范围由胶囊、锚点距离及 CMC/组件可走坡度推导；支撑限锚点载体、障碍集和适用的 BackFloor，安全中心保留 CMC 地面间隙。求值终点及之前最后控制 Z 的窗口提供修正 Target，改后复算截至同一终点的窗口链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
-- 显式 Landing 需 BackFloor 绑定和预计混出前完成的平移窗。补偿、修正后复算、净空/支撑/直线路径与预览胶囊统一在选中Landing窗口末端求值，即使它是最后平移窗也不累计窗后Montage根运动。只选该落地窗及之前最后控制Z的窗口修正Target；之后的高度窗不能反过来补偿先前落点。NativeTail的bSubtractRemainingRootMotion参照仍按引擎资产全长扣除，不能因截断求值而删掉该扣除。较早Landing不让后窗覆盖共享同名Target。CapsuleClearance 只加校验余量；预测、可走落点、落差、完整胶囊、实际根位置支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
+- Mantle 始终限定障碍顶层，`Landing.Mode` 必须为 None，不允许实际消费 BackFloor 目标；Vault 同样禁止显式 Landing 和实际消费 BackFloor。未消费的默认 BackFloor binding 可保留。顶层取 `TopSupportHeightRange ± DepthHeightTolerance`，范围来自中心、两侧、首个断层前连续顶面和后沿细化。仅比较组件不足以区分同一车身上的车顶与低层斜面。
+- 支撑参照取求值接触窗的几何绑定，修正 Target 则取该窗及之前最后控制 Z 的窗口，二者可以不同。Mantle 接受该接触载体/障碍集的顶层；Hurdle 仅接受接触 BackFloor 载体、位于后沿朝向的后方半空间且落差在 `0..MaxDrop` 的支撑，不借前沿载体或障碍顶面代替后方地面。Hurdle 探高范围由胶囊、接触锚点距离及 CMC/组件可走坡度推导。安全中心保留 CMC 地面间隙，改后复算截至同一接触终点的窗口链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
+- 显式 Landing 仅适用 Hurdle，需 BackFloor 绑定和预计混出前完成的平移窗；None 可保留动画自带落地，不自动补设窗口。补偿、修正后复算、净空/支撑/直线路径与预览胶囊统一在选中Landing窗口末端求值，即使它是最后平移窗也不累计窗后Montage根运动。只选该落地窗及之前最后控制Z的窗口修正Target；之后的高度窗不能反过来补偿先前落点。NativeTail的bSubtractRemainingRootMotion参照仍按引擎资产全长扣除，不能因截断求值而删掉该扣除。较早Landing不让后窗覆盖共享同名Target。CapsuleClearance 只加校验余量；预测、后沿后方可走落点、落差、完整胶囊、实际根位置的后方支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
 
 ### 执行与三端网络
 
-- LocalPredicted 顺序：校验 → Commit → 获取 Target/碰撞忽略 → Flying → 启动 Montage → 提交 TargetData/发布快照。本地即时播放，不等待权威落点。服务端重检来源、方向/意图、几何、Action、时间/倍率、Warp 合同和可选 AllowedMontages，不接受客户端几何；请求不携带检测位姿/时间戳，不回溯世界。两端数据结构及配置须一致。
+- LocalPredicted 顺序：校验 → Commit → 获取 Target/碰撞忽略 → Flying → 启动 Montage → 提交 TargetData/发布快照。本地即时播放，不等待权威落点。服务端重检来源、方向/意图、几何、Action、时间/倍率、Warp 合同和可选 AllowedMontages，不接受客户端几何；请求不携带检测位姿/时间戳，不回溯世界。TargetData 的 Source/Action 分别按 2bit 序列化，扩展枚举须同步核对 `IMGTraversalTargetData.cpp::NetSerialize`。两端数据结构及配置须一致。
 - 启动前只发一次取消；Commit 后重入或播放失败共用退出链。激活/请求栈退出前禁止复用同一 GA 实例；处理时保留 TargetData 句柄，防止同步回调消费 GAS 缓存后悬空。远端等待 TargetData 默认2秒，开始后复用计时器，以默认0.05秒检查目标。
 - `WhileInputActive` 在 Spec 不活动时持续尝试。已激活尝试的 RetryInterval 默认0.25秒，**只从本地 EndAbility 计时**；自主代理另等匹配 Avatar/Spec/预测键的权威终止，晚通知只释放门、不重计间隔。等待门/间隔先于 GAS 常规准入和几何扫描判断。ASC.AbilityNetworkTermination 透传可靠 ClientEnd/Cancel/ActivateFailed，含本地已结束实例；远端权威退出须发送终止。
 
@@ -381,8 +382,8 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 - 调试文字只进Details；常规Warning/Verbose仍用 `LogIMGTraversal` 写Output Log。旧Visual Logger桥接、Traversal GameplayDebugger Category、F6..F10、采集/等级/阶段/角色过滤、残留时长及两个DDCvar.Traversal配置均已移除，无兼容别名。旧Visual Logging录制需重新录制，不能追溯删除或转换。
 - 本地分析优先读取 `Saved/Debug/Traversal` 最新JSONL的metadata与全部帧，再按ActorId/Role/NetMode、Spec/PredKey、Attempt、Sequence和Montage实例关联。先核对Dropped、范围是否包含开始和结束、是否只有客户端记录；有最后检测摘要不等于该帧重新检测。单端记录不能替代服务端重检，跨进程录制时间也不能直接当作同一时钟。
-- Warp排查先区分目标接触点、Landing窗末胶囊、完整播放路径终点和实际结束胶囊。显式Landing以选中窗口末端为口径，不能因它是最后平移窗而套用PlaybackPath.PlacementTime/动画全长；Landing.Mode=None的普通补偿仍保留名义播放末端模型。完整路径终点含窗后根运动，不能冒充落地点；提前中断也不能反证或证明完整路径XY正确。Landing clearance胶囊另含校验余量。PlacementEvaluation/LandingEvaluation记录StartTime、求值终点、参考/修正Target、窗口时间、IncludeTail和中心；PlacementWindow记录首次投影的实际入窗时间、剩余平移、原生尾段扣除、WarpPoint/RootOffset与轴选项。需新录制，旧记录没有这些参数时不声称已逐项数值复算。
-- MontageStopped后的Montage_GetPosition可能为0，不能据此认为动画回到了0。应取最后活动帧与事件时序。`PlayMontageAndWait::OnInterrupted`既可来自Montage混出中断，也可由OnGameplayAbilityCancelled转发；原生CancelAbility先广播取消再EndAbility，本项目回调可能先K2_EndAbility，因此End日志Cancelled=0不能单独排除GAS取消或判定中断来源。只有本端JSONL时不以晚到权威结束快照倒推最初停止原因。
+- Warp排查先区分目标接触点、接触窗末胶囊、完整播放路径终点和实际结束胶囊。Mantle 的 TopContactWindow、Hurdle 的 LandingWindow/BackFloorWindow 都以所选窗末为口径，不套用 PlaybackPath.PlacementTime/动画全长。完整路径终点含窗后根运动，不能冒充落地点；提前中断也不能反证或证明完整路径XY正确。Landing clearance胶囊另含校验余量。PlacementEvaluation/LandingEvaluation记录StartTime、求值终点、参考/修正Target、窗口时间、IncludeTail和中心；PlacementWindow记录首次投影的实际入窗时间、剩余平移、原生尾段扣除、WarpPoint/RootOffset与轴选项。旧记录可能仍用 PlaybackEnd/IncludeTail=1，须按记录版本和事件内容解释，不能套用新算法。
+- MontageStopped后的Montage_GetPosition可能为0，不能据此认为动画回到了0。应取最后活动帧与事件时序，实际播放时长须减去 Selection.StartTime。新事件 `MontageInterrupted` 对应任务 OnInterrupted（Montage 中断或 GA 取消转发），`MontageTaskCancelled` 对应 OnCancelled（启动失败或 ExternalCancel），记录可观察实例位置/ID、当前活动 Montage、AnimInstance 与结束标志；实例已销毁时位置为 -1。Rewind 继续识别旧合并事件 MontageInterruptedOrCancelled。原生 CancelAbility 先广播取消再 EndAbility，本项目回调可能先 K2_EndAbility，因此 End 日志 Cancelled=0 不能单独排除 GAS 取消或判定中断来源。只有本端 JSONL 时不以晚到权威结束快照倒推最初停止原因，也不以复制 Montage 重试排除自主代理的 GAS 取消。
 
 #### 模块、采集与版本
 
@@ -426,7 +427,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 #### 图元、Graph与排查边界
 
 - 线用像素细线，点标记最多3cm，探针球/胶囊显示真实尺寸。World后端写普通World/Foreground LineBatcher，暂停回放不能依赖游戏Tick回收；本方图元带独立BatchID，每次现场Tick/回看Update先ClearBatch后画当前帧。隐藏、无帧、切世界、清录制、模块退出也清本方批次，不Flush其他系统；现场暂停不清回看批次。新增会产生Mesh的图元须扩展批次归属。
-- 准备胶囊：橙色为补偿前；绿色仅在支撑/重叠/全链复算通过后；已计算但被拒绝的修正位置为红色；无有效预测不伪造胶囊。Purpose区分补偿前后和显式Landing净空，同Attempt活动帧持续带入，结束/新准备/解绑后停止沿用。显式Landing位置对应所选窗口末端，Landing=None仍为名义播放末端；位置是准备时世界坐标，不代表动态载体后续预测；模拟代理无本机准备胶囊。补偿为0时前后重合。
+- 准备胶囊：橙色为补偿前；绿色仅在支撑/重叠/全链复算通过后；已计算但被拒绝的修正位置为红色；无有效预测不伪造胶囊。Purpose区分补偿前后和显式Landing净空，同Attempt活动帧持续带入，结束/新准备/解绑后停止沿用。位置对应动作所选接触窗口末端，Landing=None 也不累计窗后走位；橙色不是 Warp Target 或强制结束位置。位置是准备时世界坐标，不代表动态载体后续预测；模拟代理无本机准备胶囊。补偿为0时前后重合。
 - Graph最多240个不同帧的样本，现场与回看均将同一Frame的多次提交合并为最后一个Graph样本，原Trace全部提交不变。回看仅在Graph打开且停止模拟/录制后构建历史；按游标最近5秒采样、剔除窗口外边界帧，不读取游标之后数据，并独立缓存GraphRevision/GraphTime，关闭时释放历史。检测耗时含采集开销，Queries只计项目显式查询，不含CMC.FindFloor等内部查询；后续帧保持最近检测值，不代表每帧重检。Montage进度为资产位置/资产长度，不是Section路径进度。
 - 高度框比较同一起点的世界Z增量（cm），橙线MontageRootHeight从本次Selection.StartTime沿PrepareTargets已验证的有限Section路径提取未Warp根运动，以入场Actor/Mesh参照组合；绿线WarpedCapsuleHeight读取同一时刻实际胶囊/Actor高度，包含MotionWarping、碰撞、移动载体及CMC纠偏，不等于单独Target.Z补偿量。原补偿算法只预测所选终点，不据此插值伪造整条“纯高度补偿前后”轨迹。
 - 起点/路径只在准备成功且已观测时缓存，实际ExecutionStarted才启用；缓存使用弱Montage引用，随Actor观测释放。录制中途接入且缺起点、模拟代理无本机准备、无效/未起播/已结束或位置不在已验证路径时标不可用。逐帧根运动提取只在录制或Graph开启时进行；仅开几何Draw不提取高度曲线。开启Graph即可在本地采集，无需开始录制；录制开启时即使Graph关闭仍采集。该提取属于Debug开销，不计为纯Traversal检测成本。

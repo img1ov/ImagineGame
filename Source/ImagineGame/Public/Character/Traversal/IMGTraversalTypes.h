@@ -44,8 +44,11 @@ UENUM(BlueprintType)
 enum class EIMGTraversalAction : uint8
 {
 	None,
+	/** Cross the obstacle with confirmed walkable rear support; landing rules remain montage-specific. */
 	Hurdle,
+	/** Cross the obstacle without confirmed rear support; leave the authored airborne exit intact. */
 	Vault,
+	/** Climb onto the obstacle top; rear-floor landing rules do not apply. */
 	Mantle
 };
 
@@ -209,9 +212,11 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxCandidateAge = 0.25f;
 
+	/** Advisory hurdle height for RecommendedAction; does not restrict chooser animation coverage. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxHurdleHeight = 110.f;
 
+	/** Advisory vault height for RecommendedAction; independent of the hurdle recommendation limit. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MaxVaultHeight = 300.5f;
 
@@ -499,12 +504,15 @@ struct FIMGTraversalCandidate
 	UPROPERTY(BlueprintReadOnly)
 	bool bHasBackFloor = false;
 
+	/** Front contact is available; the chosen montage resolves the climb onto the obstacle top. */
 	UPROPERTY(BlueprintReadOnly)
 	bool bCanMantle = false;
 
+	/** Front and rear ledges exist, but no usable rear floor was confirmed. */
 	UPROPERTY(BlueprintReadOnly)
 	bool bCanVault = false;
 
+	/** Front and rear ledges plus usable rear support exist. */
 	UPROPERTY(BlueprintReadOnly)
 	bool bCanHurdle = false;
 
@@ -537,6 +545,7 @@ struct FIMGTraversalLandingSettings
 {
 	GENERATED_BODY()
 
+	/** Hurdle rear-floor placement only. None retains the authored trajectory and any bound floor contact. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EIMGTraversalLandingMode Mode = EIMGTraversalLandingMode::None;
 
@@ -592,6 +601,7 @@ struct IMAGINEGAME_API FIMGTraversalAnimationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FName> RequiredTargets;
 
+	/** Explicit rear-floor landing for Hurdle. Mantle and Vault require Mode=None. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIMGTraversalLandingSettings Landing;
 

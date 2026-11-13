@@ -262,7 +262,7 @@ bool IsIntersectionOnGroundSlope(const FHitResult& Hit, const FVector& GroundLoc
 	return FMath::Abs(FVector::DotProduct(GroundNormal - Normal, Direction)) < IntersectionSlopeDotTolerance;
 }
 
-bool MatchesVaultRecommendation(const FIMGTraversalCandidate& Candidate, bool bRunning)
+bool MatchesCrossingRecommendation(const FIMGTraversalCandidate& Candidate, bool bRunning)
 {
 	struct FExitCondition
 	{
@@ -1188,17 +1188,17 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 #endif
 	}
 
-	// These describe available geometry. The selected animation owns its support/clearance contract.
+	// Crossing actions differ by confirmed rear support; montage coverage remains the chooser's job.
 	Out.bCanMantle = Out.bHasFrontLedge;
-	Out.bCanVault = Out.bHasFrontLedge && Out.bHasBackLedge;
-	Out.bCanHurdle = Out.bCanVault;
+	const bool bCanCross = Out.bHasFrontLedge && Out.bHasBackLedge;
+	Out.bCanVault = bCanCross && !Out.bHasBackFloor;
+	Out.bCanHurdle = bCanCross && Out.bHasBackFloor;
 	const bool bRunning = FVector::DotProduct(Movement->Velocity, Forward) >= Settings.RunningSpeedThreshold;
-	const bool bRecommendVault =
-	    Out.bCanVault && Height <= Settings.MaxVaultHeight && MatchesVaultRecommendation(Out, bRunning);
-	Out.RecommendedAction = bRecommendVault && Out.bHasBackFloor && Height <= Settings.MaxHurdleHeight
+	const bool bRecommendCross = bCanCross && MatchesCrossingRecommendation(Out, bRunning);
+	Out.RecommendedAction = bRecommendCross && Out.bCanHurdle && Height <= Settings.MaxHurdleHeight
 	    ? EIMGTraversalAction::Hurdle
-	    : bRecommendVault ? EIMGTraversalAction::Vault
-	                      : EIMGTraversalAction::Mantle;
+	    : bRecommendCross && Out.bCanVault && Height <= Settings.MaxVaultHeight ? EIMGTraversalAction::Vault
+	                                                                          : EIMGTraversalAction::Mantle;
 	if (Query.Source == EIMGTraversalRequestSource::Automatic && Settings.bRejectAutomaticHighOpenApproach &&
 	    Out.bHasHighOpenApproach)
 	{

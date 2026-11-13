@@ -506,7 +506,7 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	    this, NAME_None, Selection.Montage, Selection.PlayRate, NAME_None, true, 1.f, Selection.StartTime, true);
 	MontageTask->OnCompleted.AddDynamic(this, &ThisClass::OnMontageCompleted);
 	MontageTask->OnInterrupted.AddDynamic(this, &ThisClass::OnMontageInterrupted);
-	MontageTask->OnCancelled.AddDynamic(this, &ThisClass::OnMontageInterrupted);
+	MontageTask->OnCancelled.AddDynamic(this, &ThisClass::OnMontageCancelled);
 	MontageTask->ReadyForActivation();
 	if (!IsTraversalExecutionValid() || CurrentActorInfo->AbilitySystemComponent.Get() != ASC)
 	{
@@ -673,7 +673,11 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	}
 	if (!Candidate.bHasFrontLedge || !IsValid(Candidate.HitComponent) || !Candidate.Supports(Selection.Action))
 	{
-		return Reject(TEXT("Candidate has no valid front ledge/hit component or does not support the selected action"));
+		return Reject(FString::Printf(
+		    TEXT("Action geometry mismatch or invalid hit component: Front=%d Back=%d BackFloor=%d "
+		         "CanMantle=%d CanHurdle=%d CanVault=%d"),
+		    Candidate.bHasFrontLedge, Candidate.bHasBackLedge, Candidate.bHasBackFloor,
+		    Candidate.bCanMantle, Candidate.bCanHurdle, Candidate.bCanVault));
 	}
 	if (!IsValid(Selection.Montage) || !FMath::IsFinite(Selection.StartTime) || Selection.StartTime < 0.f ||
 	    !(Selection.StartTime < Selection.Montage->GetPlayLength()) || !FMath::IsFinite(Selection.PlayRate) ||
@@ -955,11 +959,34 @@ void UIMGGameplayAbility_Traversal::OnMontageCompleted()
 
 void UIMGGameplayAbility_Traversal::OnMontageInterrupted()
 {
+	HandleMontageStopped(TEXT("MontageInterrupted"), TEXT("Montage interrupted or gameplay ability cancelled"));
+}
+
+void UIMGGameplayAbility_Traversal::OnMontageCancelled()
+{
+	HandleMontageStopped(TEXT("MontageTaskCancelled"), TEXT("Task externally cancelled or montage startup failed"));
+}
+
+void UIMGGameplayAbility_Traversal::HandleMontageStopped(const TCHAR* Event, const TCHAR* Reason)
+{
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
 #endif
-	LogTraversalEvent(TEXT("MontageInterruptedOrCancelled"),
-	    TEXT("Montage interrupted, task cancelled or montage startup failed"));
+	const UIMGTraversalComponent* Component = ActiveComponent.Get();
+	const UAnimMontage* Montage = Component ? Component->GetActiveTraversalState().Montage.Get() : nullptr;
+	const UAnimInstance* Anim = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
+	const FAnimMontageInstance* Instance = Anim && Montage ? Anim->GetActiveInstanceForMontage(Montage) : nullptr;
+	if (!Instance && Anim && Montage)
+	{
+		// A stopped montage may still have a blending instance after leaving the active map.
+		Instance = Anim->GetInstanceForMontage(Montage);
+	}
+	LogTraversalEvent(Event, FString::Printf(
+	    TEXT("%s | Montage=%s Position=%.6f ObservedInstance=%d ActiveMontage=%s AnimInstance=%s Ending=%d RemoteEnded=%d"),
+	    Reason, *GetNameSafe(Montage), Instance ? Instance->GetPosition() : -1.f,
+	    Instance ? Instance->GetInstanceID() : INDEX_NONE,
+	    *GetNameSafe(Anim ? Anim->GetCurrentActiveMontage() : nullptr), *GetNameSafe(Anim),
+	    bIsAbilityEnding, RemoteInstanceEnded));
 	if (!bTargetDataSent)
 	{
 		CancelPendingTargetData();

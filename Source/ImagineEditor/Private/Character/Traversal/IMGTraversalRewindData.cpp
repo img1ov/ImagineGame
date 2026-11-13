@@ -16,6 +16,7 @@ int32 GetEventLane(const FIMGTraversalDebugEvent& Event)
 	}
 	if (Event.Name == TEXT("TraversalStarted") || Event.Name == TEXT("End") ||
 	    Event.Name == TEXT("TraversalAborted") || Event.Name == TEXT("MontageInterruptedOrCancelled") ||
+	    Event.Name == TEXT("MontageInterrupted") || Event.Name == TEXT("MontageTaskCancelled") ||
 	    Event.Name == TEXT("ExecutionAcquired") || Event.Name == TEXT("ExecutionReleasing") ||
 	    Event.Name == TEXT("ExecutionReleased") || Event.Name == TEXT("ExecutionState"))
 	{
