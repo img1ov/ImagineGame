@@ -1,730 +1,835 @@
 #include "IMGTraversalDebug.h"
-
-#if ENABLE_DRAW_DEBUG
-
+DEFINE_LOG_CATEGORY(LogIMGTraversal);
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+#include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "Components/PrimitiveComponent.h"
-#include "Debug/DebugDrawService.h"
-#include "DrawDebugHelpers.h"
-#include "Engine/Canvas.h"
-#include "Engine/Engine.h"
+#include "AbilitySystemComponent.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Camera/CameraTypes.h"
+#include "Abilities/GameplayAbility.h"
+#include "Character/IMGCharacter.h"
+#include "Character/Traversal/IMGTraversalComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
-#include "HAL/IConsoleManager.h"
-#include "GameFramework/Actor.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
-#include "IMGLogChannels.h"
-#include "Character/Traversal/IMGTraversalTypes.h"
-
-namespace
-{
-constexpr float DebugLineThicknessScale = 0.5f;
-constexpr float DebugPointSizeScale = 0.7f;
-
-enum class ETraversalDebugPrimitive : uint8
-{
-	Line,
-	Arrow,
-	Point,
-	Sphere,
-	Capsule,
-	String
-};
-
-struct FTraversalDebugCommand
-{
-	ETraversalDebugPrimitive Primitive = ETraversalDebugPrimitive::Line;
-	FVector Start = FVector::ZeroVector;
-	FVector End = FVector::ZeroVector;
-	FColor Color = FColor::White;
-	FString Text;
-	FString DisplayText;
-	TWeakObjectPtr<UWorld> World;
-	TWeakObjectPtr<AActor> Actor;
-	FName TextKey;
-	double ExpireTime = 0.0;
-	uint64 FrameNumber = 0;
-	int32 RequiredLevel = 1;
-	IMGTraversalDebug::EStage Stage = IMGTraversalDebug::EStage::Execution;
-	float ValueA = 0.f;
-	float ValueB = 0.f;
-};
-
-struct FTraversalDebugSnapshot
-{
-	TWeakObjectPtr<UWorld> World;
-	TWeakObjectPtr<AActor> Actor;
-	TArray<FTraversalDebugCommand> Commands;
-	int32 CandidateCommandStart = INDEX_NONE;
-	int32 DirectionCommandStart = INDEX_NONE;
-	bool bActive = false;
-	bool bCaptureEnabled = true;
-};
-
-FTraversalDebugSnapshot TraversalSnapshot;
-TArray<FTraversalDebugCommand> TextLabels;
-FDelegateHandle TextDrawHandle;
-
-TAutoConsoleVariable<int32> CVarIMGTraversalDebugDraw(
-	TEXT("IMG.Traversal.DebugDraw"),
-	0,
-	TEXT("Traversal debug draw level. 0=off, 1=candidate outputs/active targets, 2=search/failures, 3=all probes."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<float> CVarIMGTraversalDebugDuration(
-	TEXT("IMG.Traversal.DebugDuration"),
-	2.f,
-	TEXT("Lifetime in seconds for the final successful traversal snapshot. Active targets remain one-frame."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<int32> CVarIMGTraversalDebugStages(
-	TEXT("IMG.Traversal.DebugStages"), 63,
-	TEXT("Stage mask: 1=search, 2=intersections, 4=handhold compute, 8=volume validation, 16=output, 32=execution."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<float> CVarIMGTraversalDebugProcessDuration(
-	TEXT("IMG.Traversal.DebugProcessDuration"), 0.f,
-	TEXT("Process/failure draw lifetime, 0=one frame. Set 3 for GTA-style probe history; active targets stay one-frame."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<int32> CVarIMGTraversalDebugLog(
-	TEXT("IMG.Traversal.DebugLog"), 0,
-	TEXT("Requires DebugDraw. 0=off, 1=candidate outputs, 2=all enabled stage labels including rejections."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<float> CVarIMGTraversalDebugLineScale(
-	TEXT("IMG.Traversal.DebugLineScale"), 1.f,
-	TEXT("Visual scale for traversal debug stroke widths and arrowheads. 1 restores the original size."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<float> CVarIMGTraversalDebugSphereScale(
-	TEXT("IMG.Traversal.DebugSphereScale"), 1.f / 3.f,
-	TEXT("Visual scale for traversal debug sphere radii and points. 1 shows actual probe radii; queries and capsule bounds are unchanged."),
-	ECVF_Cheat);
-
-TAutoConsoleVariable<float> CVarIMGTraversalDebugTextScale(
-	TEXT("IMG.Traversal.DebugTextScale"), 0.65f,
-	TEXT("Traversal label font scale. Labels are wrapped, deduplicated and placed without screen-space overlap."),
-	ECVF_Cheat);
-
-float GetLineScale()
-{
-	return FMath::Clamp(CVarIMGTraversalDebugLineScale.GetValueOnGameThread(), 0.01f, 4.f);
-}
-
-float GetSphereScale()
-{
-	return FMath::Clamp(CVarIMGTraversalDebugSphereScale.GetValueOnGameThread(), 0.01f, 4.f);
-}
-
-float ResolveDuration(float Duration)
-{
-	if (Duration >= 0.f)
-	{
-		return Duration;
-	}
-	return FMath::Clamp(Duration == -1.f ? CVarIMGTraversalDebugDuration.GetValueOnGameThread()
-		: CVarIMGTraversalDebugProcessDuration.GetValueOnGameThread(), 0.f, 30.f);
-}
-
-bool IsTextExpired(const FTraversalDebugCommand& Label)
-{
-	const UWorld* World = Label.World.Get();
-	return !World || Label.Actor.IsStale() || (Label.ValueA <= 0.f
-		? Label.FrameNumber != GFrameCounter : Label.ExpireTime <= World->GetTimeSeconds());
-}
-
-FString WrapText(const FString& Text)
-{
-	constexpr int32 MaxColumns = 76;
-	TArray<FString> Lines;
-	Text.ParseIntoArrayLines(Lines, false);
-	FString Result;
-	for (FString& TextLine : Lines)
-	{
-		while (TextLine.Len() > MaxColumns)
-		{
-			int32 Break = INDEX_NONE;
-			TextLine.Left(MaxColumns).FindLastChar(TEXT(' '), Break);
-			const bool bBreakAtSpace = Break >= MaxColumns / 2;
-			Break = bBreakAtSpace ? Break : MaxColumns;
-			Result += TextLine.Left(Break) + TEXT("\n");
-			TextLine.RightChopInline(Break + (bBreakAtSpace ? 1 : 0));
-		}
-		Result += TextLine + TEXT("\n");
-	}
-	Result.RemoveFromEnd(TEXT("\n"));
-	return Result;
-}
-
-void DrawTextLabels(UCanvas* Canvas, APlayerController* PlayerController)
-{
-	TextLabels.RemoveAll([](const FTraversalDebugCommand& Label) { return IsTextExpired(Label); });
-	if (!IMGTraversalDebug::IsEnabled(1))
-	{
-		TextLabels.Reset();
-		return;
-	}
-	if (!Canvas || !Canvas->Canvas || !PlayerController || !GEngine || !GEngine->GetSmallFont())
-	{
-		return;
-	}
-	UWorld* World = PlayerController->GetWorld();
-	TArray<int32> Order;
-	for (int32 Index = 0; Index < TextLabels.Num(); ++Index)
-	{
-		const FTraversalDebugCommand& Label = TextLabels[Index];
-		if (Label.World.Get() == World && IMGTraversalDebug::IsEnabled(Label.RequiredLevel) &&
-			IMGTraversalDebug::IsStageEnabled(Label.Stage))
-		{
-			Order.Add(Index);
-		}
-	}
-	Order.StableSort([](int32 A, int32 B)
-	{
-		if (TextLabels[A].RequiredLevel != TextLabels[B].RequiredLevel)
-		{
-			return TextLabels[A].RequiredLevel < TextLabels[B].RequiredLevel;
-		}
-		return !TextLabels[A].TextKey.IsNone() && TextLabels[B].TextKey.IsNone();
-	});
-	constexpr float Margin = 8.f;
-	constexpr float Gap = 4.f;
-	const float FontScale = FMath::Clamp(CVarIMGTraversalDebugTextScale.GetValueOnGameThread(), 0.25f, 1.5f);
-	const FVector2D ViewSize(Canvas->SizeX, Canvas->SizeY);
-	const FVector2D LayoutSize = ViewSize - FVector2D(0.f, 24.f);
-	FVector CameraLocation;
-	FRotator CameraRotation;
-	PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
-	TArray<FBox2D> Occupied;
-	int32 HiddenLabels = 0;
-	for (int32 Index : Order)
-	{
-		const FTraversalDebugCommand& Label = TextLabels[Index];
-		if (FVector::DotProduct(Label.Start - CameraLocation, CameraRotation.Vector()) <= 0.f)
-		{
-			continue;
-		}
-		const FVector Projected = Canvas->Project(Label.Start);
-		const FVector2D Anchor(Projected.X, Projected.Y);
-		float Width = 0.f;
-		float Height = 0.f;
-		Canvas->StrLen(GEngine->GetSmallFont(), Label.DisplayText, Width, Height);
-		const FVector2D Size(FMath::Max(Width * FontScale, 1.f), FMath::Max(Height * FontScale, 1.f));
-		if (Size.X + Margin * 2.f > LayoutSize.X || Size.Y + Margin * 2.f > LayoutSize.Y ||
-			Anchor.X < 0.f || Anchor.X > ViewSize.X || Anchor.Y < 0.f || Anchor.Y > ViewSize.Y)
-		{
-			++HiddenLabels;
-			continue;
-		}
-		const FVector2D Desired(
-			FMath::Clamp(Anchor.X + Gap * 2.f, static_cast<double>(Margin), ViewSize.X - Size.X - Margin),
-			FMath::Clamp(Anchor.Y - Size.Y - Gap, static_cast<double>(Margin), LayoutSize.Y - Size.Y - Margin));
-		FVector2D Position = Desired;
-		bool bPlaced = false;
-		for (int32 Column = 0; Column < 5 && !bPlaced; ++Column)
-		{
-			const int32 Direction = Column % 2 == 0 ? 1 : -1;
-			Position.X = FMath::Clamp(Desired.X + Direction * ((Column + 1) / 2) * (Size.X + Gap),
-				static_cast<double>(Margin), ViewSize.X - Size.X - Margin);
-			Position.Y = Desired.Y;
-			for (int32 Attempt = 0; Attempt <= Occupied.Num(); ++Attempt)
-			{
-				const FBox2D Bounds(Position, Position + Size + FVector2D(Gap, Gap));
-				const FBox2D* Collision = Occupied.FindByPredicate(
-					[&Bounds](const FBox2D& Existing) { return Existing.Intersect(Bounds); });
-				if (!Collision)
-				{
-					Occupied.Add(Bounds);
-					bPlaced = true;
-					break;
-				}
-				Position.Y = Collision->Max.Y + Gap;
-				if (Position.Y + Size.Y > LayoutSize.Y - Margin)
-				{
-					Position.Y = Margin;
-				}
-			}
-		}
-		if (!bPlaced)
-		{
-			++HiddenLabels;
-			continue;
-		}
-		if (FVector2D::Distance(Position, Anchor) > 20.f)
-		{
-			FLinearColor LeaderColor(Label.Color);
-			LeaderColor.A = 0.4f;
-			Canvas->K2_DrawLine(Anchor, Position, 0.5f * GetLineScale(), LeaderColor);
-		}
-		Canvas->K2_DrawText(GEngine->GetSmallFont(), Label.DisplayText, Position,
-			FVector2D(FontScale, FontScale), FLinearColor(Label.Color));
-	}
-	if (HiddenLabels > 0)
-	{
-		Canvas->K2_DrawText(GEngine->GetSmallFont(), FString::Printf(
-			TEXT("Traversal: %d labels outside view/full. Filter DebugStages or use DebugLog 2."), HiddenLabels),
-			FVector2D(Margin, ViewSize.Y - 20.f), FVector2D(FontScale, FontScale), FLinearColor::White);
-	}
-}
-
-void QueueText(const UWorld* World, const FVector& Location, const FString& Text, const FColor& Color,
-	int32 RequiredLevel, float Duration, IMGTraversalDebug::EStage Stage, FName Key, const AActor* Actor)
-{
-	TextLabels.RemoveAll([](const FTraversalDebugCommand& Label) { return IsTextExpired(Label); });
-	FTraversalDebugCommand* Entry = TextLabels.FindByPredicate([&](const FTraversalDebugCommand& Label)
-	{
-		return Label.World.Get() == World && Label.Actor.Get() == Actor && Label.Stage == Stage &&
-			(!Key.IsNone() ? Label.TextKey == Key : Label.TextKey.IsNone() && Label.Text == Text && Label.Start.Equals(Location, 1.f));
-	});
-	if (!Entry)
-	{
-		constexpr int32 MaxLabels = 1024;
-		if (TextLabels.Num() >= MaxLabels)
-		{
-			int32 RemoveIndex = TextLabels.IndexOfByPredicate([](const FTraversalDebugCommand& Label)
-				{ return Label.RequiredLevel >= 3 && Label.TextKey.IsNone(); });
-			TextLabels.RemoveAt(RemoveIndex != INDEX_NONE ? RemoveIndex : 0);
-		}
-		Entry = &TextLabels.AddDefaulted_GetRef();
-	}
-	Entry->Primitive = ETraversalDebugPrimitive::String;
-	Entry->World = const_cast<UWorld*>(World);
-	Entry->Actor = const_cast<AActor*>(Actor);
-	Entry->TextKey = Key;
-	Entry->Start = Location;
-	Entry->Text = Text;
-	Entry->DisplayText = WrapText(Text);
-	Entry->Color = Color;
-	Entry->RequiredLevel = RequiredLevel;
-	Entry->Stage = Stage;
-	Entry->ValueA = FMath::Max(Entry->ValueA, ResolveDuration(Duration));
-	Entry->ExpireTime = World->GetTimeSeconds() + Entry->ValueA;
-	Entry->FrameNumber = GFrameCounter;
-	if (!TextDrawHandle.IsValid())
-	{
-		TextDrawHandle = UDebugDrawService::Register(TEXT("Game"), FDebugDrawDelegate::CreateStatic(&DrawTextLabels));
-	}
-}
-
-void RecordCommand(const UWorld* World, ETraversalDebugPrimitive Primitive,
-	const FVector& Start, const FVector& End, const FColor& Color, int32 RequiredLevel,
-	float ValueA = 0.f, float ValueB = 0.f, const FString& Text = FString(),
-	IMGTraversalDebug::EStage Stage = IMGTraversalDebug::EStage::Execution, FName Key = NAME_None, const AActor* Actor = nullptr)
-{
-	if (!TraversalSnapshot.bActive || !TraversalSnapshot.bCaptureEnabled
-		|| TraversalSnapshot.World.Get() != World)
-	{
-		return;
-	}
-	FTraversalDebugCommand& Command = TraversalSnapshot.Commands.AddDefaulted_GetRef();
-	Command.Primitive = Primitive;
-	Command.Start = Start;
-	Command.End = End;
-	Command.Color = Color;
-	Command.Text = Text;
-	Command.Actor = const_cast<AActor*>(Actor ? Actor : TraversalSnapshot.Actor.Get());
-	Command.TextKey = Key;
-	Command.RequiredLevel = RequiredLevel;
-	Command.Stage = Stage;
-	Command.ValueA = ValueA;
-	Command.ValueB = ValueB;
-}
-
-void ReplayTraversalSnapshot(float Duration)
-{
-	UWorld* World = TraversalSnapshot.World.Get();
-	TArray<FTraversalDebugCommand> Commands = MoveTemp(TraversalSnapshot.Commands);
-	TraversalSnapshot = FTraversalDebugSnapshot();
-	if (!World)
-	{
-		return;
-	}
-	for (const FTraversalDebugCommand& Command : Commands)
-	{
-		switch (Command.Primitive)
-		{
-		case ETraversalDebugPrimitive::Line:
-			IMGTraversalDebug::Line(World, Command.Start, Command.End, Command.Color,
-				Command.RequiredLevel, Command.ValueA, Duration, Command.Stage);
-			break;
-		case ETraversalDebugPrimitive::Arrow:
-			IMGTraversalDebug::Arrow(World, Command.Start, Command.End, Command.Color,
-				Command.RequiredLevel, Duration, Command.Stage);
-			break;
-		case ETraversalDebugPrimitive::Point:
-			IMGTraversalDebug::Point(World, Command.Start, Command.Color,
-				Command.RequiredLevel, Command.ValueA, Duration, Command.Stage);
-			break;
-		case ETraversalDebugPrimitive::Sphere:
-			IMGTraversalDebug::Sphere(World, Command.Start, Command.ValueA, Command.Color,
-				Command.RequiredLevel, Duration, Command.Stage);
-			break;
-		case ETraversalDebugPrimitive::Capsule:
-			IMGTraversalDebug::Capsule(World, Command.Start, Command.ValueA, Command.ValueB,
-				Command.Color, Command.RequiredLevel, Duration, Command.Stage);
-			break;
-		case ETraversalDebugPrimitive::String:
-			IMGTraversalDebug::String(World, Command.Start, Command.Text, Command.Color,
-				Command.RequiredLevel, Duration, Command.Stage, Command.TextKey, Command.Actor.Get());
-			break;
-		default:
-			break;
-		}
-	}
-}
-}
+#include "GameFramework/Pawn.h"
+#include "HAL/PlatformTime.h"
+#include "IMGTraversalDebugTrace.h"
+#include "MotionWarpingComponent.h"
 
 namespace IMGTraversalDebug
 {
-bool IsEnabled(int32 RequiredLevel)
+namespace
 {
-	return CVarIMGTraversalDebugDraw.GetValueOnGameThread() >= RequiredLevel;
-}
+constexpr int32 MaxActors = 64;
+constexpr int32 MaxEvents = 512;
+TMap<TWeakObjectPtr<const AActor>, TSharedPtr<FObservation>> Observations;
+FScope* CurrentScope = nullptr;
+uint64 NextAttempt = 0;
+uint64 NextHeightCapture = 0;
+FDelegateHandle TickHandle, CleanupHandle;
+void Flush(const AActor* Actor, FObservation& Observation);
 
-bool IsStageEnabled(EStage Stage)
+bool Matches(const AActor* Actor)
 {
-	return (CVarIMGTraversalDebugStages.GetValueOnGameThread() & static_cast<int32>(Stage)) != 0;
+	return IsValid(Actor) && Actor->GetWorld() && Actor->GetWorld()->IsGameWorld();
 }
-
-void Shutdown()
+bool IsLocal(const AActor* Actor)
 {
-	if (TextDrawHandle.IsValid())
-	{
-		UDebugDrawService::Unregister(TextDrawHandle);
-		TextDrawHandle.Reset();
-	}
-	TextLabels.Reset();
-	TraversalSnapshot = FTraversalDebugSnapshot();
+	const APawn* Pawn = Cast<APawn>(Actor);
+	const APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	return PC && PC->IsLocalController();
 }
-
-void BeginTraversalSnapshot(const AActor* Actor, bool bReset)
+TSharedRef<FObservation> Observe(const AActor* Actor)
 {
-	if (!bReset && Actor && TraversalSnapshot.Actor.Get() == Actor)
+	if (!Observations.Contains(Actor) && Observations.Num() >= MaxActors)
 	{
-		return;
-	}
-	TraversalSnapshot = FTraversalDebugSnapshot();
-	if (Actor && Actor->GetWorld() && IsEnabled(1))
-	{
-		TraversalSnapshot.World = Actor->GetWorld();
-		TraversalSnapshot.Actor = const_cast<AActor*>(Actor);
-		TraversalSnapshot.bActive = true;
-		if (IsEnabled(2) && IsStageEnabled(EStage::Output))
+		TWeakObjectPtr<const AActor> Oldest;
+		double Time = MAX_dbl;
+		for (const auto& Pair : Observations)
 		{
-			String(Actor->GetWorld(), Actor->GetActorLocation() + FVector::UpVector * 120.f,
-				FString::Printf(TEXT("%s | %s | NetMode %d | t %.3f"), *GetNameSafe(Actor),
-					*UEnum::GetValueAsString(Actor->GetLocalRole()), static_cast<int32>(Actor->GetNetMode()),
-					Actor->GetWorld()->GetTimeSeconds()), FColor::White, 2, -2.f, EStage::Output, FName(TEXT("Actor")), Actor);
+			if (!Pair.Key.IsValid())
+			{
+				Oldest = Pair.Key;
+				break;
+			}
+			if (Pair.Value->UpdatedAt < Time)
+			{
+				Oldest = Pair.Key;
+				Time = Pair.Value->UpdatedAt;
+			}
+		}
+		const auto Evicted = Observations.FindRef(Oldest);
+		if (Evicted && Evicted->bDirty && Matches(Oldest.Get()))
+		{
+			Flush(Oldest.Get(), *Evicted);
+		}
+		Observations.Remove(Oldest);
+	}
+	auto& Entry = Observations.FindOrAdd(Actor);
+	if (!Entry)
+	{
+		Entry = MakeShared<FObservation>();
+	}
+	const uint64 Serial = IMGTraversalDebugTrace::GetRecordingSerial();
+	if (Serial != Entry->RecordingSerial)
+	{
+		Entry->RecordingSerial = Serial;
+		Entry->LastSignals.Reset();
+		const auto* Traversal = UIMGTraversalComponent::Get(Actor);
+		if (!Traversal || !Traversal->IsTraversalActive())
+		{
+			Entry->PlacementGeometry.Reset();
+			Entry->HeightPath.Reset();
+			Entry->HeightMontage.Reset();
+			Entry->bHeightStarted = false;
+		}
+		Entry->Data.Events.Reset();
+		Entry->Data.Candidates.Reset();
+		Entry->LiveCommands.Reset();
+		Entry->PendingGeometry.Reset();
+		Entry->History.Reset();
+	}
+	Entry->Actor = Actor;
+	Entry->UpdatedAt = FPlatformTime::Seconds();
+	return Entry.ToSharedRef();
+}
+uint64 AttemptFor(const AActor* Actor)
+{
+	if (CurrentScope && CurrentScope->GetActor() == Actor)
+	{
+		return CurrentScope->GetAttempt();
+	}
+	const auto* Entry = Observations.Find(Actor);
+	return Entry ? (*Entry)->Attempt : 0;
+}
+void Snapshot(const AActor* Actor, FObservation& Observation)
+{
+	auto& Data = Observation.Data;
+	Data.Actor = Actor->GetName();
+	Data.World = Actor->GetWorld()->GetName();
+	Data.Role = Actor->GetLocalRole();
+	Data.NetMode = Actor->GetNetMode();
+	Data.Location = Actor->GetActorLocation();
+	Data.Velocity = Actor->GetVelocity();
+	Data.Attempt = Observation.Attempt;
+	Data.Dropped = Observation.Dropped;
+	Data.Frame = GFrameCounter;
+	Data.Time = Actor->GetWorld()->GetTimeSeconds();
+	Data.DeltaSeconds = Actor->GetWorld()->GetDeltaSeconds();
+	Data.bHasHeightSample = false;
+	Data.HeightCapture = 0;
+	Data.HeightReferenceZ = Data.MontageRootHeight = Data.WarpedCapsuleHeight = 0;
+	if (const auto* Traversal = UIMGTraversalComponent::Get(Actor))
+	{
+		const auto& State = Traversal->GetActiveTraversalState();
+		Data.AbilitySpec = State.AbilitySpec.ToString();
+		Data.PredictionKey = State.ActivationPredictionKey;
+		Data.Sequence = State.Sequence;
+		Data.MontageInstance = State.MontagePlayInstanceId;
+		Data.bActive = State.bActive;
+		Data.Action = UEnum::GetValueAsString(State.Action);
+		Data.Montage = GetNameSafe(State.Montage.Get());
+		Data.MontageAssetPath = GetPathNameSafe(State.Montage.Get());
+		Data.AbilityClassPath.Reset();
+		const AIMGCharacter* Character = Cast<AIMGCharacter>(Actor);
+		if (const auto* ASC = Character ? Character->GetAbilitySystemComponent() : nullptr)
+		{
+			if (const auto* Spec = ASC->FindAbilitySpecFromHandle(State.AbilitySpec))
+			{
+				Data.AbilityClassPath = Spec->Ability ? Spec->Ability->GetClass()->GetPathName() : FString();
+			}
+		}
+		if (Character && Character->GetIMGMovementComponent())
+		{
+			Data.MovementMode =
+			    UEnum::GetValueAsString(Character->GetIMGMovementComponent()->MovementMode.GetValue());
+		}
+		const UAnimInstance* Anim =
+		    Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+		const FAnimMontageInstance* MontageInstance =
+		    Anim && State.Montage ? Anim->GetActiveInstanceForMontage(State.Montage) : nullptr;
+		if (!MontageInstance && Data.bActive && Anim)
+		{
+			// Montage_GetPosition returns zero after Stop; the blending root-motion instance may still exist.
+			const FAnimMontageInstance* RootInstance = Anim->GetRootMotionMontageInstance();
+			if (RootInstance && RootInstance->Montage == State.Montage)
+			{
+				MontageInstance = RootInstance;
+			}
+		}
+		Data.MontagePosition = MontageInstance ? MontageInstance->GetPosition() : 0.f;
+		Data.MontageLength = State.Montage ? State.Montage->GetPlayLength() : 0.f;
+		Data.MontagePhase =
+		    Data.bActive && Data.MontageLength > 0 ? Data.MontagePosition / Data.MontageLength : 0.f;
+		if ((IMGTraversalDebugTrace::IsRecording() || IMGTraversalDebugPresentation::IsGraphShown()) &&
+		    Data.bActive && MontageInstance && Observation.bHeightStarted &&
+		    Observation.HeightMontage.IsValid() && State.Montage.Get() == Observation.HeightMontage.Get())
+		{
+			FTransform Pose = Observation.HeightInitialPose;
+			bool bReachedPosition = false;
+			for (const FVector2f& Range : Observation.HeightPath)
+			{
+				const bool bCurrentRange = Data.MontagePosition >= Range.X && Data.MontagePosition <= Range.Y;
+				const float End = bCurrentRange ? Data.MontagePosition : Range.Y;
+				const FTransform MeshWorld = Observation.HeightMeshRelative * Pose;
+				const FTransform Motion =
+				    UMotionWarpingUtilities::ExtractRootMotionFromAnimation(State.Montage, Range.X, End);
+				Pose = Pose.GetRelativeTransform(MeshWorld) * (Motion * MeshWorld);
+				if (bCurrentRange)
+				{
+					bReachedPosition = true;
+					break;
+				}
+			}
+			if (bReachedPosition && Pose.IsValid() && !Data.Location.ContainsNaN())
+			{
+				Data.bHasHeightSample = true;
+				Data.HeightCapture = Observation.HeightCapture;
+				Data.HeightReferenceZ = Observation.HeightInitialPose.GetLocation().Z;
+				Data.MontageRootHeight = Pose.GetLocation().Z - Data.HeightReferenceZ;
+				Data.WarpedCapsuleHeight = Data.Location.Z - Data.HeightReferenceZ;
+			}
+		}
+	}
+	Data.Geometry = Observation.PendingGeometry;
+	if (Data.bActive && Observation.PlacementAttempt == Observation.Attempt)
+	{
+		for (const auto& Capsule : Observation.PlacementGeometry)
+		{
+			if (!Data.Geometry.ContainsByPredicate([&Capsule](const auto& Shape) {
+				    return Shape.Purpose == Capsule.Purpose && Shape.Start == Capsule.Start &&
+				        Shape.Size == Capsule.Size && Shape.Radius == Capsule.Radius;
+			    }))
+			{
+				Data.Geometry.Add(Capsule);
+			}
 		}
 	}
 }
-
-void SetTraversalSnapshotCaptureEnabled(bool bEnabled)
+void Flush(const AActor* Actor, FObservation& Observation)
 {
-	if (TraversalSnapshot.bActive)
+	Snapshot(Actor, Observation);
+	IMGTraversalDebugTrace::Output(Actor, Observation.Data);
+	if (IsLocal(Actor))
 	{
-		TraversalSnapshot.bCaptureEnabled = bEnabled;
+		if (!Observation.History.IsEmpty() && Observation.History.Last().Time > Observation.Data.Time)
+		{
+			Observation.History.Reset();
+		}
+		const bool bReplace =
+		    !Observation.History.IsEmpty() && Observation.History.Last().Frame == Observation.Data.Frame;
+		if (!bReplace && Observation.History.Num() >= 240)
+		{
+			Observation.History.RemoveAt(0, 1, EAllowShrinking::No);
+		}
+		auto& Sample = bReplace ? Observation.History.Last() : Observation.History.AddDefaulted_GetRef();
+		Sample.Frame = Observation.Data.Frame;
+		Sample.Time = Observation.Data.Time;
+		Sample.Velocity = Observation.Data.Velocity;
+		Sample.MontagePhase = Observation.Data.MontagePhase;
+		Sample.Queries = Observation.Data.Queries;
+		Sample.DetectionMilliseconds = Observation.Data.DetectionMilliseconds;
+		Sample.DeltaSeconds = Observation.Data.DeltaSeconds;
+		Sample.bHasHeightSample = Observation.Data.bHasHeightSample;
+		Sample.HeightCapture = Observation.Data.HeightCapture;
+		Sample.HeightReferenceZ = Observation.Data.HeightReferenceZ;
+		Sample.MontageRootHeight = Observation.Data.MontageRootHeight;
+		Sample.WarpedCapsuleHeight = Observation.Data.WarpedCapsuleHeight;
+	}
+	Observation.Data.Events.Reset();
+	Observation.Data.Candidates.Reset();
+	Observation.PendingGeometry.Reset();
+	Observation.bDirty = false;
+}
+void Submit(const UWorld* World, FCommand Command, ELifetime Lifetime)
+{
+	const AActor* Actor = CurrentScope ? CurrentScope->GetActor() : nullptr;
+	if (!Matches(Actor) || World != Actor->GetWorld() || !IsEnabled())
+	{
+		return;
+	}
+	if (Command.Start.ContainsNaN() || Command.End.ContainsNaN() || !FMath::IsFinite(Command.Size) ||
+	    !FMath::IsFinite(Command.Radius))
+	{
+		return;
+	}
+	const auto Handle = Observe(Actor);
+	auto& Observation = Handle.Get();
+	Command.Attempt = AttemptFor(Actor);
+	if (!Command.Purpose.IsEmpty())
+	{
+		Observation.PlacementAttempt = Command.Attempt;
+		if (auto* Existing = Observation.PlacementGeometry.FindByPredicate(
+		        [&Command](const auto& Shape) { return Shape.Purpose == Command.Purpose; }))
+		{
+			*Existing = Command;
+		}
+		else if (Observation.PlacementGeometry.Num() < 8)
+		{
+			Observation.PlacementGeometry.Add(Command);
+		}
+	}
+	if (Lifetime == ELifetime::Live && Observation.LiveFrame != GFrameCounter)
+	{
+		Observation.LiveFrame = GFrameCounter;
+		Observation.LiveCommands.Reset();
+	}
+	if (Lifetime == ELifetime::Live)
+	{
+		if (Observation.LiveCommands.ContainsByPredicate([&Command](const auto& Shape) {
+			    return Shape.Primitive == Command.Primitive && Shape.Start == Command.Start &&
+			        Shape.End == Command.End && Shape.Size == Command.Size && Shape.Radius == Command.Radius;
+		    }))
+		{
+			return;
+		}
+		if (Observation.LiveCommands.Num() < 256)
+		{
+			Observation.LiveCommands.Add(Command);
+		}
+	}
+	if (Observation.PendingGeometry.Num() < 4096)
+	{
+		Observation.PendingGeometry.Add(Command);
+	}
+	else
+	{
+		++Observation.Dropped;
+	}
+	Observation.bDirty = true;
+}
+void Tick(UWorld* World, ELevelTick TickType, float)
+{
+	if (!World || !World->IsGameWorld() || TickType == LEVELTICK_ViewportsOnly)
+	{
+		return;
+	}
+#if WITH_EDITOR
+	if (World->bDebugPauseExecution)
+	{
+		return;
+	}
+#endif
+	IMGTraversalDebugPresentation::Clear(World);
+	if (IMGTraversalDebugPresentation::IsGraphShown())
+	{
+		for (auto It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			const auto* PC = It->Get();
+			if (PC && PC->IsLocalController() && UIMGTraversalComponent::Get(PC->GetPawn()))
+			{
+				Observe(PC->GetPawn());
+			}
+		}
+	}
+	TArray<TSharedPtr<FObservation>> Entries;
+	Observations.GenerateValueArray(Entries);
+	for (const auto& Entry : Entries)
+	{
+		const AActor* Actor = Entry->Actor.Get();
+		if (!Matches(Actor))
+		{
+			Observations.Remove(Entry->Actor);
+			continue;
+		}
+		if (Actor->GetWorld() != World)
+		{
+			continue;
+		}
+		if (!Entry->bDirty && FPlatformTime::Seconds() - Entry->UpdatedAt > .25)
+		{
+			Observations.Remove(Entry->Actor);
+			continue;
+		}
+		Flush(Actor, *Entry);
+		if (IsLocal(Actor))
+		{
+			IMGTraversalDebugPresentation::Draw(World, Entry->Data);
+			if (IMGTraversalDebugPresentation::IsGraphShown())
+			{
+				const auto* Pawn = Cast<APawn>(Actor);
+				const auto* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+				if (PC && PC->PlayerCameraManager)
+				{
+					FMinimalViewInfo View = PC->PlayerCameraManager->GetCameraCacheView();
+					int32 SizeX = 0, SizeY = 0;
+					PC->GetViewportSize(SizeX, SizeY);
+					if (!View.bConstrainAspectRatio && SizeX > 0 && SizeY > 0)
+					{
+						View.AspectRatio = static_cast<float>(SizeX) / SizeY;
+					}
+					IMGTraversalDebugPresentation::DrawGraphs(World, View, Entry->History);
+				}
+			}
+		}
 	}
 }
-
-void BeginTraversalCandidateSnapshot()
+void WorldCleanup(UWorld* World, bool, bool)
 {
-	if (TraversalSnapshot.bActive)
+	IMGTraversalDebugPresentation::Clear(World);
+	for (auto It = Observations.CreateIterator(); It; ++It)
 	{
-		TraversalSnapshot.CandidateCommandStart = TraversalSnapshot.Commands.Num();
-		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
+		if (!It.Key().IsValid() || It.Key()->GetWorld() == World)
+		{
+			It.RemoveCurrent();
+		}
 	}
 }
+} // namespace
 
-void RollbackTraversalCandidateSnapshot()
+bool IsObserving(const AActor* Actor)
 {
-	if (TraversalSnapshot.bActive && TraversalSnapshot.CandidateCommandStart != INDEX_NONE)
+	return Matches(Actor) &&
+	    (IMGTraversalDebugTrace::IsRecording() ||
+	        ((IMGTraversalDebugPresentation::IsShown() || IMGTraversalDebugPresentation::IsGraphShown()) &&
+	            IsLocal(Actor)));
+}
+bool IsEnabled()
+{
+	return CurrentScope && IsObserving(CurrentScope->GetActor());
+}
+FScope::FScope(const AActor* InActor, EPhase InPhase) : Actor(InActor), Previous(CurrentScope), Phase(InPhase)
+{
+	Attempt = Previous && Previous->GetActor() == InActor ? Previous->GetAttempt() : AttemptFor(InActor);
+	CurrentScope = this;
+	if (IsEnabled())
 	{
-		TraversalSnapshot.Commands.SetNum(TraversalSnapshot.CandidateCommandStart);
-		TraversalSnapshot.CandidateCommandStart = INDEX_NONE;
-		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
+		StartTime = FPlatformTime::Seconds();
+		if (Phase == EPhase::Placement)
+		{
+			Observe(InActor)->PlacementGeometry.Reset();
+		}
 	}
 }
-
-void BeginTraversalDirectionSnapshot()
+FScope::FScope(const FIMGTraversalQuery& Query, const FIMGTraversalCandidate& InCandidate,
+    const EIMGTraversalFailure& InFailure)
+    : FScope(Query.Character.Get(),
+          CurrentScope && CurrentScope->GetActor() == Query.Character.Get() ? CurrentScope->GetPhase()
+                                                                            : EPhase::External)
 {
-	if (TraversalSnapshot.bActive && TraversalSnapshot.CandidateCommandStart != INDEX_NONE)
+	Candidate = &InCandidate;
+	DetectionQuery = &Query;
+	Failure = &InFailure;
+	if (StartTime > 0)
 	{
-		TraversalSnapshot.DirectionCommandStart = TraversalSnapshot.Commands.Num();
+		Attempt = ++NextAttempt;
+		for (FScope* Scope = Previous; Scope && Scope->GetActor() == GetActor() && !Scope->Candidate;
+		    Scope = Scope->Previous)
+		{
+			Scope->Attempt = Attempt;
+		}
+		auto Handle = Observe(GetActor());
+		auto& Observation = Handle.Get();
+		Observation.Attempt = Attempt;
+		Observation.Data.Source = UEnum::GetValueAsString(Query.Source);
+		Observation.Data.Direction = Query.Direction;
 	}
 }
-
-void RollbackTraversalDirectionSnapshot()
+FScope::~FScope()
 {
-	if (TraversalSnapshot.bActive && TraversalSnapshot.DirectionCommandStart != INDEX_NONE)
+	if (StartTime > 0 && Matches(GetActor()))
 	{
-		TraversalSnapshot.Commands.SetNum(TraversalSnapshot.DirectionCommandStart);
-		TraversalSnapshot.DirectionCommandStart = INDEX_NONE;
+		const double Ms = (FPlatformTime::Seconds() - StartTime) * 1000;
+		if (Candidate && Failure)
+		{
+			auto Handle = Observe(GetActor());
+			auto& Data = Handle->Data;
+			Data.Failure = UEnum::GetValueAsString(*Failure);
+			Data.DetectionMilliseconds = Ms;
+			Data.Queries = Queries;
+			Data.ObstacleHeight = Candidate->ObstacleHeight;
+			Data.ObstacleDepth = Candidate->ObstacleDepth;
+			Data.DropHeight = Candidate->DropHeight;
+			Data.HorizontalClearance = Candidate->HorizontalClearance;
+			Data.VerticalClearance = Candidate->VerticalClearance;
+			Event(GetActor(), TEXT("DetectionResult"), Data.Failure, false, EStage::Output);
+		}
+		else if (Phase == EPhase::Placement)
+		{
+			Event(GetActor(), TEXT("PlacementProfile"),
+			    FString::Printf(TEXT("ExplicitQueries=%d ElapsedMs=%.3f"), Queries, Ms), false,
+			    EStage::Execution);
+		}
+	}
+	check(CurrentScope == this);
+	CurrentScope = Previous;
+}
+void CountQuery()
+{
+	if (CurrentScope)
+	{
+		CurrentScope->CountQuery();
 	}
 }
-
-void DiscardTraversalSnapshot(const AActor* Actor)
+void Event(const AActor* Actor, const TCHAR* Name, const FString& Detail, bool bWarning, EStage Stage,
+    const FString& AbilitySpec, int32 PredictionKey)
 {
-	if (!Actor || TraversalSnapshot.Actor.Get() == Actor)
+	if (!Actor && CurrentScope)
 	{
-		TraversalSnapshot = FTraversalDebugSnapshot();
+		Actor = CurrentScope->GetActor();
+	}
+	if (!IsObserving(Actor))
+	{
+		return;
+	}
+	auto Handle = Observe(Actor);
+	auto& Observation = Handle.Get();
+	if (Stage == EStage::Network || FCString::Strcmp(Name, TEXT("PreflightGate")) == 0)
+	{
+		const FName Key(Name);
+		const auto* Last = Observation.LastSignals.Find(Key);
+		if (Last && *Last == Detail)
+		{
+			return;
+		}
+		if (Observation.LastSignals.Num() >= 32 && !Last)
+		{
+			Observation.LastSignals.Reset();
+		}
+		Observation.LastSignals.Add(Key, Detail);
+	}
+	if (Observation.Data.Events.Num() >= MaxEvents)
+	{
+		++Observation.Dropped;
+		return;
+	}
+	auto& Value = Observation.Data.Events.AddDefaulted_GetRef();
+	Value.Name = Name;
+	Value.Detail = Detail;
+	Value.Stage = Stage;
+	Value.Attempt = AttemptFor(Actor);
+	Value.bWarning = bWarning;
+	Value.Phase = CurrentScope ? CurrentScope->GetPhase() : EPhase::External;
+	Value.Time = Actor->GetWorld()->GetTimeSeconds();
+	Value.AbilitySpec = AbilitySpec;
+	Value.PredictionKey = PredictionKey;
+	if (const auto* Component = UIMGTraversalComponent::Get(Actor))
+	{
+		const auto& State = Component->GetActiveTraversalState();
+		Value.Sequence = State.Sequence;
+		Value.MontageInstance = State.MontagePlayInstanceId;
+		Value.bActive = State.bActive;
+		if (Value.AbilitySpec.IsEmpty() && Value.Phase != EPhase::Preflight && State.bActive)
+		{
+			Value.AbilitySpec = State.AbilitySpec.ToString();
+			Value.PredictionKey = State.ActivationPredictionKey;
+		}
+	}
+	Observation.bDirty = true;
+}
+void State(const AActor* Actor, const TCHAR* Name, const FIMGTraversalRepState& State, const TCHAR* Reason)
+{
+	Event(Actor, Name,
+	    FString::Printf(TEXT("Sequence=%u Active=%d Instance=%u | %s"), State.Sequence, State.bActive,
+	        State.MontagePlayInstanceId, Reason),
+	    false, EStage::Network, State.AbilitySpec.ToString(), State.ActivationPredictionKey);
+	const auto* Entry = Observations.Find(Actor);
+	if (Entry && !(*Entry)->Data.Events.IsEmpty() && (*Entry)->Data.Events.Last().Name == Name)
+	{
+		auto& Event = (*Entry)->Data.Events.Last();
+		Event.Sequence = State.Sequence;
+		Event.MontageInstance = State.MontagePlayInstanceId;
+		Event.bActive = State.bActive;
 	}
 }
-
+void Startup()
+{
+	IMGTraversalDebugTrace::Startup();
+	TickHandle = FWorldDelegates::OnWorldPostActorTick.AddStatic(&Tick);
+	CleanupHandle = FWorldDelegates::OnWorldCleanup.AddStatic(&WorldCleanup);
+}
+void Shutdown()
+{
+	for (const auto& Pair : Observations)
+	{
+		if (const auto* Actor = Pair.Key.Get())
+		{
+			IMGTraversalDebugPresentation::Clear(Actor->GetWorld());
+		}
+	}
+	IMGTraversalDebugTrace::Shutdown();
+	FWorldDelegates::OnWorldPostActorTick.Remove(TickHandle);
+	FWorldDelegates::OnWorldCleanup.Remove(CleanupHandle);
+	TickHandle.Reset();
+	CleanupHandle.Reset();
+	Observations.Reset();
+}
+void ReleaseActor(const AActor* Actor)
+{
+	const auto* Entry = Observations.Find(Actor);
+	if (Entry && Matches(Actor))
+	{
+		auto Keep = *Entry;
+		Flush(Actor, *Keep);
+	}
+	Observations.Remove(Actor);
+}
+void FlushRecording()
+{
+	TArray<TSharedPtr<FObservation>> Entries;
+	Observations.GenerateValueArray(Entries);
+	for (const auto& Entry : Entries)
+	{
+		if (Entry->bDirty && Matches(Entry->Actor.Get()))
+		{
+			Flush(Entry->Actor.Get(), *Entry);
+		}
+	}
+}
 void CandidateOutput(const UWorld* World, const FIMGTraversalCandidate& Candidate, const FString& Label)
 {
-	if (!World || !IsEnabled(1) || !IsStageEnabled(EStage::Output))
+	if (!World || !IsEnabled())
 	{
 		return;
 	}
 	const FVector Front = Candidate.FrontLedge.GetLocation();
-	Point(World, Front, FColor::Yellow, 1, 12.f, -2.f, EStage::Output);
-	Arrow(World, Front, Front + Candidate.FrontLedgeNormal * 30.f, FColor::Magenta, 1, -2.f, EStage::Output);
-	Arrow(World, Front, Front + Candidate.FrontLedge.GetUnitAxis(EAxis::X) * 30.f,
-		FColor::Yellow, 1, -2.f, EStage::Output);
-	const FVector HeightStart = Front + Candidate.FrontLedgeNormal.GetSafeNormal2D() * 5.f;
-	Measure(World, HeightStart, HeightStart - FVector::UpVector * Candidate.ObstacleHeight,
-		TEXT("Height"), Candidate.ObstacleHeight, FColor::Yellow);
+	Point(World, Front, FColor::Yellow, 3.f, ELifetime::Snapshot, EStage::Output);
+	Arrow(World, Front, Front + Candidate.FrontLedge.GetUnitAxis(EAxis::X) * 30.f, FColor::Yellow,
+	    ELifetime::Snapshot, EStage::Output);
 	if (Candidate.bHasBackLedge)
 	{
-		const FVector Back = Candidate.BackLedge.GetLocation();
-		Point(World, Back, FColor::Orange, 1, 12.f, -2.f, EStage::Output);
-		Arrow(World, Back, Back + Candidate.BackLedgeNormal * 30.f, FColor::Orange, 1, -2.f, EStage::Output);
-		Measure(World, Front + FVector::UpVector * 5.f, Back + FVector::UpVector * 5.f,
-			TEXT("Depth XY"), Candidate.ObstacleDepth, FColor::Orange);
+		Point(World, Candidate.BackLedge.GetLocation(), FColor::Orange, 3.f, ELifetime::Snapshot,
+		    EStage::Output);
 	}
 	if (Candidate.bHasBackFloor)
 	{
-		const FVector Floor = Candidate.BackFloor.GetLocation();
-		Point(World, Floor, FColor::Green, 1, 12.f, -2.f, EStage::Output);
-		Measure(World, FVector(Floor.X, Floor.Y, Front.Z), Floor,
-			TEXT("Drop (front)"), Candidate.DropHeight, FColor::Green);
-		if (Candidate.bHasBackLedge)
+		Point(World, Candidate.BackFloor.GetLocation(), FColor::Green, 3.f, ELifetime::Snapshot,
+		    EStage::Output);
+	}
+	auto Handle = Observe(CurrentScope->GetActor());
+	if (Handle->Data.Candidates.Num() < 32)
+	{
+		auto& Value = Handle->Data.Candidates.AddDefaulted_GetRef();
+		Value.Attempt = AttemptFor(CurrentScope->GetActor());
+		Value.Phase = CurrentScope->GetPhase();
+		Value.Label = Label;
+		Value.Source = UEnum::GetValueAsString(Candidate.RequestSource);
+		Value.RecommendedAction = UEnum::GetValueAsString(Candidate.RecommendedAction);
+		Value.bCanMantle = Candidate.bCanMantle;
+		Value.bCanVault = Candidate.bCanVault;
+		Value.bCanHurdle = Candidate.bCanHurdle;
+		Value.ObstacleHeight = Candidate.ObstacleHeight;
+		Value.ObstacleDepth = Candidate.ObstacleDepth;
+		Value.DropHeight = Candidate.DropHeight;
+		Value.BackLedgeHeight = Candidate.BackLedgeHeight;
+		Value.HorizontalClearance = Candidate.HorizontalClearance;
+		Value.VerticalClearance = Candidate.VerticalClearance;
+		Value.Distance3D = Candidate.DistanceToLedge;
+		Value.DistanceXY = Candidate.PlanarDistanceToLedge;
+		Value.EdgeSpan = Candidate.FrontEdgeVerticalSpan;
+		Value.MidHeightClearance = Candidate.MidHeightApproachClearance;
+		Value.bHighOpenApproach = Candidate.bHasHighOpenApproach;
+		Value.ClimbAngle = Candidate.ClimbAngle;
+		Value.GroundSlopeAngle = Candidate.GroundSlopeAngle;
+		Value.bHasBackLedge = Candidate.bHasBackLedge;
+		Value.bHasBackFloor = Candidate.bHasBackFloor;
+		Value.FrontLedge = Candidate.FrontLedge;
+		Value.BackLedge = Candidate.BackLedge;
+		Value.BackFloor = Candidate.BackFloor;
+		Value.FrontNormal = Candidate.FrontLedgeNormal;
+		Value.BackNormal = Candidate.BackLedgeNormal;
+		Value.GroundNormal = Candidate.GroundNormal;
+		Value.GroundLocation = Candidate.GroundLocation;
+		for (const auto& Component : Candidate.ObstacleComponents)
 		{
-			const FVector Back = Candidate.BackLedge.GetLocation();
-			Measure(World, Back, FVector(Back.X, Back.Y, Floor.Z), TEXT("Rear height"),
-				Candidate.BackLedgeHeight, FColor::Orange);
+			Value.Components.Add(GetPathNameSafe(Component.Get()));
 		}
 	}
-	Measure(World, Front, Front + FVector::UpVector * Candidate.VerticalClearance,
-		TEXT("VClear probe/cap"), Candidate.VerticalClearance, FColor::Yellow);
-	Measure(World, Front, Front + Candidate.FrontLedge.GetUnitAxis(EAxis::X).GetSafeNormal2D() * Candidate.HorizontalClearance,
-		TEXT("HClear probe/cap"), Candidate.HorizontalClearance, FColor::Magenta);
-	const FString Feasible = FString::Printf(TEXT("%s%s%s"),
-		Candidate.bCanMantle ? TEXT("M") : TEXT("-"),
-		Candidate.bCanVault ? TEXT("V") : TEXT("-"),
-		Candidate.bCanHurdle ? TEXT("H") : TEXT("-"));
-	FString Summary = Label;
-	Summary += FString::Printf(TEXT("\nHeight %.1f  Depth XY %.1f  Drop %.1f  Rear height %.1f")
-		TEXT("\nClearance H/V %.1f / %.1f  Dist3D/XY %.1f / %.1f [%s] Parts %d"),
-		Candidate.ObstacleHeight, Candidate.ObstacleDepth, Candidate.DropHeight, Candidate.BackLedgeHeight,
-		Candidate.HorizontalClearance, Candidate.VerticalClearance, Candidate.DistanceToLedge,
-		Candidate.PlanarDistanceToLedge, *Feasible, Candidate.ObstacleComponents.Num());
-	if (IsEnabled(2))
+	else
 	{
-		Summary += FString::Printf(TEXT("\nRecommended %s | Source %s | Ground %s"),
-			*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Candidate.RecommendedAction)),
-			*StaticEnum<EIMGTraversalRequestSource>()->GetNameStringByValue(static_cast<int64>(Candidate.RequestSource)),
-			*Candidate.GroundLocation.ToCompactString());
-		Summary += FString::Printf(TEXT("\nEdge span %.1f  MidClear %.1f  HighOpen %d")
-			TEXT("\nClimb/Slope %.1f / %.1f  Back/Floor %d / %d"),
-			Candidate.FrontEdgeVerticalSpan, Candidate.MidHeightApproachClearance,
-			Candidate.bHasHighOpenApproach, Candidate.ClimbAngle, Candidate.GroundSlopeAngle,
-			Candidate.bHasBackLedge, Candidate.bHasBackFloor);
+		++Handle->Dropped;
 	}
-	const FVector SummaryAnchor = Front + Candidate.FrontLedgeNormal.GetSafeNormal2D() * 40.f + FVector::UpVector * 100.f;
-	String(World, SummaryAnchor, Summary, FColor::Green, 1, -2.f, EStage::Output, FName(TEXT("CandidateOutput")));
-	if (CVarIMGTraversalDebugLog.GetValueOnGameThread() >= 1)
+	Event(CurrentScope->GetActor(), TEXT("Candidate"), Label, false, EStage::Output);
+	Measure(World, Front, Front - FVector::UpVector * Candidate.ObstacleHeight, TEXT("Height"),
+	    Candidate.ObstacleHeight, FColor::Yellow);
+	if (Candidate.bHasBackLedge)
 	{
-		UE_LOG(LogIMG, Log, TEXT("[Traversal][%s] %s | H=%.2f Depth=%.2f Drop=%.2f HClear=%.2f VClear=%.2f | Front=%s Back=%s Floor=%s [Back=%d Floor=%d]"),
-			*GetNameSafe(TraversalSnapshot.Actor.Get()), *Label, Candidate.ObstacleHeight, Candidate.ObstacleDepth,
-			Candidate.DropHeight, Candidate.HorizontalClearance, Candidate.VerticalClearance,
-			*Front.ToString(), *Candidate.BackLedge.GetLocation().ToString(), *Candidate.BackFloor.GetLocation().ToString(),
-			Candidate.bHasBackLedge, Candidate.bHasBackFloor);
-		const AActor* Actor = TraversalSnapshot.Actor.Get();
-		UE_LOG(LogIMG, Log, TEXT("[Traversal][%s] Role=%d NetMode=%d | FrontNormal=%s Into=%s BackNormal=%s GroundNormal=%s | Dist3D=%.2f XY=%.2f Climb=%.2f Slope=%.2f"),
-			*GetNameSafe(Actor), Actor ? static_cast<int32>(Actor->GetLocalRole()) : -1,
-			Actor ? static_cast<int32>(Actor->GetNetMode()) : -1, *Candidate.FrontLedgeNormal.ToString(),
-			*Candidate.FrontLedge.GetUnitAxis(EAxis::X).ToString(), *Candidate.BackLedgeNormal.ToString(),
-			*Candidate.GroundNormal.ToString(), Candidate.DistanceToLedge, Candidate.PlanarDistanceToLedge,
-			Candidate.ClimbAngle, Candidate.GroundSlopeAngle);
+		Measure(World, Front, Candidate.BackLedge.GetLocation(), TEXT("DepthXY"), Candidate.ObstacleDepth,
+		    FColor::Orange);
 	}
 }
 
-void SuccessfulTraversal(const AActor* Actor, const FIMGTraversalCandidate& Candidate,
-	const FIMGTraversalAnimationSelection& Selection)
+void PrepareHeightCapture(const AActor* Actor, const FIMGTraversalAnimationSelection& Selection,
+    const FTransform& InitialPose, TConstArrayView<FVector2f> PlaybackRanges)
 {
-	if (!Actor || !IsEnabled(1))
+	// A later unobserved execution must not inherit the previous execution's origin.
+	if (const auto* Existing = Observations.Find(Actor))
+	{
+		(*Existing)->bHeightStarted = false;
+		(*Existing)->HeightPreparedFrame = MAX_uint64;
+	}
+	const AIMGCharacter* Character = Cast<AIMGCharacter>(Actor);
+	if (!IsObserving(Actor) || !Character || !Character->GetMesh() || PlaybackRanges.IsEmpty())
 	{
 		return;
 	}
-	if (TraversalSnapshot.Actor.Get() != Actor)
+	const auto Entry = Observe(Actor);
+	Entry->HeightMontage = Selection.Montage.Get();
+	Entry->HeightPath.Reset();
+	Entry->HeightPath.Append(PlaybackRanges.GetData(), PlaybackRanges.Num());
+	Entry->HeightPath[0].X = Selection.StartTime;
+	Entry->HeightInitialPose = InitialPose;
+	Entry->HeightMeshRelative = FTransform(Character->GetBaseRotationOffset(),
+	    Character->GetBaseTranslationOffset(), Character->GetMesh()->GetRelativeScale3D());
+	Entry->HeightCapture = ++NextHeightCapture;
+	Entry->HeightPreparedFrame = GFrameCounter;
+	Entry->bHeightStarted = false;
+}
+void ExecutionStarted(const AActor* Actor, const FIMGTraversalCandidate& Candidate,
+    const FIMGTraversalAnimationSelection& Selection)
+{
+	FScope Scope(Actor, EPhase::Execution);
+	if (IsObserving(Actor))
 	{
-		BeginTraversalSnapshot(Actor);
+		const auto Entry = Observe(Actor);
+		Entry->bHeightStarted = Entry->HeightPreparedFrame == GFrameCounter &&
+		    Entry->HeightMontage.Get() == Selection.Montage.Get() && !Entry->HeightPath.IsEmpty();
 	}
-	if (IsStageEnabled(EStage::Output))
+	CandidateOutput(Actor ? Actor->GetWorld() : nullptr, Candidate, TEXT("Execution geometry"));
+	Event(Actor, TEXT("Selection"),
+	    FString::Printf(TEXT("Action=%s Montage=%s Start=%.3f Rate=%.3f"),
+	        *UEnum::GetValueAsString(Selection.Action), *GetNameSafe(Selection.Montage.Get()),
+	        Selection.StartTime, Selection.PlayRate),
+	    false, EStage::Execution);
+}
+void Message(const FString& Text, EStage Stage, FName Key, const AActor* Owner)
+{
+	const AActor* Actor = Owner ? Owner : CurrentScope ? CurrentScope->GetActor() : nullptr;
+	Event(Actor, Key.IsNone() ? TEXT("Detail") : *Key.ToString(), Text, false, Stage);
+}
+void MessageAt(const FVector& Location, const FString& Text, EStage Stage, FName Key, const AActor* Owner)
+{
+	const AActor* Actor = Owner ? Owner : CurrentScope ? CurrentScope->GetActor() : nullptr;
+	if (IsObserving(Actor))
 	{
-		CandidateOutput(Actor->GetWorld(), Candidate,
-			FString::Printf(TEXT("Execution | %s | %s | Start %.2f Rate %.2f"),
-				*StaticEnum<EIMGTraversalAction>()->GetNameStringByValue(static_cast<int64>(Selection.Action)),
-				*GetNameSafe(Selection.Montage.Get()), Selection.StartTime, Selection.PlayRate));
+		Event(Actor, Key.IsNone() ? TEXT("Detail") : *Key.ToString(),
+		    FString::Printf(TEXT("%s At=%s"), *Text, *Location.ToCompactString()), false, Stage);
 	}
-	ReplayTraversalSnapshot(-1.f);
 }
 
-void Intersection(const UWorld* World, const FHitResult& Hit, bool bAccepted, const FString& Label,
-	EStage Stage, int32 RequiredLevel)
+void Line(const UWorld* World, const FVector& Start, const FVector& End, const FColor& Color, float Thickness,
+    ELifetime Lifetime, EStage Stage)
 {
-	if (!World || !IsEnabled(RequiredLevel) || !IsStageEnabled(Stage))
+	FCommand Command;
+	Command.Primitive = EPrimitive::Line;
+	Command.Start = Start;
+	Command.End = End;
+	Command.Color = Color;
+
+	Command.Stage = Stage;
+	Command.Thickness = Thickness;
+	Submit(World, Command, Lifetime);
+}
+void Arrow(const UWorld* World, const FVector& Start, const FVector& End, const FColor& Color,
+    ELifetime Lifetime, EStage Stage)
+{
+	FCommand Command;
+	Command.Primitive = EPrimitive::Arrow;
+	Command.Start = Start;
+	Command.End = End;
+	Command.Color = Color;
+
+	Command.Stage = Stage;
+	Submit(World, Command, Lifetime);
+}
+void Point(const UWorld* World, const FVector& Location, const FColor& Color, float Size, ELifetime Lifetime,
+    EStage Stage)
+{
+	FCommand Command;
+	Command.Primitive = EPrimitive::Point;
+	Command.Start = Location;
+	Command.Size = Size;
+	Command.Color = Color;
+
+	Command.Stage = Stage;
+	Submit(World, Command, Lifetime);
+}
+void Sphere(const UWorld* World, const FVector& Location, float Radius, const FColor& Color,
+    ELifetime Lifetime, EStage Stage)
+{
+	FCommand Command;
+	Command.Primitive = EPrimitive::Sphere;
+	Command.Start = Location;
+	Command.Size = Radius;
+	Command.Color = Color;
+
+	Command.Stage = Stage;
+	Submit(World, Command, Lifetime);
+}
+void Capsule(const UWorld* World, const FVector& Location, float HalfHeight, float Radius,
+    const FColor& Color, ELifetime Lifetime, EStage Stage)
+{
+	FCommand Command;
+	Command.Primitive = EPrimitive::Capsule;
+	Command.Start = Location;
+	Command.Size = HalfHeight;
+	Command.Radius = Radius;
+	Command.Color = Color;
+
+	Command.Stage = Stage;
+	Submit(World, Command, Lifetime);
+}
+void PlacementCapsule(const UWorld* World, const FVector& Center, float HalfHeight, float Radius,
+    const FColor& Color, const TCHAR* Purpose)
+{
+	FCommand Command;
+	Command.Primitive = EPrimitive::Capsule;
+	Command.Stage = EStage::Execution;
+	Command.Start = Center;
+	Command.Size = HalfHeight;
+	Command.Radius = Radius;
+	Command.Color = Color;
+	Command.Purpose = Purpose;
+	Submit(World, Command, ELifetime::Snapshot);
+}
+
+void Intersection(
+    const UWorld* World, const FHitResult& Hit, bool bAccepted, const FString& Label, EStage Stage)
+{
+	if (!IsEnabled())
 	{
 		return;
 	}
 	const FColor Color = bAccepted ? FColor::Cyan : FColor::Red;
-	Sphere(World, Hit.ImpactPoint, bAccepted ? 1.25f : 2.5f, Color, RequiredLevel, -2.f, Stage);
-	Arrow(World, Hit.ImpactPoint, Hit.ImpactPoint + Hit.ImpactNormal * 10.f, Color, RequiredLevel, -2.f, Stage);
-	String(World, Hit.ImpactPoint + FVector::UpVector * 4.f,
-		FString::Printf(TEXT("%s | %s | %s%s"), *Label, *GetNameSafe(Hit.GetComponent()),
-			bAccepted ? TEXT("accepted") : TEXT("rejected"), Hit.bStartPenetrating ? TEXT(" PENETRATING") : TEXT("")),
-		Color, RequiredLevel, -2.f, Stage);
+	Point(World, Hit.ImpactPoint, Color, 2.f, ELifetime::Snapshot, Stage);
+	Arrow(
+	    World, Hit.ImpactPoint, Hit.ImpactPoint + Hit.ImpactNormal * 10.f, Color, ELifetime::Snapshot, Stage);
+	Message(FString::Printf(TEXT("%s Component=%s Accepted=%d Penetrating=%d Impact=%s Normal=%s"), *Label,
+	            *GetNameSafe(Hit.GetComponent()), bAccepted, Hit.bStartPenetrating,
+	            *Hit.ImpactPoint.ToCompactString(), *Hit.ImpactNormal.ToCompactString()),
+	    Stage);
 }
-
 void SweepSphere(const UWorld* World, const FVector& Start, const FVector& End, float Radius,
-	const FHitResult* Hit, const FString& Label, const FColor& Color, EStage Stage, int32 RequiredLevel)
+    const FHitResult* Hit, const FString& Label, const FColor& Color, EStage Stage)
 {
-	if (!World || !IsEnabled(RequiredLevel) || !IsStageEnabled(Stage))
+	if (!IsEnabled())
 	{
 		return;
 	}
-	// Endpoints describe the requested sweep; Location is the stopped sphere center, ImpactPoint the surface.
-	Line(World, Start, End, Color, RequiredLevel, 1.f, -2.f, Stage);
-	Sphere(World, Start, Radius, Color, RequiredLevel, -2.f, Stage);
-	Sphere(World, End, Radius, Color, RequiredLevel, -2.f, Stage);
-	String(World, Start + FVector::UpVector * (Radius + 4.f),
-		FString::Printf(TEXT("%s | R %.1f L %.1f | %s"), *Label, Radius, FVector::Distance(Start, End),
-			Hit ? TEXT("hit") : TEXT("clear")), Color, RequiredLevel, -2.f, Stage);
+	Line(World, Start, End, Color, 1.f, ELifetime::Snapshot, Stage);
+	Sphere(World, Start, Radius, Color, ELifetime::Snapshot, Stage);
+	Sphere(World, End, Radius, Color, ELifetime::Snapshot, Stage);
+	Message(FString::Printf(TEXT("%s R=%.2f Start=%s End=%s Hit=%d"), *Label, Radius,
+	            *Start.ToCompactString(), *End.ToCompactString(), Hit != nullptr),
+	    Stage);
 	if (Hit)
 	{
-		const FVector Center = Hit->bStartPenetrating ? Start : Hit->Location;
-		Sphere(World, Center, Radius, FColor::Red, RequiredLevel, -2.f, Stage);
-		Line(World, Center, Hit->ImpactPoint, FColor::White, RequiredLevel, 1.f, -2.f, Stage);
-		Point(World, Hit->ImpactPoint, Color, RequiredLevel, 7.f, -2.f, Stage);
-		Arrow(World, Hit->ImpactPoint, Hit->ImpactPoint + Hit->ImpactNormal * 10.f, Color, RequiredLevel, -2.f, Stage);
-		String(World, Hit->ImpactPoint, FString::Printf(TEXT("%s contact | %s%s"), *Label,
-			*GetNameSafe(Hit->GetComponent()), Hit->bStartPenetrating ? TEXT(" PENETRATING") : TEXT("")),
-			Color, RequiredLevel, -2.f, Stage);
+		Sphere(World, Hit->bStartPenetrating ? Start : Hit->Location, Radius, FColor::Red,
+		    ELifetime::Snapshot, Stage);
+		Intersection(World, *Hit, true, Label, Stage);
 	}
 }
-
-void Measure(const UWorld* World, const FVector& Start, const FVector& End, const FString& Label,
-	float Value, const FColor& Color)
+void Measure(const UWorld* World, const FVector& Start, const FVector& End, const FString& Label, float Value,
+    const FColor& Color)
 {
-	Line(World, Start, End, Color, 1, 1.f, -2.f, EStage::Output);
-	Sphere(World, Start, 2.f, Color, 1, -2.f, EStage::Output);
-	Sphere(World, End, 2.f, Color, 1, -2.f, EStage::Output);
-	String(World, (Start + End) * 0.5f, FString::Printf(TEXT("%s %.1f cm"), *Label, Value),
-		Color, 1, -2.f, EStage::Output);
-}
-
-void Line(const UWorld* World, const FVector& Start, const FVector& End, const FColor& Color,
-	int32 RequiredLevel, float Thickness, float Duration, EStage Stage)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
+	if (!IsEnabled())
 	{
-		DrawDebugLine(World, Start, End, Color, false, ResolveDuration(Duration), 0,
-			FMath::Max(Thickness * DebugLineThicknessScale, 0.25f) * GetLineScale());
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::Line, Start, End, Color, RequiredLevel, Thickness, 0.f, FString(), Stage);
-		}
+		return;
 	}
+	Line(World, Start, End, Color, 1.f, ELifetime::Snapshot, EStage::Output);
+	Message(FString::Printf(TEXT("%s %.2f cm"), *Label, Value), EStage::Output);
 }
-
-void Arrow(const UWorld* World, const FVector& Start, const FVector& End, const FColor& Color,
-	int32 RequiredLevel, float Duration, EStage Stage)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
-	{
-		const float Scale = GetLineScale();
-		DrawDebugDirectionalArrow(World, Start, End, 7.f * Scale, Color, false, ResolveDuration(Duration), 0, 0.6f * Scale);
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::Arrow, Start, End, Color, RequiredLevel, 0.f, 0.f, FString(), Stage);
-		}
-	}
-}
-
-void Point(const UWorld* World, const FVector& Location, const FColor& Color,
-	int32 RequiredLevel, float Size, float Duration, EStage Stage)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
-	{
-		DrawDebugPoint(World, Location, FMath::Max(Size * DebugPointSizeScale, 3.f) * GetSphereScale(),
-			Color, false, ResolveDuration(Duration));
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::Point, Location, FVector::ZeroVector,
-				Color, RequiredLevel, Size, 0.f, FString(), Stage);
-		}
-	}
-}
-
-void Sphere(const UWorld* World, const FVector& Center, float Radius, const FColor& Color,
-	int32 RequiredLevel, float Duration, EStage Stage)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
-	{
-		DrawDebugSphere(World, Center, Radius * GetSphereScale(), 12, Color,
-			false, ResolveDuration(Duration), 0, 0.5f * GetLineScale());
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::Sphere, Center, FVector::ZeroVector,
-				Color, RequiredLevel, Radius, 0.f, FString(), Stage);
-		}
-	}
-}
-
-void Capsule(const UWorld* World, const FVector& Center, float HalfHeight, float Radius, const FColor& Color,
-	int32 RequiredLevel, float Duration, EStage Stage)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
-	{
-		DrawDebugCapsule(World, Center, HalfHeight, Radius, FQuat::Identity, Color,
-			false, ResolveDuration(Duration), 0, 0.5f * GetLineScale());
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::Capsule, Center, FVector::ZeroVector,
-				Color, RequiredLevel, HalfHeight, Radius, FString(), Stage);
-		}
-	}
-}
-
-void String(const UWorld* World, const FVector& Location, const FString& Text, const FColor& Color,
-	int32 RequiredLevel, float Duration, EStage Stage, FName Key, const AActor* Owner)
-{
-	if (World && IsEnabled(RequiredLevel) && IsStageEnabled(Stage))
-	{
-		const AActor* Actor = Owner ? Owner : TraversalSnapshot.World.Get() == World ? TraversalSnapshot.Actor.Get() : nullptr;
-		if (World->GetNetMode() == NM_DedicatedServer)
-		{
-			DrawDebugString(World, Location, Text, nullptr, Color, ResolveDuration(Duration), true,
-				FMath::Clamp(CVarIMGTraversalDebugTextScale.GetValueOnGameThread(), 0.25f, 1.5f));
-		}
-		else
-		{
-			QueueText(World, Location, Text, Color, RequiredLevel, Duration, Stage, Key, Actor);
-		}
-		if (Duration == -2.f)
-		{
-			RecordCommand(World, ETraversalDebugPrimitive::String, Location, FVector::ZeroVector,
-				Color, RequiredLevel, 0.f, 0.f, Text, Stage, Key, Actor);
-		}
-		if (Duration == -2.f && CVarIMGTraversalDebugLog.GetValueOnGameThread() >= 2)
-		{
-			UE_LOG(LogIMG, Log, TEXT("[Traversal][%s][Stage %d] %s"),
-				*GetNameSafe(TraversalSnapshot.Actor.Get()), static_cast<int32>(Stage), *Text);
-		}
-	}
-}
-}
-
+} // namespace IMGTraversalDebug
 #endif

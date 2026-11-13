@@ -554,6 +554,7 @@ struct FIMGTraversalLandingSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1"))
 	int32 AnchorWindowIndex = -1;
 
+	/** Landing evaluation ends at this translation window, even when it is the last; excludes the montage tail. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1"))
 	int32 LandingWindowIndex = -1;
 

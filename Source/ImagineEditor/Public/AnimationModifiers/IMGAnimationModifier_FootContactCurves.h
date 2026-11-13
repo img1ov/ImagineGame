@@ -1,21 +1,21 @@
 #pragma once
 
-#include "AnimationModifier.h"
+#include "AnimationModifiers/IMGOneShotAnimationModifier.h"
 
 #include "IMGAnimationModifier_FootContactCurves.generated.h"
 
 /**
  * Generates independent left/right planted-state curves for foot IK.
  * Curve value 1 means planted; 0 means swinging.
+ * Removes itself after applying and keeps the generated curves.
  */
-UCLASS(BlueprintType, meta = (DisplayName = "AnimationModifier_FootContactCurves"))
-class UIMGAnimationModifier_FootContactCurves : public UAnimationModifier
+UCLASS(BlueprintType, Blueprintable, meta = (DisplayName = "AnimationModifier_FootContactCurves"))
+class UIMGAnimationModifier_FootContactCurves : public UIMGOneShotAnimationModifier
 {
 	GENERATED_BODY()
 
 public:
 	virtual void OnApply_Implementation(UAnimSequence* Animation) override;
-	virtual void OnRevert_Implementation(UAnimSequence* Animation) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curves")
 	FName LeftContactCurveName = TEXT("contact_l");

@@ -4,7 +4,7 @@
 
 #include "Animation/AnimSequence.h"
 #include "AnimationBlueprintLibrary.h"
-#include "IMGAnimationModifier_FootstepUtils.h"
+#include "AnimationModifiers/IMGAnimationModifier_FootstepUtils.h"
 #include "ImagineEditor.h"
 #include "Feedback/ContextEffects/AnimNotify_IMGContextEffects.h"
 
@@ -431,23 +431,6 @@ void UIMGAnimationModifier_Footstep::OnApply_Implementation(UAnimSequence* Anima
 		*Animation->GetPathName(), *EffectTag.ToString(), DetectedPlantCount, PlantEvents.Num(), InitialContactCount,
 		IgnoredCoincidentPlantCount, PhaseKeys.Num(), RemovedStaleNotifyCount, RemovedLegacyTrackCount,
 		Animation->bLoop ? TEXT("true") : TEXT("false"));
-}
 
-void UIMGAnimationModifier_Footstep::OnRevert_Implementation(UAnimSequence* Animation)
-{
-	Super::OnRevert_Implementation(Animation);
-
-	if (!IsValid(Animation))
-	{
-		return;
-	}
-
-	if (!NotifyTrackName.IsNone()
-		&& UAnimationBlueprintLibrary::IsValidAnimNotifyTrackName(Animation, NotifyTrackName))
-	{
-		UAnimationBlueprintLibrary::RemoveAnimationNotifyTrack(Animation, NotifyTrackName);
-	}
-
-	IMG::AnimationModifiers::Footstep::RemoveFloatCurve(Animation, PhaseCurveName);
-	UE_LOG(LogImagineEditor, Display, TEXT("IMG Footstep modifier reverted from '%s'."), *Animation->GetPathName());
+	RemoveAfterApply(Animation);
 }

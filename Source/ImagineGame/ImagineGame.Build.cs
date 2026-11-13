@@ -114,6 +114,12 @@ public class ImagineGame : ModuleRules
 		}
 
 		SetupGameplayDebuggerSupport(Target);
+		if (Target.Configuration != UnrealTargetConfiguration.Shipping && Target.Configuration != UnrealTargetConfiguration.Test)
+		{
+			PrivateDependencyModuleNames.Add("DrawDebugLibrary");
+			PrivateDependencyModuleNames.Add("RewindDebuggerRuntimeInterface");
+			PrivateDependencyModuleNames.Add("TraceLog");
+		}
 		SetupIrisSupport(Target);
 	}
 }

@@ -1,4 +1,4 @@
-# ImagineGame 工程约定与导航
+﻿# ImagineGame 工程约定与导航
 
 ## 工作约定
 
@@ -32,6 +32,8 @@
 - 开火 GA 继承 `UIMGGameplayAbility_WeaponFire`，必填 `MagazineAmmoTag` 和 `DamageEffect`。`OnInputTriggered` 每次按下尝试一发，`WhileInputActive` 按住时在上一发 GA 结束后重新尝试。`FireIntervalSeconds` 默认 0.1 秒。开火 Montage 和 Fire/Impact Cue 可选。C++ 已在提交射击时由服务端扣一发弹匣余量，额外 InventoryItem Cost 会再次扣同一弹药。
 - 换弹 GA 继承 `UIMGGameplayAbility_WeaponReload`，设置 `MagazineAmmoTag`、`SpareAmmoTag`、`MagazineSizeTag`。无 `ReloadMontage` 时以 `ReloadDurationSeconds` 完成，默认 1 秒。有 Montage 时由完成回调或指定的 `ReloadCompleteEventTag` 完成，先到者生效。提交后服务端按弹匣缺口与备弹取较小值转移弹药。需用 Notify 提前完成时，确保服务端也收到该事件。换弹持有 `Ability.Weapon.NoFiring`，开火 GA 的 `ActivationBlockedTags` 配置同一 Tag 才能覆盖普通按键激活，基类的 `SourceBlockedTags` 只检查传入的来源标签。
 - 自动换弹 GA 继承 `UIMGGameplayAbility_AutoReload`，保留 `OnSpawn` / `LocalOnly`，与开火、换弹一起由装备授予，输入 Tag 留空。配置弹匣、备弹 Tag 和 `ReloadEventTag`，在换弹 GA 的 `Ability Triggers` 添加同一 Tag，触发源选 Gameplay Event。默认每 0.25 秒检查，距装备或上次开火至少 0.5 秒、空仓且有备弹时发送换弹请求。请求 Tag 与 Montage 完成 Tag 分开。
+- 弹匣/备弹/弹匣容量、`InputTag.Weapon.*` 与 `IMG.Weapon.SteadyAimingCamera` 都不在 `Config/DefaultGameplayTags.ini`：该文件只登记 `InputTag.Aim/Jump/Sprint/Strafe/Walk` 等，ADS 那个 Tag 只有 `IMGRangedWeaponInstance.cpp` 的 `UE_DEFINE_GAMEPLAY_TAG_STATIC`。新增武器须先把这组 Tag 登记到 ini，才能让物品 Stats、三个 GA 和镜头模式按同一字符串匹配。
+- `UIMGGameplayAbility_WeaponFire::ActivateAbility` 显式调用 `UIMGGameplayAbility_FromEquipment::ActivateAbility`（实际落到 `UIMGGameplayAbility::ActivateAbility`），所以 `UIMGGameplayAbility_RangedWeapon::ActivateAbility` 的 TargetData 委托绑定和 `OnRangedWeaponTargetDataReady`（Lyra 蓝图出道口）不在开火 GA 链上；只有直接派生 `RangedWeapon` 并自行调用 `StartRangedWeaponTargeting` 的蓝图才走那条路。
 
 ### 命中、伤害与拾取
 
@@ -39,7 +41,7 @@
 - 追踪与重检都使用 `IMG_TraceChannel_Weapon`（`ECC_GameTraceChannel2`）。项目 `Config/DefaultEngine.ini` 当前只登记了 `Traversable`（Channel1），缺少武器 Channel2 及 `AIMGCharacter` 请求的 `IMGPawnCapsule` / `IMGPawnMesh` Profile。若按 Physics Asset 命中装配，固定使用 Channel2，胶囊设 Ignore，有查询碰撞的角色 Mesh/Physics Asset 与应挡弹的场景设 Block。用 `IMG.Weapon.DrawBulletTraceDuration 2` 对照射线与碰撞响应。
 - 常规 `DamageEffect` 用 Instant GE 的 `UIMGDamageExecution`。执行读取射手 `UIMGCombatSet.BaseDamage`（C++ 默认 0），再乘距离曲线、物理材质 Tag 倍率和 TeamSubsystem 裁决。基础伤害由射手 ASC 的初始化 GE 提供，按武器变化可由装备 AbilitySet 授予随卸下移除的持续 GE。目标需 ASC 和 HealthSet。首轮验收用异队目标，观察服务端生命与物品弹药。
 - 场景拾取用 `AIMGShooterWeaponSpawner`，实例 `WeaponDefinition` 指向 `UIMGWeaponPickupDefinition`，填物品定义、展示 Mesh、正数冷却和 Pawn Overlap。基类 `AIMGWeaponSpawner` 的发放走蓝图 `GiveWeapon`。Shooter 派生类服务端发物品并放入空槽，默认选中该槽，`BlockAutoEquipTag` 可阻止切换。启用 `bRefillDuplicateWeaponAmmo` 时，按同一 `SpareAmmoTag` 将已有武器的备弹补至物品默认值。`UIMGGameplayAbility_QuickBarSlots` 监听选槽和前后切槽事件，选槽索引用 `EventMagnitude`，从 0 开始。`DropWeapon` 当前移除快捷栏及背包物品，地面掉落实体待接入。
-- 源码与项目配置可确定以上装配合同，现有 Content 的类继承、字段取值和联机表现待验收。
+- 以上装配合同只由源码与项目配置确定；不要依据现有 Content 里的武器相关资产推断配置，其中有无效资源，需要时按源码重建。
 
 ## 工程方向与参考源码
 
@@ -49,7 +51,24 @@
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
 - GTA 参考：`C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- UE 源码位于 `D:/Application/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4；旧 `D:/Workspace/UnrealEngine/UE_5.8` 路径当前不可用。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+
+### ImagineEditor 目录与接口
+
+- 用户明确要求ImagineEditor按文件类型分离：所有 `.h` 放 `Public`，所有 `.cpp` 放 `Private`，配对文件使用两侧相同的相对目录。不因内部辅助用途把头文件留在Private，也不为这次分离额外拆出System/Style/Feedback/Rewind/Export子目录；已有动画、验证和Traversal分类保留。文件搬到Public不代表自动增加跨模块DLL导出API。
+
+| 目录（相对Source/ImagineEditor） | 职责 |
+| --- | --- |
+| `Public/*.h`、`Private/*.cpp` | 模块入口、ImagineEditorEngine、ImagineEditorStyle、ContextEffects Factory与AssetTypeActions。 |
+| `Public/AnimationModifiers`、`Private/AnimationModifiers` | 动画修改器及FootstepUtils。 |
+| `Public/Validation`、`Private/Validation` | 资产验证器。 |
+| `Public/Commandlets`、`Private/Commandlets` | ContentValidationCommandlet。 |
+| `Private/Utilities` | 独立编辑器工具与控制台操作。 |
+| `{Public,Private}/Character/Traversal` | Rewind轨道/回看接合及事件分类。 |
+| `{Public,Private}/Character/Traversal/Trace` | Trace分析存储及文本导出。 |
+| `{Public,Private}/Character/Traversal/Widgets` | Details与Slate控件。 |
+
+- 模块内头文件include从Public根写相对路径，不使用 `../` 穿越或依赖Private同目录头搜索。公开头直接包含的AssetTools/Slate/SlateCore/RewindDebuggerInterface/TraceServices列为Public依赖，TraceAnalysis及PropertyEditor实现依赖仍留Private。UBT自动发现子目录CPP，无需为搬迁增加IncludePaths。只改路径不改反射类型、模块名或 `/Script/ImagineEditor.*` 配置身份；生成头及UE_INLINE_GENERATED_CPP_BY_NAME继续使用原类型文件名。
 
 ### GTA 3C 源码导航与映射
 
@@ -260,7 +279,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 | `IMGTraversalComponent` | 配置、Target、临时碰撞忽略、Flying 接管/释放和复制快照。 |
 | Private `IMGTraversalPlacement` | 实际播放路径、窗口链、落点、可选补偿和显式 Landing 校验。 |
 | Private `IMGTraversalReplay.cpp` | 同一 Component 的逐 Move 上下文记录/恢复，无独立复制服务。 |
-| Types / TargetData / Debug | 公共数据、客户端请求、同目录私有诊断。 |
+| Types / TargetData / Debug | 公共数据、客户端请求、私有观测采集、独立Trace与DrawDebugLibrary表现；编辑器轨道位于ImagineEditor同层级Character/Traversal。 |
 
 - 保持来源组件 → Traversal → CMC 的源码依赖；CMC 只暴露通用委托/闭包接口，不包含 Traversal 类型。热插拔指组件与能力运行时接合/释放，不表示共享运行时可作为独立插件卸载。
 - Pawn 装配 Traversal、MotionWarping 并由 ASC 授予 GA。`ActionSettings` 提供动作通用执行规则；`MontageSettings` 按 Action/Montage 整份覆盖，不合并字段。`WarpBindings/RequiredTargets` 管接触目标，Notify 管窗口，`Landing` 管落地合同。选片只返回一个 Montage；服务端本地/AI 选片缺少 PoseHistory 时须有后备，远端请求使用客户端选择并由服务端重检。
@@ -288,6 +307,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 ### 播放路径与预测能力
 
 - GA 以 `StartSection=NAME_None`、Selection.StartTime 启播。资产 `GetPlayLength()` 不代表本次末端；Placement 从 StartTime 所属 Section 沿资产 NextSectionName 解析有限路径，合并相邻段，将前跳/后跳映射到顺序播放时间轴。根运动、DistanceCurve 和窗口筛选只累计实际路径，显式窗口编号保留资产原始序号。循环、无效链或活动 Warp 跨非连续边界在 Commit 前拒绝。
+- Motion Matching/PoseMatch返回的StartTime经Selection → TargetData.NetSerialize → ResolveTraversalRequest → PrepareTargets及PlayMontageAndWait原值传递；不按0起播，也不在服务端另选时间。ProjectPlacement的Cursor从PlaybackStart开始，窗内起播只Advance剩余区间；SkewWarp的有/无平移分支判定仍用完整窗口位移，与原生TotalRootMotionWithinWindow一致，不能误改成剩余位移判定。DistanceCurve的接触窗末→落地窗末距离是两锚点间距，不应减去StartTime；它与当前胶囊→落地的剩余位移不是同一量。
 - 跳过起播前已结束及预计混出后才开始的窗口，窗内起播只算剩余区间；显式提前混出从末 Section 计算。逐段组合窗间根运动和各窗约束，IgnoreZAxis 沿用入窗高度，未约束旋转沿用动画。窗口可共用 Target，单窗/多窗共用预测与修正后复算；骨点参照和原生尾段按窗口缓存。
 - 原生 `bSubtractRemainingRootMotion` 扣除的是 Window.EndTime → **资产全长**，实际后续播放位移才按 Section 路径累计。`ResolveWindowPose.NativeTail` 必须匹配原生扣除，不能统一替换为 SectionEnd。DistanceCurve 按路径分段累计，再分别处理接触/落地窗的原生扣余量参照偏移。
 - Bone/Static/None 参照将 Target 换算成胶囊位置。有动画平移时按 BaseTranslationOffset 换算中心，关闭 WarpToFeetLocation 则清除该偏移的 Z；无平移时按脚底换算。Target 与胶囊中心不应直接比较。窗口后根运动累计到预计混出末端。
@@ -296,10 +316,10 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 ### 高度补偿与显式落地
 
 - 补偿只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。适用 Mantle、显式 Landing，或末平移/末高度窗口绑定 BackFloor 的动作；普通 Vault/Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。
-- 普通 Mantle 的补偿是可选修正。平面支撑、完整胶囊扫掠、CMC可走性、归属、层位、边缘容差、重叠及全窗口链复算通过才写回；失败恢复/保留原目标，不追加名义终点贴地硬门槛，全 IgnoreZ 同样处理。`FinalPlacementCenter` 只缓存校正成功的安全中心。降级不证明最终站稳；几何、表面、绑定、RequiredTargets 和有限路径校验仍生效。
+- 普通 Mantle 的补偿是可选修正。平面支撑、完整胶囊扫掠、CMC可走性、归属、层位、边缘容差、重叠及全窗口链复算通过才写回；失败恢复/保留原目标，不追加名义终点贴地硬门槛，全 IgnoreZ 同样处理。`CompensatedPlacementCenter` 只缓存所选求值终点上校正成功的安全中心。降级不证明最终站稳；几何、表面、绑定、RequiredTargets 和有限路径校验仍生效。
 - 默认 Mantle 限定障碍顶层；仅显式 Landing 或控制 Z/末平移窗绑定 BackFloor 时可用后方支撑。顶层取 `TopSupportHeightRange ± DepthHeightTolerance`，范围来自中心、两侧、首个断层前连续顶面和后沿细化。仅比较组件不足以区分同一车身上的车顶与低层斜面。
-- 非顶层支撑范围由胶囊、锚点距离及 CMC/组件可走坡度推导；支撑限锚点载体、障碍集和适用的 BackFloor，安全中心保留 CMC 地面间隙。最后控制 Z 的窗口提供修正 Target，改后复算完整链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
-- 显式 Landing 需 BackFloor 绑定和预计混出前完成的平移窗。按选中窗口校验；末平移窗计尾段，较早 Landing 不让后窗覆盖共享同名 Target。CapsuleClearance 只加校验余量；预测、可走落点、落差、完整胶囊、实际根位置支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
+- 非顶层支撑范围由胶囊、锚点距离及 CMC/组件可走坡度推导；支撑限锚点载体、障碍集和适用的 BackFloor，安全中心保留 CMC 地面间隙。求值终点及之前最后控制 Z 的窗口提供修正 Target，改后复算截至同一终点的窗口链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
+- 显式 Landing 需 BackFloor 绑定和预计混出前完成的平移窗。补偿、修正后复算、净空/支撑/直线路径与预览胶囊统一在选中Landing窗口末端求值，即使它是最后平移窗也不累计窗后Montage根运动。只选该落地窗及之前最后控制Z的窗口修正Target；之后的高度窗不能反过来补偿先前落点。NativeTail的bSubtractRemainingRootMotion参照仍按引擎资产全长扣除，不能因截断求值而删掉该扣除。较早Landing不让后窗覆盖共享同名Target。CapsuleClearance 只加校验余量；预测、可走落点、落差、完整胶囊、实际根位置支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
 
 ### 执行与三端网络
 
@@ -331,7 +351,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - 按频率与查询类型计量：检测含分层球扫、顶部/两侧、深度、后沿细化和净空，不是固定几条射线。默认最多6层搜索、5次深度采样、4步细化；一次 Detect 最多尝试12组边缘候选，提前退出/方向回退改变查询数。成功发起通常本地 CanActivate/Activate 各检一次，服务端另检一次，模拟代理不检。
 - 按住且无表面时，预筛失败不会激活/EndAbility，故 RetryInterval 不限制这条逐输入帧扫描路径。补偿在已选片的启动准备阶段每次算一次，失败尝试也可能计算；执行中不重算整链，但活动 Tick/OnPreUpdate 刷新目标、定时复核表面、自主代理逐 Move 记录历史，纠偏时才重放。
 - 测量须分开探测、选片/骨骼采样、执行、历史记录/重放及 Debug。关闭绘图/日志后量本体；源码计数不等于实测耗时，多客户端同进程 PIE 总成本不等于单角色预算。
-- 绘图默认关闭并受 ENABLE_DRAW_DEBUG 保护。DebugDraw：0关、1候选/活动Target、2搜索/失败、3全部探针；DebugStages：搜索1、命中2、手点4、体积8、输出16、执行32。完整探针历史用 `IMG.Traversal.DebugDraw 3`、`IMG.Traversal.DebugStages 63`、`IMG.Traversal.DebugProcessDuration 3`、`IMG.Traversal.DebugDuration 3`；`IMG.Traversal.DebugLog 2` 需开启绘图。几何输出标记 pre-selection，执行输出在解析落点后更新。
+- 调试通道、快捷键和录制合同见下节。几何显示开关仅作用于表现；记录与绘图独立，文字仅进Rewind Details。探针球/胶囊显示真实尺寸，点标记大小不再缩放查询体积。记录的 ElapsedMs 包含当次 Debug 开销，只可比较相同采集配置；ExplicitQueries 计项目显式发起的碰撞查询，不包含 CMC.FindFloor 等引擎内部查询。
 - 源码诊断用 `Log LogIMGTraversal Verbose`、`Log LogIMGAbilitySystem Verbose`，结束恢复 Log；窗口原生位移用 `a.MotionWarping.Debug 1`。按角色/连接、Spec、激活 PredKey 关联，事件含 Loc/Velocity/MoveMode。LocalRequestPrepared 与 ServerDetectionRejected 对照起点和意图；同键两端各一条不等于重复执行，不同键/键号跳号不能证明输入重复或丢包。
 
 | 事件/标记 | 应如何解释 |
@@ -343,8 +363,81 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 | AuthorityEndedPredictedTraversal | 同键 GAS 权威终止先于本地完成，不是 CMC 重放或预测错误的单独证据。PredictionRejected 才表示激活拒绝。 |
 | Safe capsule / PlacementReprojectionRejected | 仅证明模型支撑/复算结果；缺少拒绝日志不证明进入过复算。全链复算只在预测可用且高度修正非零时执行。 |
 
-- DebugDraw 3 的手点青色为中心实际接触，黄色为最终检测手点；执行青点和正负 placement 为 Target 修正，橙色胶囊为修正前预计终点，绿色为安全落位。分开核对锚点、Target、预测胶囊和 CMC 扫掠后的实际胶囊；大幅修正需查实际半高、命中组件/法线、RootOffset、缩放、尾段和窗口模式。
-- 构造调试 FString 前先检查级别/阶段。候选快照分公共采样与方向验证：方向失败回滚验证记录，候选失败再回滚公共采样，成功只保留一份公共记录及最终方向。楼梯诊断看标签/前侧/顶部/支撑、Span/cutoff/drift；棱面方向看 Handhold: angular request heading。
+### 调试工具与记录合同
+
+#### 日常入口与数据边界
+
+- 非Shipping/Test：PIE后直接在Rewind Debugger开始录制，复现后暂停/停止，选角色的Traversal轨道回看。运行时注册Rewind Runtime Extension，开始/停止录制自动切换IMGTraversal Channel；无采集开关，无需GameplayDebugger。显示设置不影响正在进行的录制，回看不重新检测世界或修改游戏对象。
+
+| 入口 | 默认值与行为 |
+| --- | --- |
+| Traversal轨道 | 父轨道看概览/关键事件；Requests / GA、Detection、Execution、Network / Replay各看本领域Details。隐藏轨道停止回看绘制，不停止采集。 |
+| `IMG.Traversal.DebugDraw 0/1` | 默认0，全局几何show/hide，现场与Rewind共用。开关不写入配置，每次进程启动使用默认值；不影响Rewind采集。无等级、阶段掩码和世界长文字。 |
+| `IMG.Traversal.DebugGraph 0/1` | 默认0，四框显示实际平面速度、Montage资产归一化位置、最近一次检测耗时/查询次数；第五框横跨两列，对比原始Montage根运动高度与执行胶囊高度。现场取本地Pawn，回看取当前显示轨道；不造Contact/EnableWarping曲线。 |
+| Copy frame JSON | 复制当前完整帧，含所有轨道、候选、事件、图元；不受搜索或分页影响。 |
+| Export visible range | 停止录制后，将该角色与时间轴可见范围重叠的全部已分析帧导出为JSONL；边界保留完整帧和同时间戳的多次提交。客户端/权威端分别导出。 |
+| Last export | 完整路径可选中复制；剪贴板图标复制路径，文件夹图标定位文件。失败保留上次成功路径；文件已移走则提示重新导出。 |
+
+- 调试文字只进Details；常规Warning/Verbose仍用 `LogIMGTraversal` 写Output Log。旧Visual Logger桥接、Traversal GameplayDebugger Category、F6..F10、采集/等级/阶段/角色过滤、残留时长及两个DDCvar.Traversal配置均已移除，无兼容别名。旧Visual Logging录制需重新录制，不能追溯删除或转换。
+- 本地分析优先读取 `Saved/Debug/Traversal` 最新JSONL的metadata与全部帧，再按ActorId/Role/NetMode、Spec/PredKey、Attempt、Sequence和Montage实例关联。先核对Dropped、范围是否包含开始和结束、是否只有客户端记录；有最后检测摘要不等于该帧重新检测。单端记录不能替代服务端重检，跨进程录制时间也不能直接当作同一时钟。
+- Warp排查先区分目标接触点、Landing窗末胶囊、完整播放路径终点和实际结束胶囊。显式Landing以选中窗口末端为口径，不能因它是最后平移窗而套用PlaybackPath.PlacementTime/动画全长；Landing.Mode=None的普通补偿仍保留名义播放末端模型。完整路径终点含窗后根运动，不能冒充落地点；提前中断也不能反证或证明完整路径XY正确。Landing clearance胶囊另含校验余量。PlacementEvaluation/LandingEvaluation记录StartTime、求值终点、参考/修正Target、窗口时间、IncludeTail和中心；PlacementWindow记录首次投影的实际入窗时间、剩余平移、原生尾段扣除、WarpPoint/RootOffset与轴选项。需新录制，旧记录没有这些参数时不声称已逐项数值复算。
+- MontageStopped后的Montage_GetPosition可能为0，不能据此认为动画回到了0。应取最后活动帧与事件时序。`PlayMontageAndWait::OnInterrupted`既可来自Montage混出中断，也可由OnGameplayAbilityCancelled转发；原生CancelAbility先广播取消再EndAbility，本项目回调可能先K2_EndAbility，因此End日志Cancelled=0不能单独排除GAS取消或判定中断来源。只有本端JSONL时不以晚到权威结束快照倒推最初停止原因。
+
+#### 模块、采集与版本
+
+- 运行时根目录为 `ImagineGame/{Public,Private}/Character/Traversal`，编辑器按同层级放在 `ImagineEditor/{Public,Private}/Character/Traversal`，头文件/实现按Public/Private分离，Game不依赖ImagineEditor。
+
+| 源码入口 | 所有权/合同 |
+| --- | --- |
+| Public IMGTraversalDebugTypes | Frame/Event/Shape/Candidate只读、可反射/序列化，无UObject引用。 |
+| Private IMGTraversalDebug | 同步弱引用Scope、Actor/Attempt/帧采集；不取得玩法状态所有权。 |
+| Private IMGTraversalDebugTrace | 版本化Trace、FObjectTrace身份与录制时间换算、Runtime Extension。 |
+| Private IMGTraversalDebugPresentation | DrawDebugLibrary几何/Graph，拥有本方LineBatch批次。 |
+| Editor Trace/IMGTraversalTraceProvider | Analyzer、AnalysisSession内不可变帧与查询。 |
+| Editor IMGTraversalRewindDebugger / RewindData | 轨道、时间轴、回看与统一事件分类。 |
+| Editor Widgets/SIMGTraversalDetails / IMGTraversalDetailsCustomization / IMGTraversalDetailWidgets | 导出工具栏、原生Details分类、记录展开、只读复制和资产操作。 |
+| Editor Trace/IMGTraversalTraceExport | 文本转换、范围快照和文件写入。 |
+
+- Game仅接RewindDebuggerRuntimeInterface、TraceLog及DrawDebugLibrary；Editor接RewindDebuggerInterface、TraceServices/TraceAnalysis、PropertyEditor和Json/JsonUtilities/ApplicationCore。Shipping/Test不采集绘制，仅保留数据类型/无操作接口。
+- 当前原生事件 `IMGTraversal/FrameV4`；V3在V2后追加MontageAssetPath/AbilityClassPath，V4再追加bHasHeightSample、HeightCapture、HeightReferenceZ、MontageRootHeight、WarpedCapsuleHeight。Analyzer分别读取V2/V3/V4，旧版本显式置高度不可用，不伪造零曲线。旧录制缺路径仅显示名称，不扫描Content或按同名猜资产；新增路径/高度需新录制。后续序列化变更须升级事件版本。
+- Frame/Event时间统一换算为对象World的录制ElapsedTime，执行区间用实际DeltaSeconds；Provider在Session读锁下访问，时间查询用 `Algo/BinarySearch.h::UpperBoundBy`，不将旧帧延续到无样本空档。
+- Events包括预筛、实际激活、检测/选片/落点、降级/拒绝、开始/完成/中断、复制等待/回填与Replay，含Phase/Stage、Attempt及已知身份。预筛不复用旧激活预测键，GA在ActiveState建立前显式提供Spec/Pred。Replay保留历史Spec/Pred/Sequence/Montage/Move时间戳；网络等待按原因/实例去重，新录制重置去重。
+- 同帧多次Detect各保留Attempt、候选和几何，不让最后一次覆盖预筛；阶段只作分类，详细数据默认采集。当前帧预算：512事件、4096新图元、32候选，另带入最多8个当前执行的准备胶囊；超出累加Dropped。运行时缓存最多64个Actor，淘汰前提交待写帧。
+- RecordingStarted可能来自任意线程，只更新Channel与原子代次；Actor采集在游戏线程。停止录制尝试提交末帧，最终边界仍取决于原生Trace连接/帧时序。录制代次清缓存/去重；Actor/Scope弱引用，组件/ASC解绑、World清理、模块退出释放缓存与委托；Provider随Session释放。
+
+#### 原生Details与复制、资产操作
+
+- 使用PropertyEditor的分类、搜索、列宽和记录展开；保留按轨道分工。Detection看最近检测/逐Attempt候选与决策，Execution看Montage/移动/执行候选/补偿，Network / Replay看身份与网络事件。Details不展开Geometry图元列表，不显示普通Search/Intersections/Output阶段的通用Detail绘图文字及Event.Stage实现分类；Warning、决策、失败和具名补偿诊断保留，底层图元/原始事件仍供视口回放及完整导出。向量、Transform、数组逐层展开；浮点最多显示3位小数，Role/NetMode显示名称，Trace默认折叠。事件/候选每页32条记录，Previous/Next访问全部；页码保留并按记录数钳制，搜索只作用于当前页，导出不分页。
+- 不整块禁用Details、不改运行时UPROPERTY权限。默认属性隐藏，由标准DetailWidgetRow与只读文本/超链接展示；FStructOnScope只供布局类型，值来自不可变帧。旧固定高度列表/自制双列已移除。字段值可选中Ctrl+C；右键Copy full recorded value不受显示舍入影响，字段名右键还可复制内部名、名称与值、显示文本。记录头Copy为该事件/候选完整JSON，图元通过完整帧导出访问。父轨道Request与Detection共用的Attempt/Source/Direction只在Request显示一次，Detection子轨道仍自带这些上下文；事件与候选自身的同名字段属于独立时间/Attempt，不能按显示去重删除。
+- 标量float/double完整值用9/17位有效数字，结构/数组递归保留精度；字符串保留原名/路径。输入控件IsReadOnly，Paste明确禁用。`FDetailWidgetRow::IsCopyPasteBound`要求Copy/Paste均绑定；值控件通过ContextMenuExtender提供完整值复制，避免自身文本菜单遮蔽。过滤后为空的Events/Candidates不创建分类，避免空记录占位。
+- `FDetailGroup::HeaderRow()`每次调用都会新建并替换头部，不能当getter反复调用。每组只取一次引用，再设置标题、摘要、复制和Tooltip；事件名放折叠标题，时间/Attempt/Phase放摘要，展开不重复Name字段。
+- SHyperlink的下划线覆盖控件实际分配宽度；资产链接置于AutoWidth子槽，避免Details值列的最小/填充宽度将短名称下划线撑长，默认列宽和其它值控件不受影响。
+- Montage按完整对象路径打开；GA类路径取ActiveState.AbilitySpec对应Spec.Ability.GetClass，蓝图GA打开ClassGeneratedBy，原生类走FSourceCodeNavigation。资产只在顶部Traversal分类显示一次；同一行提供名称/完整路径复制、名称点击打开、Tooltip完整路径与Content Browser定位，搜索包含名称及路径。Trace不再重复资产路径/打开按钮，只保留采样元数据；原始Frame/JSON仍保留全部路径。/Script类不提供伪资产定位。运行时Actor/Component路径仅供复制。仅点击时TryLoad，刷新不加载资产；缺失/失败提示，不保活录制World对象。
+- Height Comparison仅在父轨道/Execution展示本帧的参考世界Z、MontageRootHeight与WarpedCapsuleHeight，可复制完整精度；无有效采样显示状态。Trace的HeightCapture标识独立执行，不用Attempt/Sequence临时变化连接不同起点。JSON的height_basis说明单位、起点及Warp/CMC含义。
+- UE 5.8 `String/FormatStringSan.h::TCheckedFormatStringPrivate`以consteval接字面量数组，Printf首参不能三目选择不同长度格式串；精度选择放在调用分支，每个Printf直接传TEXT字面量。
+
+#### 文本导出与精度
+
+- 输出 `Saved/Debug/Traversal/Traversal_<ActorId>_<UTC>_<Guid>.jsonl`：UTF-8，首行版本2元数据（角色/世界、范围、帧数、枚举含义、时间基准），后续每行完整Frame。单帧复制为格式化JSON。只导出已分析快照，不生成未录制内容，也不替代utrace。
+- 64位整数用十进制字符串，避免Cycle/ActorId/Frame/Attempt经过double丢精度。结构体强制递归为JSON对象，避免原生math ExportTextItem先转成精度受限字符串；旧版本1文本仍可读。转换与行级复制共用RecordToJson/RecordObject，不改变原生Trace格式。
+- Session锁内仅复制不可变帧引用，JSON转换、进度/取消和磁盘I/O均在解锁后。无Session/无数据/写入失败显示原因；唯一文件名且不覆盖，取消/失败清理部分文件，清理失败给出路径。
+
+#### 图元、Graph与排查边界
+
+- 线用像素细线，点标记最多3cm，探针球/胶囊显示真实尺寸。World后端写普通World/Foreground LineBatcher，暂停回放不能依赖游戏Tick回收；本方图元带独立BatchID，每次现场Tick/回看Update先ClearBatch后画当前帧。隐藏、无帧、切世界、清录制、模块退出也清本方批次，不Flush其他系统；现场暂停不清回看批次。新增会产生Mesh的图元须扩展批次归属。
+- 准备胶囊：橙色为补偿前；绿色仅在支撑/重叠/全链复算通过后；已计算但被拒绝的修正位置为红色；无有效预测不伪造胶囊。Purpose区分补偿前后和显式Landing净空，同Attempt活动帧持续带入，结束/新准备/解绑后停止沿用。显式Landing位置对应所选窗口末端，Landing=None仍为名义播放末端；位置是准备时世界坐标，不代表动态载体后续预测；模拟代理无本机准备胶囊。补偿为0时前后重合。
+- Graph最多240个不同帧的样本，现场与回看均将同一Frame的多次提交合并为最后一个Graph样本，原Trace全部提交不变。回看仅在Graph打开且停止模拟/录制后构建历史；按游标最近5秒采样、剔除窗口外边界帧，不读取游标之后数据，并独立缓存GraphRevision/GraphTime，关闭时释放历史。检测耗时含采集开销，Queries只计项目显式查询，不含CMC.FindFloor等内部查询；后续帧保持最近检测值，不代表每帧重检。Montage进度为资产位置/资产长度，不是Section路径进度。
+- 高度框比较同一起点的世界Z增量（cm），橙线MontageRootHeight从本次Selection.StartTime沿PrepareTargets已验证的有限Section路径提取未Warp根运动，以入场Actor/Mesh参照组合；绿线WarpedCapsuleHeight读取同一时刻实际胶囊/Actor高度，包含MotionWarping、碰撞、移动载体及CMC纠偏，不等于单独Target.Z补偿量。原补偿算法只预测所选终点，不据此插值伪造整条“纯高度补偿前后”轨迹。
+- 起点/路径只在准备成功且已观测时缓存，实际ExecutionStarted才启用；缓存使用弱Montage引用，随Actor观测释放。录制中途接入且缺起点、模拟代理无本机准备、无效/未起播/已结束或位置不在已验证路径时标不可用。逐帧根运动提取只在录制或Graph开启时进行；仅开几何Draw不提取高度曲线。开启Graph即可在本地采集，无需开始录制；录制开启时即使Graph关闭仍采集。该提取属于Debug开销，不计为纯Traversal检测成本。
+- 高度采样必须有实际Montage实例；活动实例已从ActiveMontagesMap移除但Traversal尚在混出时，可使用同资产的原生RootMotionMontageInstance位置，避免Montage_GetPosition的停止后0值伪造回零尖峰。准备成功会退休旧高度起点；仅同帧Prepare→ExecutionStarted接合新起点，未观测的新动作不能继承上一次同名Montage的参考位置。
+- 高度框只画最近一次有效HeightCapture，跨执行、缺失样本和采样空档断开；原始与执行曲线共用纵轴，可显示负值，单点画点，无数据只显示状态。不从旧录制或资产名反推缺失样本；History与回看GraphFrames同时保留高度/身份字段。
+- 全部Graph曲线共用PlotCurve的采样空档/单点处理，横轴固定为游标前[-5,0]秒；Rewind显式传ScrubTime，空档保留历史并标注History only，当前指标显示n/a，历史高度值标(last)，不把旧值延伸为当前帧。Graph角色优先级为选中的父/子轨道→当前根对象→其它可见调试对象，较低优先级不能覆盖已选角色。无当前Frame不重画旧几何；换会话、隐藏及退出仍清理本方批次。
+- Graph使用DrawDebugLibrary的空间World Drawer：运行时在OnWorldPostActorTick采样后直接绘制，Rewind在Extension.Update选定显示轨道后绘制；不再注册Canvas/DebugDrawService回调，也不使用CanvasString。运行时取本地PlayerCameraManager视点，回看优先取同World的当前LevelEditor视口，回退同World本地玩家镜头。图框位于视点前方，按FOV/宽高比布置，旋转后的Y/Z分别对应横纵轴，bDepthTest=false；轴、曲线、图例和字形线全部经WithOwnedBatch归入同一Traversal批次，隐藏/更新/清会话沿既有Clear回收，不另建文字残留或录制通道。一个样本即可显示轴与当前值，无样本显示等待提示；DebugDraw=0仍可独立显示Graph。
+- 用户提供的DebugDraw_MultiLineGraph蓝图导出使用MakeVisualLoggerDebugDrawer、旋转后Offset、DrawDebugGraphAxes/Line/Legend，属于空间图形；本工程采用其位置/旋转、轴/曲线/图例和关闭深度测试的用法，但用World Drawer直接绘制，不恢复旧VisualLogger文字通道。原Canvas后端也是库支持的接口；本轮已改用空间路径，旧后端未实际显示的具体运行时断点不能据源码差异断言。
+- Traversal业务CPP只通过IMGTraversalDebug提交观测，空间绘制集中于DebugPresentation；不保留直接DrawDebugHelpers、UE_VLOG、屏幕文字、GameplayDebugger入口或等级判断。执行Target不再逐帧生成重复文字事件，目标位置/朝向留在图元中；AddedIgnores数量仅在ExecutionAcquired/Releasing记录。Live图元去重与准备胶囊缓存有各自用途，保留当前帧去重和生命周期清理。旧Frame序列化字段即使当前表现不消费也不能随清理删除，须遵守版本合同。
+- RewindDebuggerTrack.Update只更新当前节点，父轨道必须显式Child.Update，参照GameplayInsights/Private/MontagesTrack.cpp。子轨道Name稳定且独立；时间轴与Details共用事件分类，时间轴省略Detail/ExecutionState/ReplayCaptured/Restored/PlaybackSection/Path及PlacementWindow/PlacementEvaluation/LandingEvaluation等明细标记，子轨道Details仍保留。Session/Provider缺失时递归清时间轴/选帧/Details。
+- 参考入口：PoseSearch的RecordingStarted/Stopped、Trace Module/TrackCreator/Details；GameplayInsights/Private/SMontageView.cpp的资产链接。Visual Logging文本会被引擎画回视口，不再作本系统主通道。GTA的ClimbDebug、PedDebugVisualiser、DebugDrawStore负责空间绘制，debug/Debug.cpp::RenderProfiler独立调用GetRageProfileRenderer().Draw绘制EKG；仅借鉴职责，不依赖RAGE。
+- 验证边界：已核对源码接口和单向依赖；三端行为、远程会话、录制开销与全部UI交互仍须运行验收。具体录制只证明相应角色/时间段，编译或静态检查不替代表现验证。不主动调查或修改Content。
 
 ### GTA 对照与已知边界
 
@@ -403,6 +496,15 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - `DisableLegIK` 与 Contact 分责：ABP ControlRig Alpha 选 Curve，暴露引脚名为 `DisableLegIK`，`AlphaScaleBiasClamp` 的 Scale=-1、Bias=1，禁用曲线为1会抑制整体 Rig 修正；Contact 仅控制对应机制，不能代替整体权重。
 - `Update Floor Control` 消费原始 collision：先按 `GroundMovementWorldDelta` 更新世界历史，平滑 `SlopeWarpingAlpha` 向启用状态的0/1，再在世界空间平滑位置/旋转、转回 Rig 空间并混合到零平移/单位旋转，写 `smoothed_floor_*_ctrl` 并保存左右世界历史。`Floor Smoothing Time` 当前默认0.05秒；不是 Montage 结束事件触发更新。`DebugDrawGroundCollision` 两个深绿色长方框画的是这些 smoothed 控制器，不能作为原始射线是否命中、是否更新的直接证据。
 - Hierarchy：`floor_*_collision` 为无父级 Control；`animated_toe_target_*_null` 为无父级 Null，其 ctrl 是子级；`smoothed_floor_*_null` 挂在 root 下，smoothed ctrl 挂在对应 null 下；`ik_foot_l/r` 挂在 `ik_foot_root` 下，后者挂在 root 下。RootDamper 修改 root，动画目标缓存与 floor/腿部求解需按各自时序和空间区分；静态图和资产默认值不替代运行时 bHit、Contact、GroundNormal 或最终 Alpha。
+
+### 动画曲线 Modifier 写入边界
+
+- 工程自定义的五个 Animation Modifier（`AddAnimationCurves`、`RemoveAnimationCurves`、`RemoveAnimationNotifiers`、`FootContactCurves`、`Footstep`）统一为一次性，均继承 `UIMGOneShotAnimationModifier`。正常 Apply 后移除源实例及应用记录，保留生成/删除结果；重新生成须重新添加。FootContact/Footstep 的参数或写入失败会提前返回，不安排自动移除。基类 Revert 不修改动画数据，不能用它恢复一次性写入前的内容。
+- 已核对源码：`ImagineEditor/AnimationModifiers/IMGAnimationModifier_FootContactCurves` 的 Apply 仅经 `Footstep::ReplaceFloatCurve` 重建配置的左右 Float Curve，默认 `contact_l/r`。该类不直接写 `DisableLegIK`，但名称可编辑，实际写入边界以实例配置为准。`IMGAnimationModifier_FootstepUtils.cpp` 的删除最终按名称/类型调用 Controller，不清空其他曲线。
+- UE 5.8 的批量 `Add Animation Modifier(s)` 窗口并非仅执行新添加项：`Editor/AnimationModifiers/Private/SAnimationModifierContentBrowserWindow.cpp::OnApply` 将新实例加入后，遍历动画已有的全部 Modifier 并 Apply。单个 Modifier 重复 Apply 还会先执行其上次应用实例的 Revert，见 `AnimationModifier.cpp::ApplyToAnimationSequence`。只重算 Contact 时，已存在实例应从动画的 Animation Modifiers 页选中该项单独 Apply，避免批量添加窗口或 Apply All 重跑其他项。
+- `UIMGAnimationModifier_AddAnimationCurves` 的 `bOverrideExistingCurves` 默认 true，匹配名称会删除整条旧 Float Curve，再写时间0的默认值；false 时保留已有同名曲线。旧 `IMGAnimationModifier_ApplyAnimationCurves` 由 `Config/DefaultEngine.ini` 的 ClassRedirect 映射到该类；遗留实例是否仍挂在资产上须实际回读，不能只凭资产字符串判定。
+- 一次性清理在 Core Ticker 延后执行，等待 `FApplyModifiersScope` 与编辑器当前事务结束，避免修改引擎正在遍历的 Modifier 数组或在模态 Apply 对话框中提前清理。每个回调保存实际源实例的强引用、动画与本次应用副本的弱引用，不用模板复制时可能重复的 GUID 合并跨资产清理；回滚销毁/后续 Apply 替换应用副本或动画失效时跳过。清理范围内建立 `FApplyModifiersScope`，避免清应用记录时 PostEditChange 再触发其他 Modifier；回调完成后释放引用。`InstanceId` 只在目标动画/骨架的实例列表中匹配引擎应用副本与源实例。
+- 排查线索与待验证项：若批量添加 Contact 后其他曲线被重置，先核对动画已有 Modifier、Add 曲线项的 Override/DefaultValue 及 Contact 的输出名称。资产二进制出现旧 Add/Apply 类名只证明存在序列化名称线索，不证明当前活动实例或曲线原值；具体受影响资产须回读实际 Modifier 配置和原始关键帧，不能据此自动恢复为猜测值。
 
 ### FootPlacement 骨盆目标、约束与重置
 

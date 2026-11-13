@@ -4,25 +4,14 @@
 #include "Animation/Skeleton.h"
 #include "AnimationModifiersAssetUserData.h"
 #include "Containers/Ticker.h"
+#include "Editor.h"
+#include "Editor/Transactor.h"
 #include "UObject/StrongObjectPtr.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGOneShotAnimationModifier)
 
 namespace IMG::AnimationModifiers
 {
-	struct FPendingRemoval
-	{
-		explicit FPendingRemoval(UIMGOneShotAnimationModifier* InSourceModifier)
-			: SourceModifier(InSourceModifier)
-		{
-		}
-
-		TStrongObjectPtr<UIMGOneShotAnimationModifier> SourceModifier;
-		int32 PendingApplications = 0;
-	};
-
-	TMap<FGuid, TSharedPtr<FPendingRemoval>> PendingRemovals;
-
 	UIMGOneShotAnimationModifier* FindSourceModifier(
 		const UIMGOneShotAnimationModifier* AppliedModifier,
 		UAnimSequence* Animation,
@@ -108,39 +97,34 @@ void UIMGOneShotAnimationModifier::RemoveAfterApply(UAnimSequence* Animation)
 
 	using namespace IMG::AnimationModifiers;
 
-	TSharedPtr<FPendingRemoval>& PendingRemoval = PendingRemovals.FindOrAdd(InstanceId);
-	if (!PendingRemoval.IsValid())
+	UIMGOneShotAnimationModifier* SourceModifier = FindSourceModifier(this, Animation, InstanceId);
+	if (SourceModifier == nullptr)
 	{
-		UIMGOneShotAnimationModifier* SourceModifier = FindSourceModifier(this, Animation, InstanceId);
-		if (SourceModifier == nullptr)
-		{
-			PendingRemovals.Remove(InstanceId);
-			return;
-		}
-
-		PendingRemoval = MakeShared<FPendingRemoval>(SourceModifier);
-		RemoveSourceInstance(SourceModifier);
+		return;
 	}
 
-	++PendingRemoval->PendingApplications;
-
-	const FGuid PendingId = InstanceId;
 	const TWeakObjectPtr<UAnimSequence> WeakAnimation(Animation);
+	const TWeakObjectPtr<UIMGOneShotAnimationModifier> WeakAppliedModifier(this);
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
-		[PendingId, PendingRemoval, WeakAnimation](float)
+		[StrongSourceModifier = TStrongObjectPtr<UIMGOneShotAnimationModifier>(SourceModifier),
+			WeakAnimation, WeakAppliedModifier](float)
 		{
-			UIMGOneShotAnimationModifier* SourceModifier = PendingRemoval->SourceModifier.Get();
-			if (UAnimSequence* AppliedAnimation = WeakAnimation.Get();
-				SourceModifier != nullptr && AppliedAnimation != nullptr && SourceModifier->CanRevert(AppliedAnimation))
+			// A modal apply dialog can tick the editor while a modifier list is still being traversed.
+			if (UE::Anim::FApplyModifiersScope::IsScopePending()
+				|| (GEditor != nullptr && GEditor->Trans != nullptr && GEditor->Trans->IsActive()))
 			{
-				// OnRevert is deliberately empty: this removes Unreal's applied record only.
-				SourceModifier->RevertFromAnimationSequence(AppliedAnimation);
+				return true;
 			}
 
-			--PendingRemoval->PendingApplications;
-			if (PendingRemoval->PendingApplications <= 0)
+			UIMGOneShotAnimationModifier* SourceModifier = StrongSourceModifier.Get();
+			if (UAnimSequence* AppliedAnimation = WeakAnimation.Get();
+				IsValid(SourceModifier) && AppliedAnimation != nullptr && WeakAppliedModifier.IsValid()
+				&& SourceModifier->CanRevert(AppliedAnimation))
 			{
-				PendingRemovals.Remove(PendingId);
+				UE::Anim::FApplyModifiersScope Scope;
+				RemoveSourceInstance(SourceModifier);
+				// OnRevert is deliberately empty: this removes Unreal's applied record only.
+				SourceModifier->RevertFromAnimationSequence(AppliedAnimation);
 			}
 
 			return false;

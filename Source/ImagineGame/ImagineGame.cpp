@@ -5,9 +5,17 @@
 class FIMGGameModule : public FDefaultGameModuleImpl
 {
 public:
+	virtual void StartupModule() override
+	{
+		FDefaultGameModuleImpl::StartupModule();
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::Startup();
+#endif
+	}
+
 	virtual void ShutdownModule() override
 	{
-#if ENABLE_DRAW_DEBUG
+#if IMG_TRAVERSAL_DEBUG_ENABLED
 		IMGTraversalDebug::Shutdown();
 #endif
 		FDefaultGameModuleImpl::ShutdownModule();

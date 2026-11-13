@@ -7,11 +7,16 @@
 #include "Components/CapsuleComponent.h"
 #include "MotionWarpingComponent.h"
 #include "UObject/StrongObjectPtr.h"
+#include "IMGTraversalDebug.h"
 
 void UIMGTraversalComponent::RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey)
 {
 	if (ReplaySessionValid && ActiveState.AbilitySpec == AbilitySpec && ActiveState.ActivationPredictionKey == PredictionKey)
 	{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Replay);
+		IMGTraversalDebug::State(GetOwner(), TEXT("PredictedReplayRetired"), ActiveState);
+#endif
 		*ReplaySessionValid = false;
 	}
 }
@@ -56,6 +61,20 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		return;
 	}
 	bCaptureTraversalExit = false;
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	const FGameplayAbilitySpecHandle DebugSpec = ActiveState.AbilitySpec;
+	const int16 DebugPrediction = ActiveState.ActivationPredictionKey;
+	const uint16 DebugSequence = ActiveState.Sequence;
+	if (IMGTraversalDebug::IsObserving(GetOwner()))
+	{
+		const FString DebugIdentity = FString::Printf(TEXT("HistoricalSpec=%s Pred=%d Seq=%u Montage=%s Move=%.6f"),
+			*ActiveState.AbilitySpec.ToString(), ActiveState.ActivationPredictionKey, ActiveState.Sequence,
+			*GetNameSafe(ActiveState.Montage.Get()), Move.TimeStamp);
+		IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Replay);
+		IMGTraversalDebug::Event(
+			GetOwner(), TEXT("ReplayCaptured"), DebugIdentity, false, IMGTraversalDebug::EStage::Replay);
+	}
+#endif
 	const TSharedPtr<bool> SessionValid = ReplaySessionValid;
 	TEnumAsByte<EMovementMode> EntryMode(MOVE_None), EntryGroundMode(MOVE_None);
 	uint8 EntryCustomMode = 0;
@@ -98,12 +117,26 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 			}
 		}
 	};
-	OutSetups.Add([WeakThis, WeakWarping, WeakMovement, WeakCapsule, HistoricalIgnores,
-	                 Modifiers, States, Animations, ResolvedTargets, ReplayExit, RecordedMove = &Move,
-	                 SessionValid, HistoricalMontage, bEnteredFlying, ReplayModifiers]() -> FMovementReplayRestore
-	{
+	OutSetups.Add([WeakThis, WeakWarping, WeakMovement, WeakCapsule, HistoricalIgnores, Modifiers, States, Animations,
+					  ResolvedTargets, ReplayExit, RecordedMove = &Move, SessionValid, HistoricalMontage,
+					  bEnteredFlying, ReplayModifiers
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+					  ,
+					  DebugSpec, DebugPrediction, DebugSequence
+#endif
+	]() -> FMovementReplayRestore {
 		UIMGCharacterMovementComponent* Movement = WeakMovement.Get();
-		if (!Movement) { return {}; }
+		if (!Movement)
+		{
+			return {};
+		}
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::FScope DebugScope(Movement->GetOwner(), IMGTraversalDebug::EPhase::Replay);
+		const FString DebugIdentity = IMGTraversalDebug::IsObserving(Movement->GetOwner())
+			? FString::Printf(TEXT("HistoricalSpec=%s Pred=%d Seq=%u Montage=%s Move=%.6f"), *DebugSpec.ToString(),
+				  DebugPrediction, DebugSequence, *GetNameSafe(HistoricalMontage.Get()), RecordedMove->TimeStamp)
+			: FString();
+#endif
 		auto DiscardHistoricalMotion = [Movement, RecordedMove, HistoricalMontage]()
 		{
 			if (RecordedMove->RootMotionMontage == HistoricalMontage) { Movement->RootMotionParams.Clear(); }
@@ -114,11 +147,20 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		if (!Self || !Self->IsTraversalAvailable() || !Warping || !Capsule ||
 		    Self->BoundMovement != WeakMovement || Self->BoundMotionWarpingComponent != WeakWarping || Self->bReplayingTraversalMove)
 		{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			IMGTraversalDebug::Event(Movement->GetOwner(), TEXT("ReplayDiscarded"),
+				DebugIdentity + TEXT(" | Bindings unavailable or replay reentered"), false,
+				IMGTraversalDebug::EStage::Replay);
+#endif
 			DiscardHistoricalMotion();
 			return {};
 		}
 		if (!Movement->IsRegistered() || !Movement->IsActive())
 		{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			IMGTraversalDebug::Event(Movement->GetOwner(), TEXT("ReplayDiscarded"),
+				DebugIdentity + TEXT(" | Movement inactive"), false, IMGTraversalDebug::EStage::Replay);
+#endif
 			DiscardHistoricalMotion();
 			return {};
 		}
@@ -128,10 +170,19 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		    !(Movement->IsFlying() || Movement->IsMovingOnGround() || Movement->IsFalling()))
 		{
 			// A terminal authority result must not resurrect the predicted montage through old moves.
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			IMGTraversalDebug::Event(Movement->GetOwner(), TEXT("ReplayDiscarded"),
+				DebugIdentity + TEXT(" | Session retired, death or movement takeover"), false,
+				IMGTraversalDebug::EStage::Replay);
+#endif
 			DiscardHistoricalMotion();
 			return {};
 		}
 		Self->bReplayingTraversalMove = true;
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::Event(
+			Self->GetOwner(), TEXT("ReplayBegin"), DebugIdentity, false, IMGTraversalDebug::EStage::Replay);
+#endif
 		if (bEnteredFlying && (Movement->IsMovingOnGround() || Movement->IsFalling()))
 		{
 			Movement->SetMovementMode(MOVE_Flying);
@@ -147,7 +198,10 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		TArray<FMotionWarpingTarget> PreviousTargets;
 		for (const FMotionWarpingTarget& Target : *ResolvedTargets)
 		{
-			if (const FMotionWarpingTarget* Previous = Warping->FindWarpTarget(Target.Name)) { PreviousTargets.Add(*Previous); }
+			if (const FMotionWarpingTarget* Previous = Warping->FindWarpTarget(Target.Name))
+			{
+				PreviousTargets.Add(*Previous);
+			}
 			Warping->AddOrUpdateWarpTarget(Target);
 		}
 		TArray<TStrongObjectPtr<URootMotionModifier>> LiveModifiers;
@@ -156,7 +210,10 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		// Keep live objects intact, and replay copies through the native modifier implementation.
 		for (URootMotionModifier* Modifier : Warping->GetModifiers())
 		{
-			if (!Modifier->Animation.IsValid() && Modifier->GetState() == ERootMotionModifierState::MarkedForRemoval) { continue; }
+			if (!Modifier->Animation.IsValid() && Modifier->GetState() == ERootMotionModifierState::MarkedForRemoval)
+			{
+				continue;
+			}
 			LiveModifiers.Emplace(Modifier);
 			LiveStates.Add(Modifier->GetSwapState());
 			LiveAnimations.Add(Modifier->Animation);
@@ -178,11 +235,17 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 			ReplayModifier->OnActivateDelegate.Unbind();
 			ReplayModifier->OnUpdateDelegate.Unbind();
 			ReplayModifier->OnDeactivateDelegate.Unbind();
-			if (!Warping->GetModifiers().Contains(ReplayModifier)) { Warping->AddModifier(ReplayModifier); }
+			if (!Warping->GetModifiers().Contains(ReplayModifier))
+			{
+				Warping->AddModifier(ReplayModifier);
+			}
 		}
 		for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : Self->AddedMovementIgnores)
 		{
-			if (Obstacle.IsValid()) { Capsule->IgnoreComponentWhenMoving(Obstacle.Get(), false); }
+			if (Obstacle.IsValid())
+			{
+				Capsule->IgnoreComponentWhenMoving(Obstacle.Get(), false);
+			}
 		}
 		TArray<TWeakObjectPtr<UPrimitiveComponent>> TemporaryIgnores;
 		for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : HistoricalIgnores)
@@ -194,11 +257,19 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 			}
 		}
 		return [WeakThis, WeakWarping, WeakCapsule, Revision, LiveState, ResolvedTargets,
-		           PreviousTargets = MoveTemp(PreviousTargets), LiveModifiers = MoveTemp(LiveModifiers),
-		           LiveStates = MoveTemp(LiveStates), LiveAnimations = MoveTemp(LiveAnimations),
-		           TemporaryIgnores = MoveTemp(TemporaryIgnores), ReplayExit, RecordedMove]()
-		{
+				   PreviousTargets = MoveTemp(PreviousTargets), LiveModifiers = MoveTemp(LiveModifiers),
+				   LiveStates = MoveTemp(LiveStates), LiveAnimations = MoveTemp(LiveAnimations),
+				   TemporaryIgnores = MoveTemp(TemporaryIgnores), ReplayExit, RecordedMove
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+				   ,
+				   DebugIdentity
+#endif
+		]() {
 			ThisClass* Current = WeakThis.Get();
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			IMGTraversalDebug::FScope DebugScope(
+				Current ? Current->GetOwner() : nullptr, IMGTraversalDebug::EPhase::Replay);
+#endif
 			if (UMotionWarpingComponent* CurrentWarping = WeakWarping.Get())
 			{
 				for (URootMotionModifier* Modifier : CurrentWarping->GetModifiers())
@@ -213,7 +284,10 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 					URootMotionModifier* Modifier = LiveModifiers[Index].Get();
 					Modifier->Animation = LiveAnimations[Index];
 					Modifier->RestoreFromSwapState(LiveStates[Index]);
-					if (!CurrentWarping->GetModifiers().Contains(Modifier)) { CurrentWarping->AddModifier(Modifier); }
+					if (!CurrentWarping->GetModifiers().Contains(Modifier))
+					{
+						CurrentWarping->AddModifier(Modifier);
+					}
 				}
 				for (const FMotionWarpingTarget& Target : *ResolvedTargets)
 				{
@@ -222,29 +296,45 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 					const FMotionWarpingTarget* Previous = (bSessionEnded ? LiveState.PreviousWarpTargets : PreviousTargets)
 					    .FindByPredicate([&Target](const FMotionWarpingTarget& Live) { return Live.Name == Target.Name; });
 					CurrentWarping->RemoveWarpTarget(Target.Name);
-					if (Previous) { CurrentWarping->AddOrUpdateWarpTarget(*Previous); }
+					if (Previous)
+					{
+						CurrentWarping->AddOrUpdateWarpTarget(*Previous);
+					}
 				}
 			}
 			if (UCapsuleComponent* CurrentCapsule = WeakCapsule.Get())
 			{
 				for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : TemporaryIgnores)
 				{
-					if (Obstacle.IsValid()) { CurrentCapsule->IgnoreComponentWhenMoving(Obstacle.Get(), false); }
+					if (Obstacle.IsValid())
+					{
+						CurrentCapsule->IgnoreComponentWhenMoving(Obstacle.Get(), false);
+					}
 				}
 				if (Current)
 				{
 					for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : Current->AddedMovementIgnores)
 					{
-						if (Obstacle.IsValid()) { CurrentCapsule->IgnoreComponentWhenMoving(Obstacle.Get(), true); }
+						if (Obstacle.IsValid())
+						{
+							CurrentCapsule->IgnoreComponentWhenMoving(Obstacle.Get(), true);
+						}
 					}
 				}
 			}
 			if (Current)
 			{
 				Current->bReplayingTraversalMove = false;
-				if (Current->ActiveState.bActive && Current->IsTraversalAvailable()) { Current->RefreshWarpTargets(); }
+				if (Current->ActiveState.bActive && Current->IsTraversalAvailable())
+				{
+					Current->RefreshWarpTargets();
+				}
 			}
 			ReplayExit(RecordedMove->EndPackedMovementMode);
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			IMGTraversalDebug::Event(Current ? Current->GetOwner() : nullptr, TEXT("ReplayRestored"), DebugIdentity,
+				false, IMGTraversalDebug::EStage::Replay);
+#endif
 		};
 	});
 }

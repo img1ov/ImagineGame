@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "IMGAnimationModifier_FootstepUtils.h"
+#include "AnimationModifiers/IMGAnimationModifier_FootstepUtils.h"
 
 #include "Animation/AnimData/CurveIdentifier.h"
 #include "Animation/AnimData/IAnimationDataController.h"

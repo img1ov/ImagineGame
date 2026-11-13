@@ -1,7 +1,7 @@
 #include "AnimationModifiers/IMGAnimationModifier_FootContactCurves.h"
 
 #include "Animation/AnimSequence.h"
-#include "IMGAnimationModifier_FootstepUtils.h"
+#include "AnimationModifiers/IMGAnimationModifier_FootstepUtils.h"
 #include "ImagineEditor.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGAnimationModifier_FootContactCurves)
@@ -240,18 +240,6 @@ void UIMGAnimationModifier_FootContactCurves::OnApply_Implementation(UAnimSequen
 		*LeftContactCurveName.ToString(), LeftKeys.Num(),
 		*RightContactCurveName.ToString(), RightKeys.Num(),
 		Animation->bLoop ? TEXT("true") : TEXT("false"));
-}
 
-void UIMGAnimationModifier_FootContactCurves::OnRevert_Implementation(UAnimSequence* Animation)
-{
-	Super::OnRevert_Implementation(Animation);
-
-	if (!IsValid(Animation))
-	{
-		return;
-	}
-
-	IMG::AnimationModifiers::Footstep::RemoveFloatCurve(Animation, LeftContactCurveName);
-	IMG::AnimationModifiers::Footstep::RemoveFloatCurve(Animation, RightContactCurveName);
-	UE_LOG(LogImagineEditor, Display, TEXT("IMG Foot Contact modifier reverted from '%s'."), *Animation->GetPathName());
+	RemoveAfterApply(Animation);
 }

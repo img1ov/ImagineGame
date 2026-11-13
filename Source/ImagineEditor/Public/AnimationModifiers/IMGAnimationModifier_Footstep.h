@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "AnimationModifier.h"
+#include "AnimationModifiers/IMGOneShotAnimationModifier.h"
 #include "Engine/EngineTypes.h"
 #include "GameplayTagContainer.h"
 #include "IMGAnimationModifier_Footstep.generated.h"
@@ -12,10 +12,10 @@
  * IMG context-effect notifies plus the Pose Search Phase curve.
  *
  * The notify track and Phase curve configured below are owned by this modifier and
- * are replaced each time it is applied.
+ * are replaced each time it is applied. The modifier then removes itself, keeping its output.
  */
-UCLASS(BlueprintType, meta = (DisplayName = "AnimationModifier_Footstep"))
-class UIMGAnimationModifier_Footstep : public UAnimationModifier
+UCLASS(BlueprintType, Blueprintable, meta = (DisplayName = "AnimationModifier_Footstep"))
+class UIMGAnimationModifier_Footstep : public UIMGOneShotAnimationModifier
 {
 	GENERATED_BODY()
 
@@ -23,7 +23,6 @@ public:
 	UIMGAnimationModifier_Footstep();
 
 	virtual void OnApply_Implementation(UAnimSequence* Animation) override;
-	virtual void OnRevert_Implementation(UAnimSequence* Animation) override;
 
 	/** Explicit locomotion event sent to the IMG Context Effects pipeline. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Footstep", meta = (Categories = "Foley.Event"))

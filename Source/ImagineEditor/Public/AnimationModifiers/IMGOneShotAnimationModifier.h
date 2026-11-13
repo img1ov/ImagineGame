@@ -9,8 +9,8 @@ class UAnimSequence;
 /**
  * Base class for destructive, one-shot animation modifiers.
  *
- * The modifier removes its authored instance after applying and clears only the
- * bookkeeping created by UAnimationModifier. Its animation changes are retained.
+ * After the apply batch finishes, the modifier removes its authored instance and
+ * clears only UAnimationModifier bookkeeping. Its animation changes are retained.
  */
 UCLASS(Abstract, NotBlueprintable)
 class UIMGOneShotAnimationModifier : public UAnimationModifier

@@ -22,14 +22,21 @@ public class ImagineEditor : ModuleRules
 			"AnimationModifiers",
 			"AnimationBlueprintLibrary",
 			"StudioTelemetry",
+			"AssetTools",
+			"Slate",
+			"SlateCore",
+			"RewindDebuggerInterface",
+			"TraceServices",
 			"ImagineGame"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new[]
 		{
 			"InputCore",
-			"Slate",
-			"SlateCore",
+			"ApplicationCore",
+			"Json",
+			"JsonUtilities",
+			"PropertyEditor",
 			"ToolMenus",
 			"EditorStyle",
 			"DataValidation",
@@ -39,7 +46,9 @@ public class ImagineEditor : ModuleRules
 			"CollectionManager",
 			"SourceControl",
 			"Chaos",
-			"ExternalRpcRegistry"
+			"ExternalRpcRegistry",
+			"TraceAnalysis",
+			"TraceLog"
 		});
 
 		// External RPC support is disabled in shipping builds.

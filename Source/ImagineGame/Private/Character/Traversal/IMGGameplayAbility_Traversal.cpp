@@ -18,27 +18,9 @@
 #include "Character/Traversal/IMGTraversalTargetData.h"
 #include "IMGTraversalPlacement.h"
 
-#if ENABLE_DRAW_DEBUG
 #include "IMGTraversalDebug.h"
-#endif
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_Traversal)
-
-DEFINE_LOG_CATEGORY_STATIC(LogIMGTraversal, Log, All);
-
-#if ENABLE_DRAW_DEBUG
-namespace
-{
-void DrawAbilityMessage(const AActor* Avatar, const TCHAR* Message, const FColor& Color)
-{
-	if (IsValid(Avatar) && IMGTraversalDebug::IsEnabled(1))
-	{
-		IMGTraversalDebug::String(
-		    Avatar->GetWorld(), Avatar->GetActorLocation() + FVector::UpVector * 145.f, Message, Color, 1);
-	}
-}
-} // namespace
-#endif
 
 UIMGGameplayAbility_Traversal::UIMGGameplayAbility_Traversal(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -52,7 +34,11 @@ UIMGGameplayAbility_Traversal::UIMGGameplayAbility_Traversal(const FObjectInitia
 void UIMGGameplayAbility_Traversal::LogTraversalEvent(
     const TCHAR* Event, const FString& Detail, bool bWarning) const
 {
-	if (!bWarning && !UE_LOG_ACTIVE(LogIMGTraversal, Verbose))
+	bool bObserve = false;
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	bObserve = IMGTraversalDebug::IsObserving(GetAvatarActorFromActorInfo());
+#endif
+	if (!bWarning && !UE_LOG_ACTIVE(LogIMGTraversal, Verbose) && !bObserve)
 	{
 		return;
 	}
@@ -70,6 +56,10 @@ void UIMGGameplayAbility_Traversal::LogTraversalEvent(
 	    Avatar ? *Avatar->GetVelocity().ToCompactString() : TEXT("None"),
 	    Movement ? static_cast<uint8>(Movement->MovementMode) : static_cast<uint8>(MOVE_None),
 	    Movement ? Movement->CustomMovementMode : 0, *Detail);
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::Event(Avatar, Event, Detail, bWarning, IMGTraversalDebug::EStage::Lifecycle,
+		CurrentSpecHandle.ToString(), CurrentActivationInfo.GetActivationPredictionKey().Current);
+#endif
 	if (bWarning)
 	{
 		UE_LOG(LogIMGTraversal, Warning, TEXT("%s"), *Context);
@@ -84,6 +74,10 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
     const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
     const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(
+		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, IMGTraversalDebug::EPhase::Preflight);
+#endif
 	if (bProcessingTraversalRequest || !ActorInfo || !ActorInfo->AvatarActor.IsValid())
 	{
 		return false;
@@ -96,10 +90,26 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 		if (!World || (NetworkRequestAvatar == Character &&
 		    (PendingAuthorityPredictionKey != 0 || World->GetTimeSeconds() < NextLocalRetryTime)))
 		{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			if (IMGTraversalDebug::IsObserving(Character))
+			{
+				IMGTraversalDebug::Event(Character, TEXT("PreflightGate"),
+					FString::Printf(TEXT("Waiting: World=%d PendingPredKey=%d RetryAt=%.3f"), World != nullptr,
+						PendingAuthorityPredictionKey, NextLocalRetryTime),
+					false, IMGTraversalDebug::EStage::Validate);
+			}
+#endif
 			return false;
 		}
 	}
-	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags)) { return false; }
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::Event(Character, TEXT("PreflightGate"), TEXT("Native GAS admission rejected"), false,
+			IMGTraversalDebug::EStage::Validate);
+#endif
+		return false;
+	}
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(Character);
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
@@ -108,6 +118,11 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 	    !Movement || !Movement->IsRegistered() || !Movement->IsActive() || Character->GetStance() != EIMGStance::Stand ||
 	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
 	{
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+		IMGTraversalDebug::Event(Character, TEXT("PreflightGate"),
+			TEXT("Traversal/warping/movement unavailable, already active, stance disallowed or dying"), false,
+			IMGTraversalDebug::EStage::Validate);
+#endif
 		return false;
 	}
 	if (ActorInfo->IsLocallyControlled())
@@ -132,6 +147,10 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
     const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
     const FGameplayEventData* TriggerEventData)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(
+		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, IMGTraversalDebug::EPhase::Activation);
+#endif
 	TGuardValue<bool> ProcessingRequest(bProcessingTraversalRequest, true);
 	bLocalRequest = false;
 	bTraversalStarted = false;
@@ -231,9 +250,6 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	{
 		LogTraversalEvent(TEXT("LocalSelectionRejected"), FString::Printf(TEXT("Action=%d Montage=%s Start=%.3f Rate=%.3f"),
 		    static_cast<int32>(Selection.Action), *GetNameSafe(Selection.Montage.Get()), Selection.StartTime, Selection.PlayRate));
-#if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(Character, TEXT("Traversal GA: animation selection rejected"), FColor::Red);
-#endif
 		CancelPendingTargetData();
 		return;
 	}
@@ -285,6 +301,9 @@ void UIMGGameplayAbility_Traversal::CancelPendingTargetData()
 
 void UIMGGameplayAbility_Traversal::OnTargetDataCancelled()
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
+#endif
 	if (!CurrentActorInfo || !CurrentActorInfo->AbilitySystemComponent.IsValid())
 	{
 		LogTraversalEvent(TEXT("TargetDataCancellationIgnored"), TEXT("ActorInfo or ASC is unavailable"));
@@ -304,6 +323,9 @@ void UIMGGameplayAbility_Traversal::OnTargetDataCancelled()
 void UIMGGameplayAbility_Traversal::OnTargetDataReady(
     const FGameplayAbilityTargetDataHandle& Data, FGameplayTag ApplicationTag)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::ServerValidation);
+#endif
 	if (!IsActive() || bIsAbilityEnding || bTraversalStarted || !CurrentActorInfo ||
 	    !CurrentActorInfo->AbilitySystemComponent.IsValid())
 	{
@@ -347,6 +369,9 @@ void UIMGGameplayAbility_Traversal::OnTargetDataReady(
 bool UIMGGameplayAbility_Traversal::ResolveTraversalRequest(const FIMGTraversalTargetData& Request, bool bRemoteRequest,
     FIMGTraversalCandidate& OutCandidate, FIMGTraversalAnimationSelection& OutSelection) const
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::ServerValidation);
+#endif
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	const AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	if (!Component || !Character)
@@ -392,9 +417,6 @@ bool UIMGGameplayAbility_Traversal::ResolveTraversalRequest(const FIMGTraversalT
 	OutSelection.PlayRate = Request.PlayRate;
 	if (!IsSelectionValid(OutSelection, OutCandidate, Request.MovementIntent, bRemoteRequest))
 	{
-#if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(Character, TEXT("Traversal GA: selection or server allow-list rejected"), FColor::Red);
-#endif
 		return false;
 	}
 	return true;
@@ -403,6 +425,9 @@ bool UIMGGameplayAbility_Traversal::ResolveTraversalRequest(const FIMGTraversalT
 bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, const FVector& MovementIntent, bool bRemoteRequest)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Execution);
+#endif
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
@@ -425,9 +450,6 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
 	{
 		LogTraversalEvent(TEXT("CommitRejected"), TEXT("CommitAbility failed after geometry and animation validation"), true);
-#if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(Character, TEXT("Traversal GA: CommitAbility failed"), FColor::Red);
-#endif
 		return false;
 	}
 	if (!IsActive() || bIsAbilityEnding || !CurrentActorInfo || CurrentActorInfo->AbilitySystemComponent.Get() != ASC ||
@@ -505,8 +527,8 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	LogTraversalEvent(TEXT("TraversalStarted"), FString::Printf(TEXT("Action=%d Montage=%s Start=%.3f Rate=%.3f Targets=%d"),
 	    static_cast<int32>(Selection.Action), *GetNameSafe(Selection.Montage.Get()), Selection.StartTime, Selection.PlayRate,
 	    WarpTargets.Num()));
-#if ENABLE_DRAW_DEBUG
-	IMGTraversalDebug::SuccessfulTraversal(Character, Candidate, Selection);
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::ExecutionStarted(Character, Candidate, Selection);
 #endif
 	OnTraversalStarted(Candidate, Selection.Action);
 	if (!IsTraversalExecutionValid() || CurrentActorInfo->AbilitySystemComponent.Get() != ASC)
@@ -615,25 +637,10 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	const double CandidateAge = World ? World->GetTimeSeconds() - Candidate.DetectionTime : BIG_NUMBER;
 	const bool bCandidateFresh =
 	    Traversal && World && CandidateAge >= 0.0 && CandidateAge <= Traversal->GetDetectorSettings().MaxCandidateAge;
-#if ENABLE_DRAW_DEBUG
-	if (!bCandidateFresh && Character && IMGTraversalDebug::IsEnabled(1) &&
-	    IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
-	{
-		IMGTraversalDebug::String(Character->GetWorld(), Character->GetActorLocation() + FVector::UpVector * 160.f,
-		    FString::Printf(TEXT("Traversal Validate: stale candidate %.3fs"), CandidateAge), FColor::Red, 1);
-	}
-#endif
 	const bool bMatchesRemoteWhitelist =
 	    AllowedMontages.ContainsByPredicate([&Selection](const FIMGTraversalAllowedMontage& Allowed)
 	        { return Allowed.Action == Selection.Action && Allowed.Montage == Selection.Montage; });
 	const bool bAllowedRemoteSelection = !bRemoteRequest || AllowedMontages.IsEmpty() || bMatchesRemoteWhitelist;
-#if ENABLE_DRAW_DEBUG
-	if (bRemoteRequest && !bAllowedRemoteSelection)
-	{
-		DrawAbilityMessage(GetIMGCharacterFromActorInfo(),
-		    TEXT("Traversal Validate: remote montage is not in AllowedMontages"), FColor::Red);
-	}
-#endif
 	const FIMGTraversalAnimationSettings* Settings =
 	    Traversal ? Traversal->FindAnimationSettings(Selection.Action, Selection.Montage) : nullptr;
 	if (!Settings)
@@ -700,15 +707,21 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	TArray<FIMGTraversalWarpWindow> Windows;
 	Traversal->GetWarpWindows(Selection.Montage, Windows);
 	return IMGTraversalPlacement::PrepareTargets(*Character, *Settings, Traversal->GetDetectorSettings(), Windows,
-	    Candidate, Selection, OutTargets, UE_LOG_ACTIVE(LogIMGTraversal, Verbose),
-	    [this](const TCHAR* Event, const FString& Detail, bool bWarning)
-	    {
-		    LogTraversalEvent(Event, Detail, bWarning);
-	    });
+		Candidate, Selection, OutTargets,
+		UE_LOG_ACTIVE(LogIMGTraversal, Verbose)
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			|| IMGTraversalDebug::IsObserving(Character)
+#endif
+			,
+		[this](
+			const TCHAR* Event, const FString& Detail, bool bWarning) { LogTraversalEvent(Event, Detail, bWarning); });
 }
 
 void UIMGGameplayAbility_Traversal::OnTargetDataTimedOut()
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
+#endif
 	if (IsActive() && !bIsAbilityEnding && !bTraversalStarted)
 	{
 		LogTraversalEvent(TEXT("TargetDataTimedOut"), TEXT("Authority released an attempt still waiting for target data"), true);
@@ -719,6 +732,9 @@ void UIMGGameplayAbility_Traversal::OnTargetDataTimedOut()
 void UIMGGameplayAbility_Traversal::FilterClientCorrection(
     const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Replication);
+#endif
 	const UIMGCharacterMovementComponent* Movement = FilteredMovement.Get();
 	const UWorld* World = GetWorld();
 	if (!IsTraversalExecutionValid() || !CurrentActorInfo->IsLocallyControlled() || CurrentActorInfo->IsNetAuthority() ||
@@ -766,6 +782,9 @@ void UIMGGameplayAbility_Traversal::DelayLocalRetry()
 void UIMGGameplayAbility_Traversal::OnNetworkTermination(
     FGameplayAbilitySpecHandle Handle, int16 PredictionKey, bool bRejected)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Replication);
+#endif
 	if (!NetworkASC.IsValid() || NetworkASC->GetAvatarActor() != NetworkRequestAvatar.Get() ||
 	    Handle != PendingAuthoritySpec || PredictionKey != PendingAuthorityPredictionKey || PredictionKey == 0)
 	{
@@ -843,6 +862,9 @@ void UIMGGameplayAbility_Traversal::OnPawnAvatarSet()
 
 void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Execution);
+#endif
 	UIMGTraversalComponent* Component = ActiveComponent.Get();
 	const UWorld* World = GetWorld();
 	const AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
@@ -850,9 +872,6 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	if (Health && Health->IsDeadOrDying())
 	{
 		LogTraversalEvent(TEXT("TraversalAborted"), TEXT("Character died"), true);
-#if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(Character, TEXT("Traversal Abort: character died"), FColor::Red);
-#endif
 		K2_EndAbility();
 		return;
 	}
@@ -872,10 +891,6 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		    TEXT("Execution binding, Flying or obstacle set lost: Mode=%u Custom=%u"),
 		    Movement ? static_cast<uint8>(Movement->MovementMode) : static_cast<uint8>(MOVE_None),
 		    Movement ? Movement->CustomMovementMode : 0), true);
-#if ENABLE_DRAW_DEBUG
-		DrawAbilityMessage(
-		    GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: execution binding or obstacle set lost"), FColor::Red);
-#endif
 		K2_EndAbility();
 		return;
 	}
@@ -899,10 +914,6 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		{
 			LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(TEXT("Obstacle lost or surface policy changed: %s"),
 			    *GetNameSafe(Target)), true);
-#if ENABLE_DRAW_DEBUG
-			DrawAbilityMessage(
-			    GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle component lost"), FColor::Red);
-#endif
 			K2_EndAbility();
 			return;
 		}
@@ -916,15 +927,13 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 			    TEXT("Obstacle=%s invalid transform, forbidden physics or excessive motion: Speed=%.2f Max=%.2f AngularSpeed=%.2f Max=%.2f SimPhysics=%d AllowPhysics=%d"),
 			    *GetNameSafe(Target), Speed, Settings.MaxMovingSpeed, AngularSpeed, Settings.MaxAngularSpeedDegrees,
 			    Target->IsSimulatingPhysics(), Settings.bAllowSimulatingPhysics), true);
-#if ENABLE_DRAW_DEBUG
-			DrawAbilityMessage(
-			    GetAvatarActorFromActorInfo(), TEXT("Traversal Abort: obstacle moved too fast"), FColor::Red);
-			if (IMGTraversalDebug::IsEnabled(3) && IMGTraversalDebug::IsStageEnabled(IMGTraversalDebug::EStage::Execution))
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+			if (IMGTraversalDebug::IsEnabled())
 			{
-				IMGTraversalDebug::String(World, Target->GetComponentLocation() + FVector::UpVector * 18.f,
-				    FString::Printf(TEXT("Abort %s: V %.0f/%.0f  W %.0f/%.0f"), *Target->GetName(), Speed,
-				        Settings.MaxMovingSpeed, AngularSpeed, Settings.MaxAngularSpeedDegrees),
-				    FColor::Red, 3);
+				IMGTraversalDebug::MessageAt(Target->GetComponentLocation() + FVector::UpVector * 18.f,
+					FString::Printf(TEXT("Abort %s: V %.0f/%.0f  W %.0f/%.0f"), *Target->GetName(), Speed,
+						Settings.MaxMovingSpeed, AngularSpeed, Settings.MaxAngularSpeedDegrees),
+					IMGTraversalDebug::EStage::Execution);
 			}
 #endif
 			K2_EndAbility();
@@ -937,12 +946,18 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 
 void UIMGGameplayAbility_Traversal::OnMontageCompleted()
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
+#endif
 	bMontageCompleted = true;
 	K2_EndAbility();
 }
 
 void UIMGGameplayAbility_Traversal::OnMontageInterrupted()
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
+#endif
 	LogTraversalEvent(TEXT("MontageInterruptedOrCancelled"),
 	    TEXT("Montage interrupted, task cancelled or montage startup failed"));
 	if (!bTargetDataSent)
@@ -959,6 +974,9 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
     const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
     bool bReplicateEndAbility, bool bWasCancelled)
 {
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
+#endif
 	if (!IsEndAbilityValid(Handle, ActorInfo))
 	{
 		return;
@@ -985,9 +1003,6 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		ClearCorrectionFilter();
 		DelayLocalRetry();
 		SendPendingTargetDataCancellation();
-#if ENABLE_DRAW_DEBUG
-		IMGTraversalDebug::DiscardTraversalSnapshot(GetAvatarActorFromActorInfo());
-#endif
 		if (UWorld* World = GetWorld())
 		{
 			World->GetTimerManager().ClearTimer(TargetCheckTimer);
