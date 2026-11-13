@@ -75,38 +75,40 @@ public:
 	virtual void OnRep_IsActive() override;
 
 protected:
-	/** 几何搜索与安全限制；Automatic 专属参数由本次请求来源选择，组件不自行触发 GA。 */
+	/** Geometry search and safety limits. The request source selects Automatic-only parameters; this component does not trigger the GA. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Detection")
 	FIMGTraversalDetectorSettings DetectorSettings;
 
-	/** 检测成功后的发起条件，在选动画前及服务端重检时消费；触发时机和重试由外部处理。 */
+	/** Initiation checks after detection, before animation selection and during server revalidation. Callers control triggering and retries. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Initiation")
 	FIMGTraversalInitiationSettings InitiationSettings;
 
 	/**
-	 * 按 Action 配置通用执行规则；同类动作的大多数蒙太奇共用此处设置。
-	 * CHT/SelectTraversalAnimation 仍负责每次选出一个 Montage，本数组不参与动画选择。
-	 * 选中结果没有匹配的 MontageSettings 时，使用对应 Action 的这一整份 Settings。
+	 * Common execution rules per Action, shared by most montages for that action.
+	 * CHT/SelectTraversalAnimation selects one Montage per attempt; this array does not select animations.
+	 * If no MontageSettings entry matches the selection, use the corresponding Action's entire Settings.
 	 */
 	UPROPERTY(
 	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Animation", meta = (TitleProperty = "Action"))
 	TArray<FIMGTraversalActionSettings> ActionSettings;
 
 	/**
-	 * 少数特殊蒙太奇的可选执行配置；通常保持空数组，只在执行规则确有差异时增加条目。
-	 * 流程：CHT 选出一个 Montage -> 按选中的 Action + Montage 精确查找本数组 -> 未匹配则使用 ActionSettings。
-	 * 这里不会再次选动画；SelectTraversalAnimation 返回空 Montage 或 Action=None 时，本数组不提供兜底动画。
-	 * 匹配条目的 Settings 会整份替换动作配置，不逐字段合并；新增条目也不会自动复制对应 ActionSettings。
-	 * 配置时应先复制该动作的完整 Settings，再修改特殊项，保留其余 Warp、Landing、净空和 PlayRate 约束。
+	 * Optional execution overrides for exceptional montages. Usually empty; add entries only when execution rules differ.
+	 * Flow: CHT selects one Montage -> find an exact Action + Montage match here -> fall back to ActionSettings if absent.
+	 * This array does not select another animation or provide a fallback when SelectTraversalAnimation returns no Montage or Action=None.
+	 * A matching entry replaces the entire action Settings without merging fields. New entries do not copy ActionSettings automatically.
+	 * Copy the action's complete Settings first, then change specific fields while preserving other Warp, Landing, clearance and PlayRate constraints.
 	 *
-	 * 案例一：通用 Hurdle 配置使用 DistanceCurve + Distance_From_Ledge 推算落点；假设某个特殊动画没有这条曲线，
-	 * 而是直接 Warp 到检测出的 BackFloor。只为该 Montage 配置 Landing.Mode=DetectedFloor，保留必要的
-	 * BackFloor 绑定和落地平移窗口；其他 Hurdle 继续使用 ActionSettings 的曲线规则。
-	 * 案例二：某个动画的前沿 Notify 使用 ContactFront，而通用名字是 FrontLedge。只为该 Montage 将
-	 * 前沿 WarpBinding.TargetName 及 RequiredTargets 中对应项改为 ContactFront，几何 Anchor 仍为 FrontLedge；
-	 * 若 Landing 使用该前沿作为锚点，其 AnchorTargetName/FallbackAnchorTargetName 也应同步修改。
+	 * Example 1: common Hurdle settings calculate landing from DistanceCurve + Distance_From_Ledge. An exceptional
+	 * animation may lack that curve and instead warp directly to the detected BackFloor. Set Landing.Mode=DetectedFloor
+	 * only for that Montage, preserving the required BackFloor binding and landing translation window. Other Hurdle
+	 * montages continue to use the curve rules in ActionSettings.
+	 * Example 2: a montage's front-ledge Notify uses ContactFront instead of the common FrontLedge name. For that Montage,
+	 * change the front WarpBinding.TargetName and corresponding RequiredTargets entry to ContactFront; keep the geometric
+	 * Anchor as FrontLedge. If Landing uses this front contact, update AnchorTargetName/FallbackAnchorTargetName as well.
 	 *
-	 * 每次只处理最终选中的一个 Montage；预测端与服务端用同一键解析配置。不要重复配置同一 Action/Montage。
+	 * Each attempt handles only the selected Montage. Prediction and the server resolve settings with the same key.
+	 * Do not configure duplicate Action/Montage pairs.
 	 */
 	UPROPERTY(
 	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Animation", meta = (TitleProperty = "Montage"))

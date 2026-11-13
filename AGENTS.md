@@ -270,6 +270,7 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 ### 职责与装配
 
+- Traversal运行时及编辑器源码的注释统一使用英文，配置合同与示例保留原意；中文工程导航继续写在AGENTS中。
 - 源码位于 `Source/ImagineGame/{Public,Private}/Character/Traversal`，属于 ImagineGame。以 UE 合同为准：GAS 管能力和 Montage 生命周期，CMC 管权威移动、预测与纠偏，MotionWarping 修改根运动；GTA 只对照职责与算法意图。
 
 | 入口 | 职责 |
