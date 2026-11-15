@@ -1,6 +1,7 @@
 #include "Animation/IMGAnimInstance.h"
 
 #include "AbilitySystemGlobals.h"
+#include "Animation/IMGAnimInstanceProxy.h"
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
 
@@ -19,6 +20,16 @@ void UIMGAnimInstance::InitializeWithAbilitySystem(UAbilitySystemComponent* ASC)
 {
 	check(ASC);
 	GameplayTagPropertyMap.Initialize(this, ASC);
+}
+
+FAnimInstanceProxy* UIMGAnimInstance::CreateAnimInstanceProxy()
+{
+	return new FIMGAnimInstanceProxy(this);
+}
+
+void UIMGAnimInstance::EvaluateSparseMontageCurves(FName SlotName, const FBlendedCurve& BaseCurve, FBlendedCurve& OutCurve) const
+{
+	GetProxyOnAnyThread<FIMGAnimInstanceProxy>().EvaluateSparseMontageCurves(SlotName, BaseCurve, OutCurve);
 }
 
 #if WITH_EDITOR

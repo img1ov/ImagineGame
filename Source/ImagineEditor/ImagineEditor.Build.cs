@@ -5,12 +5,16 @@ public class ImagineEditor : ModuleRules
 	public ImagineEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		// AnimGraph node wrappers are serialized in runtime Blueprints, then removed during cook.
+		OverridePackageType = PackageOverrideType.GameUncookedOnly;
 
 		PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"AnimGraph",
+			"BlueprintGraph",
 			"GameplayTags",
 			"EditorFramework",
 			"UnrealEd",
@@ -32,6 +36,7 @@ public class ImagineEditor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new[]
 		{
+			"AnimGraphRuntime",
 			"InputCore",
 			"ApplicationCore",
 			"Json",
