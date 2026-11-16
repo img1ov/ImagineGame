@@ -83,8 +83,8 @@
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
-- GTA 参考：`D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`，工程导航见该源码根目录 `AGENTS.md`；旧 `C:/Application/gta5` 路径当前不存在。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
-- UE 源码位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4；`D:/Application/UnrealEngine` 路径不存在。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- GTA 参考当前位于 `C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`；原记录 `D:/Workspace/Learning/Sources/GTAV Source` 当前不存在。`D:/Application/GTA/GTAVSP/GTAV Source` 当前为空目录，不作为源码入口。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
+- UE 源码当前位于 `D:/Application/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4；原记录 `D:/Workspace/UnrealEngine/UE_5.8` 当前不存在。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ### 编辑器资产搜索缓存诊断
 
@@ -358,13 +358,26 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - Bone/Static/None 参照将 Target 换算成胶囊位置。有动画平移时按 BaseTranslationOffset 换算中心，关闭 WarpToFeetLocation 则清除该偏移的 Z；无平移时按脚底换算。Target 与胶囊中心不应直接比较。支撑求值只累计至所选接触窗口末端，不累计其后的走位；播放路径及预计混出时间仍用于筛选可到达窗口，不承担动作接触终点的含义。
 - 自动补偿的模型支持完整、顺序、不重叠、未限速的原生 Skew 窗口，要求单位 Actor/Mesh 世界缩放、直立胶囊；旋转为 Default/Slerp，时间倍率在(0,1]。非 Warp Modifier 也保留范围，以空 Modifier 标记降级，防止漏算 Scale/自定义效果。超出模型范围时 Mantle、Landing=None 的 Hurdle 保留原目标执行；显式 Landing 仍要求可靠预测。重叠窗口当前不自动补偿，不能把此限制当作动画整体准入条件。`URootMotionModifier_SkewWarp::MaxSpeedClampRatio` 是 protected 且无公开 getter，Placement 用 `FindFProperty` 反射读取（0 表示不限速）；反射取不到时该窗按不可预测处理，Mantle/Landing=None 降级保留原目标，显式 Landing 直接拒绝，故引擎升级后需复核该字段名与语义。
 
+- 已验证重叠执行语义：UE `MotionWarpingComponent.cpp::ProcessRootMotionPreConvertToWorld` 按 Modifiers 数组顺序处理全部 Active Modifier，并不禁止窗口重叠；`RootMotionModifier_SkewWarp.cpp::ProcessRootMotion` 的平移/旋转分支会重新计算并写入对应分量，不能把重叠理解为两个独立终点修正相加。IMG `PrepareTargets` 的 `bProjectSequence` 当前对整个剩余可达窗口链判定；任一受检窗口重叠即关闭本次预测，即使冲突在所选接触终点之后。首尾严格相接（前窗 End <= 后窗 Start）允许；同 Target 或仅旋转/平移职责分离的重叠也未获特殊放行。
+- 重叠诊断已接通：`IMGGameplayAbility_Traversal.cpp::PrepareWarpTargets` 调用 Placement 时，Verbose 日志或 `IMGTraversalDebug::IsObserving` 均开启详细诊断；`PlacementPredictionUnavailable`/`PlacementPredictionFallback` 的原因含 `Overlap`、`OverlapWith`、六位小数时间、Target 和轴设置，进入 Rewind Execution Details 与原始导出。当前只描述与前一受检窗口的冲突，不是全部重叠对清单；无观测且未开 Verbose 时，普通可选补偿不构造完整原因。
+- 设计建议（尚未实现）：维持普通补偿保留原目标、显式 Landing 预测失败拒绝的边界，以现有诊断辅助手调窗口。若扩展模型，优先研究按所选求值终点裁剪依赖链，及职责独立重叠的严格可预测条件；不可直接忽略重叠、自动截短 Notify 或跳过显式 Landing 校验。重叠资产的实际表现、Modifier 激活顺序与帧步长影响仍需运行确认。
+
 ### 高度补偿与显式落地
 
-- 补偿只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。Mantle 在最后可到达平移窗末检查登顶；Hurdle 有显式 Landing 时用所选落地窗，否则仅在有 BackFloor 平移窗时用最后一个此类窗。Vault 不做支撑补偿；Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。
+- 当前补偿实现只调整执行 Target.Z，不改检测锚点、XY、旋转，也不在播放中程序化移动胶囊。反推关系为 `TargetZ = SafeCenterZ - CenterOffsetZ`，允许上下修正；支撑层位容差与修正幅度分开。Mantle 在最后可到达平移窗末检查登顶；Hurdle 有显式 Landing 时用所选落地窗，否则仅在有 BackFloor 平移窗时用最后一个此类窗。Vault 不做支撑补偿；Hurdle 仅绑定沿点且 Landing=None 时保留动画跨越轨迹。Mantle 的资产窗口合同见下节；仅抓沿即结束、其后仍靠根运动登顶的资产不满足当前窗末支撑补偿模型，不能将其跳过补偿解释为重叠或碰撞算法必然错误。
 - 普通 Mantle 的补偿是可选修正。平面支撑、完整胶囊扫掠、CMC可走性、归属、层位、边缘容差、重叠及全窗口链复算通过才写回；失败恢复/保留原目标，不追加名义终点贴地硬门槛，全 IgnoreZ 同样处理。`CompensatedPlacementCenter` 只缓存所选求值终点上校正成功的安全中心。降级不证明最终站稳；几何、表面、绑定、RequiredTargets 和有限路径校验仍生效。
+- 补偿排查入口：`PlacementEvaluation` 已出现说明接触终点投影已通过；随后 `PlacementPlane` 的 Hit=1 只证明线探针命中。`IsPlacementSupport` 仍要求载体/障碍归属、顶层高度（Mantle）或后方落差（Hurdle）、有效阻挡、CMC.IsWalkable 和表面规则全部通过，否则以 `No usable plane support on the selected layer` 跳过，尚未进入完整胶囊扫掠与 Target.Z 写回。该日志当前不逐项输出失败布尔值或实际可走阈值，不能只凭 Normal 推定具体坡度配置；检测摘要 GroundSlopeAngle 是采样均值，不代表此命中面坡度。若最后平移窗仍对应抓沿阶段，求值点也在该窗末，不会自动等到后续登顶姿态或累计窗后根运动。
 - Mantle 始终限定障碍顶层，`Landing.Mode` 必须为 None，不允许实际消费 BackFloor 目标；Vault 同样禁止显式 Landing 和实际消费 BackFloor。未消费的默认 BackFloor binding 可保留。顶层取 `TopSupportHeightRange ± DepthHeightTolerance`，范围来自中心、两侧、首个断层前连续顶面和后沿细化。仅比较组件不足以区分同一车身上的车顶与低层斜面。
 - 支撑参照取求值接触窗的几何绑定，修正 Target 则取该窗及之前最后控制 Z 的窗口，二者可以不同。Mantle 接受该接触载体/障碍集的顶层；Hurdle 仅接受接触 BackFloor 载体、位于后沿朝向的后方半空间且落差在 `0..MaxDrop` 的支撑，不借前沿载体或障碍顶面代替后方地面。Hurdle 探高范围由胶囊、接触锚点距离及 CMC/组件可走坡度推导。安全中心保留 CMC 地面间隙，改后复算截至同一接触终点的窗口链，防止同名 Target 影响前窗。向下修正保留独立支撑碰撞，向上修正通过复核后才可加入临时忽略。
 - 显式 Landing 仅适用 Hurdle，需 BackFloor 绑定和预计混出前完成的平移窗；None 可保留动画自带落地，不自动补设窗口。补偿、修正后复算、净空/支撑/直线路径与预览胶囊统一在选中Landing窗口末端求值，即使它是最后平移窗也不累计窗后Montage根运动。只选该落地窗及之前最后控制Z的窗口修正Target；之后的高度窗不能反过来补偿先前落点。NativeTail的bSubtractRemainingRootMotion参照仍按引擎资产全长扣除，不能因截断求值而删掉该扣除。较早Landing不让后窗覆盖共享同名Target。CapsuleClearance 只加校验余量；预测、后沿后方可走落点、落差、完整胶囊、实际根位置的后方支撑及可选直线路径不通过即拒绝。普通补偿的“保留原目标”不豁免此合同。结果按载体局部 Target 复制。
+
+### Mantle 窗口制作与优化边界
+
+- 用户确认采用现有窗末求值合同：让 Root 完成上抬、到达 attach 所代表的平台落位阶段后结束最后一个平移 Warp 窗口；不把抓沿后仍需登顶的中间姿态作为站立检查点。此处不是要求胶囊中心与 attach 世界坐标重合，仍须按 Bone/Static Provider、Mesh BaseOffset 与胶囊尺寸换算；也不要求覆盖后续走路尾段或自动选择 Root 最高点。
+- UE `RootMotionModifier.cpp` 的 Bone Provider 在 Window.EndTime 采样 Root 相对骨点的 Transform；改变 EndTime 会改变参照关系，窗口变长不等于逐帧手部 IK。资产作者须保证 attach 在所选窗末仍是有效的平台参照，实际接触与运动表现由资产运行验收。
+- 当前选定方案保留原生 MotionWarping 与既有 Target.Z 可选修正，不新增独立补偿 ANS、后段 Modifier、时间字段或复制计划。两者若都按作者指定区间修正同一根运动，仅拆出独立标记不构成算法能力提升。后续优化聚焦原模型的计算、适用范围和诊断；短 Warp 加窗后登顶预测仅在出现明确资产需求后另行设计。
+- Target.Z 的非零修正会改变接触 Target，相同名称的相关前窗也受影响；即使支撑/完整复算通过，也不能称为未偏移原几何手点的绝对对齐。若要求原手点严格不变，应独立评估该约束与最终站立是否兼容，不通过强行拉长窗口或新增标记声称两者同时保证。
+- 待优化诊断：区分无需修正、窗末尚无可用顶面、修正后校验失败、窗口重叠/模型不支持及实际执行偏差；保留原目标降级与显式 Hurdle Landing 的不同合同。不将补偿量非零当作动作成功的必要条件。
 
 ### 执行与三端网络
 
@@ -488,8 +501,11 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 
 - GTA 路径相对 `src/dev_ng/game`：检测/手点 `task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`，发起 `task/Default/TaskPlayer.cpp`，Jump/Vault 分流 `task/Movement/Jumping/TaskJump.*`，执行/清理 `task/Movement/Climbing/TaskVault.*`。GTA Clone 同步不等同 UE 的 CMC Replay。
 - CTaskVault 按手点、DropPoint、GroundToRootOffset 和动画相位求目标位移，`CalcTotalAnimatedDisplacement`、`SetDesiredVelocityAdjustmentRange` 分别处理动画位移/调整区间。`ClimbDetector::ValidateHandHoldAndDetermineVolume` 调 `CTaskVault::IsHandholdSupported` 校验出口，不能把几何通过等同动画可落位；IMG 分层落实为选片后绑定、可选补偿和显式 Landing 合同。
+- 已验证 GTA 位移与接触分别处理：`TaskVault.cpp::CalcTotalAnimatedDisplacement` 从 StartScalePhase 提取至相位1的 mover 位移并按活动双 Clip 权重混合；`ScaleDesiredVelocity` 将 TargetDist 与该总位移之差按各轴调整区间添加到动画速度，`ProcessPhysics` 在 Climb/Slide 消费。`StateClimb_OnUpdate` 在混入或超过初始调整区间时重算剩余位移，并可把后续调整延长到相位1；因此不是只对齐手点后永久冻结后段位移。`ProcessHandIK/UpdateHandIK` 由动画信号启停，向 Arm IK 提交绝对或载体相对目标；`ComputeIsOnGround` 另查实际支撑。这些是本地源码事实，不代表该快照所有资产的配置或发行版实际行为，也不将其整体视为精确接触/必定落位证明。
+- 标记职责映射已核对：GTA `StateClimb_OnEnter` 直接读取 Clip 的 `AdjustAnimVel.GetStart/GetEnd`，传给 `SetDesiredVelocityAdjustmentRange`；它是 Climb 的位移调整区间，不特指手点对齐后的第二补偿阶段。UE 的 `UAnimNotifyState_MotionWarping` 本身就是区间标记，`OnBecomeRelevant` 以相同 StartTime/EndTime 创建 Modifier，`MotionWarpingComponent::ProcessRootMotionPreConvertToWorld` 逐帧消费。因此二者在“动画提供允许调整根运动的时间区间、执行端向目标收敛”这一职责上对应，不能据 GTA 使用标记便要求 IMG 再新增独立补偿 ANS。源码只证明标记数据消费，不证明 GTA 编辑器的具体制作操作。
+- 数学实现不能视为等同：GTA 以至 Clip 相位1的总动画位移计算 DistanceDiff，将各轴残差按调整区间相位覆盖量加到 DesiredVelocity，并可能动态延长区间；UE SkewWarp 默认从 PreviousPosition 提取到 Window.EndTime 的剩余根运动，缩放/剪切本帧根运动，Bone Provider 另做窗末 Root/骨点目标换算，`bSubtractRemainingRootMotion` 是额外尾段扣除选项。故 GTA 调整标记末端不必等于其目标位移的求值末端，而 IMG Mantle 当前明确以最后平移窗末作支撑求值。保留职责映射，不据此承诺同轨迹、同终点或同碰撞结果；项目准备阶段的 Target.Z 支撑修正也须与原生逐帧 Warp 区分。
 - `ms_VaultExitConditions` 的 eVEC_Slide 属于独立滑行动作且禁自动 Vault，IMG 推荐表只保留对应普通 Vault 的六条。27.5 cm深度球、55 cm步距、20 cm断层等保持既有映射，不以调阈值替代执行语义。GTA 多层搜索/坡面后筛、MBR发起范围、JumpVault步态门槛及 AutoVault摇杆/受阻/冷却可作对照；纯自动落地要求与 IMG 默认允许空中属于策略差异。
-- 当前预测假设资产默认有限 Section 链正常推进。运行时改链、混合权重、限速/轴耦合和 CMC 碰撞截断会改变实际落位；抓沿下移受阻后，后段会从实际高度继续根运动，预计算不能修复此执行偏差。结束时必须查实际支撑，不补做运行时轨迹或第二次 Warp。
+- 当前预测假设资产默认有限 Section 链正常推进。运行时改链、混合权重、限速/轴耦合和 CMC 碰撞截断会改变实际落位；抓沿下移受阻后，后段会从实际高度继续根运动，预计算不能修复此执行偏差。结束时查实际支撑，不补做运行时轨迹或第二次 Warp；当前用户选择按 Mantle 窗口制作合同保留原生执行，不引入独立后段修正。
 - 局部 Target 跟随不等于完整动态平台支持。BasedMovement/动态 Bone、世界回滚、异步检测、持续悬挂/Shimmy/梯子另行设计；沿用 UE/GAS/CMC，不移植 RAGE 的附着、Capsule、手动位移或网络协议。
 - **待运行验收：** 各 Action、窗内起播/跨 Section、上下补偿、失败/中断、专服/Listen Server 的自主与模拟代理、引用晚到及延迟/丢包纠偏。源码合同、静态检查及三客户端 PIE 总帧数均不能替代资产表现与联机验收。
 
