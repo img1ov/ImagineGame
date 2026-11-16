@@ -90,6 +90,7 @@
 
 - 模块内头文件include从Public根写相对路径，不使用 `../` 穿越或依赖Private同目录头搜索。公开头直接包含的AssetTools/Slate/SlateCore/RewindDebuggerInterface/TraceServices列为Public依赖，TraceAnalysis及PropertyEditor实现依赖仍留Private。UBT自动发现子目录CPP，无需为搬迁增加IncludePaths。只改路径不改反射类型、模块名或 `/Script/ImagineEditor.*` 配置身份；生成头及UE_INLINE_GENERATED_CPP_BY_NAME继续使用原类型文件名。
 - ImagineEditor 的加载类型继续为 `.uproject` 中的 Editor；因模块包含序列化到运行时 AnimBP 的 AnimGraph 编辑器节点，Build.cs 用 `OverridePackageType = PackageOverrideType.GameUncookedOnly` 标记脚本包。UBT 将覆盖类型传给 UHT，`EpicGames.UHT/Types/UhtModule.cs` 生成 PKG_UncookedOnly，避免纯 PKG_EditorOnly 包触发 `BlueprintEditorUtils.cpp::ValidateEditorOnlyNodes` 的运行时蓝图警告；该检查由 UK2Node 早期校验调用，不要求节点已连入执行链。模块仍不进入游戏运行时构建，运行时 FAnimNode 继续归 ImagineGame。此类 Build/UHT 包标记改动须正常重编译并重启编辑器验证，不能只依赖旧进程中的 Live Coding。
+- 启动配置排查：双击 `.uproject` 的普通编辑器启动加载 Development 产物 `UnrealEditor-ImagineGame.dll` / `UnrealEditor-ImagineEditor.dll`；VS 的 DebugGame Editor 加载带 `-Win64-DebugGame` 后缀的另一套产物，分别由对应 `.modules` 清单映射。只更新 DebugGame 不会同步 Development。新增节点在 VS 可见、普通启动缺失时，先对照 `Saved/Logs/ImagineGame.log` 的 Build Configuration、InternalLoadLibrary 路径及两套 DLL 时间；旧运行时 DLL 可导致 FStructProperty Unknown structure，旧编辑器 DLL 可导致节点类加载失败。此时应构建 ImagineGameEditor Win64 Development 并重启，不能将其误诊为类型重命名并添加 Redirect。加载缺失节点的会话中不要保存受影响 AnimBP，先恢复匹配二进制再回读资产；本地已确认过两套 DLL 时间不同引起的这一故障。
 
 ### GTA 3C 源码导航与映射
 
