@@ -10,6 +10,7 @@
 class APawn;
 class UIMGPawnComponent_CharacterParts;
 class UObject;
+struct FComponentRequestHandle;
 struct FFrame;
 
 enum class ECharacterPartSource : uint8
@@ -48,7 +49,13 @@ public:
 
 //////////////////////////////////////////////////////////////////////
 
-// A component that configure what cosmetic actors to spawn for the owning controller when it possesses a pawn
+/**
+ * Keeps the controller's cosmetic choices and applies them to its current Pawn on authority only.
+ * May be added dynamically by a Game Feature; the Pawn should already own its PawnComponent_CharacterParts.
+ * BeginPlay catches up an existing possession. Missing Pawn Parts remain pending until CharacterPartsReady.
+ * Choices survive possession changes; applied handles belong to one Pawn Parts instance and never transfer.
+ * EndPlay (including GF removal) releases listeners and removes only this controller's applied parts.
+ */
 UCLASS(meta = (BlueprintSpawnableComponent))
 class UIMGControllerComponent_CharacterParts : public UControllerComponent
 {
@@ -83,6 +90,13 @@ protected:
 
 private:
 	UIMGPawnComponent_CharacterParts* GetPawnCustomizer() const;
+	void ApplyCharacterPartsToPawn();
+	void DetachFromPawnCustomizer();
+	void HandlePawnExtension(AActor* Actor, FName EventName);
+
+	TSharedPtr<FComponentRequestHandle> PawnExtensionHandle;
+	TWeakObjectPtr<UIMGPawnComponent_CharacterParts> AppliedPawnCustomizer;
+	bool bWarnedMissingPawnCustomizer = false;
 
 	UFUNCTION()
 	void OnPossessedPawnChanged(APawn* OldPawn, APawn* NewPawn);

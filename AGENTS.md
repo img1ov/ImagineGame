@@ -25,14 +25,28 @@
 - 按 Lyra 实际资产组织：基础 InventoryManager、EquipmentManager、WeaponState 配置在根 GameFeatureData `/ShooterCore/ShooterCore` 的 Add Components；`/ShooterCore/Experiences/LAS_ShooterGame_StandardComponents` 添加 B_QuickBarComponent 等另一组组件，不包含前三者。本地 Lyra 两个资产的包内 Actions/组件类型与 Client/Server Bundle 引用已交叉核对；本工程同路径 ShooterCore GameFeatureData 当前未发现这三种组件或 AddComponents 引用。本工程推荐前三者归 ShooterCore GameFeatureData、QuickBar 归 IAS_ShooterGame_StandardComponents，各条 ClientComponent 与 ServerComponent 均勾选。此前将四者全放 ActionSet 是可行替代装配方案，不代表 Lyra 原样如此；同一组件不在两处重复配置。InventoryManager、EquipmentManager 当前未声明 BlueprintSpawnableComponent，不将角色/控制器蓝图直接 Add Component 作为统一装配路径。`AIMGPlayerState` 已创建 HealthSet 与 CombatSet，不在武器 AbilitySet 重复授予这两个属性集。
 - `UIMGInventoryItemDefinition` 蓝图的 `EquippableItem.EquipmentDefinition` 指向 `UIMGEquipmentDefinition` 蓝图，`SetStats.InitialItemStats` 初始化每个物品实例的弹匣余量、备弹余量和弹匣容量。三个 Tag 由资产指定，各消费者使用同一组 Tag。准星和快捷栏图标分别配置 `ReticleConfig` 和 `QuickBarIcon` 片段。
 - `EquipmentDefinition.InstanceType` 指向 `UIMGRangedWeaponInstance` 或其蓝图子类，`AbilitySetsToGrant` 引用武器 `UIMGAbilitySet`。`ActorsToSpawn` 配置枪体 Actor、`AttachSocket` 和 `AttachTransform`，角色装备挂到角色 Mesh。需要远端显示时由枪体 Actor 配置复制。
-- 装备可见与掏枪动画是不同接点：`SpawnEquipmentActors` 已在 C++ 生成枪体并挂到 Character.GetMesh，`OnEquipped/OnUnequipped` 转发蓝图事件；当前 ImagineGame/ShooterCore C++ 未调用 `PickBestAnimLayer` 或 `LinkAnimClassLayers`，也无 EquipMontage 自动播放链。只填 EquippedAnimSet 不会由原生代码自动切持枪层；已有动画资源的接入须按实际角色动画架构使用装备事件或对应表现适配，不能因 Lyra 共享蓝图曾处理就认定已迁入 C++。
+- 装备可见与掏枪动画是不同接点：`SpawnEquipmentActors` 已在 C++ 生成枪体并挂到 Character.GetMesh，`OnEquipped/OnUnequipped` 转发蓝图事件；IMGWeaponInstance 现提供 EquippedAnimSet 的晚就绪/外观变化动画层保底（见下节），但无 EquipMontage 自动播放链；掏枪与卸下 Montage 仍由现有装备蓝图处理，不能因动画层保底而认定整个蓝图表现已迁入 C++。
 - Lyra `/ShooterCore/Weapons/B_WeaponInstance_Base` 包内确认有蓝图字段 WeaponEquipMontage、WeaponUnequipMontage、MeleeAttackMontage，以及 OnEquipped/OnUnequipped、LinkAnimClassLayers、PlayMontage 节点引用；这三个 Montage 字段不在本地 Lyra 的 WeaponInstance/RangedWeaponInstance C++ 中。本工程 IMGWeaponInstance 也无这些字段和自动装备动画执行，属共享蓝图表现尚未迁入的缺口；直接派生原生 IMGRangedWeaponInstance 的 Rifle 不会继承该蓝图字段，不能仅新增配置字段就认定链路补齐。
-- 用户当前选择装备表现暂留蓝图，暂停该段 C++ 移植。已核对本工程 `/ShooterCore/Weapons/B_RangedWeaponInstance_Base` 文件及包内原生父类 IMGRangedWeaponInstance、装备/卸下事件、动画层链接与 Montage 播放引用；`/ShooterCore/Weapons/Rifle/B_WeaponInstance_Rifle` 的包内父类引用指向该蓝图，并存在 WeaponEquipMontage。后续配置沿这个实际名称继续，不再要求重复创建 B_WeaponInstance_Base；这里只确认静态引用，蓝图编译状态与运行行为尚未验证。
+- 用户选择完整装备表现保留蓝图，C++ 仅增加下节的动画层晚就绪保底。已核对本工程 `/ShooterCore/Weapons/B_RangedWeaponInstance_Base` 文件及包内原生父类 IMGRangedWeaponInstance、装备/卸下事件、动画层链接与 Montage 播放引用；`/ShooterCore/Weapons/Rifle/B_WeaponInstance_Rifle` 的包内父类引用指向该蓝图，并存在 WeaponEquipMontage。后续配置沿这个实际名称继续，不再要求重复创建 B_WeaponInstance_Base；这里只确认静态引用，蓝图编译状态与运行行为尚未验证。
 - `FIMGAnimLayerSelectionSet` 的 LayerRules 按顺序取首个 Layer 非空且 CosmeticTags 满足 RequiredTags 的条目，无匹配返回 DefaultLayer；它只选择 AnimInstance 类，不执行挂接或播放。角色动画采用何种分层/Overlay 架构须先确认，不能直接将任意持枪 AnimBP 当作可链接层。
 - Rifle 资产命名与目录参考已核对的 Lyra 文件及包内引用：`/ShooterCore/Weapons/Rifle/{B_Rifle,B_WeaponInstance_Rifle,WID_Rifle,ID_Rifle,AbilitySet_ShooterRifle,GA_Weapon_Fire_Rifle_Auto,GA_Weapon_Reload_Rifle,GE_Damage_RifleAuto,WeaponPickupData_Rifle}`；WID_Rifle 是 EquipmentDefinition，ID_Rifle 才是 InventoryItemDefinition。`B_`、`GA_`、`GE_`、`WID_`、`ID_` 为用途前缀，保留；Lyra 专有名称替换为 IMG，`LAS_`（Lyra ActionSet）在本工程使用 `IAS_`。现有同名/相关资产不因此视为有效配置，不直接迁入 Lyra 蓝图逻辑。
 - Lyra 的 WID_Rifle 包内有 AttachSocket 与 `weapon_r`；B_Rifle 引用 `/Game/Weapons/Rifle/Mesh/SK_Rifle`，WeaponPickupData_Rifle 引用同目录 `SM_Rifle` 与 ShooterCore 的 ID_Rifle。模型资源仍可在 `/Game/Weapons/Rifle`，玩法定义位于 ShooterCore；本工程实际骨架挂点及蓝图默认值须在编辑器核对。
 - Lyra 的 `/ShooterCore/Experiences/LAS_ShooterGame_StandardComponents` 与 `LAS_ShooterGame_SharedInput` 分别装配附加组件和输入，本工程对应 `/ShooterCore/Experiences/IAS_ShooterGame_StandardComponents`、`IAS_ShooterGame_SharedInput`。StandardComponents 不能与根 `/ShooterCore/ShooterCore` GameFeatureData 的组件 Actions 混同，两者在不同入口激活。本工程已有 Experience 文件 `/ShooterCore/System/Experiences/B_ExperienceDef_ShooterCore`，可在其 ActionSets 引用这两项，并通过 GameFeaturesToEnable 请求 ShooterCore；存在性与类型已核对，当前具体配置仍需编辑器确认。
 - 服务端发放沿 `AddItemDefinition` → `AddItemToSlot` → `SetActiveSlotIndex`，须在 Pawn ASC 初始化及装备组件就绪后执行；`FIMGEquipmentList::AddEntry` 找不到 ASC 时仍创建装备，不会事后补授能力。EquipmentManager 在当前 Pawn 的 ASC 上授予能力，Spec 的 SourceObject 为装备实例，QuickBar 随后将物品实例设为装备的 Instigator。开火/换弹用这两个引用读取武器和弹药，故由装备 AbilitySet 授予并保留 `InstancedPerActor`。切槽卸下旧装备并清除其能力、持续效果和枪体，弹药随仍在背包里的物品实例保留。Instant GE 已执行的属性修改不随 AbilitySet 收回；武器专属 BaseDamage 应用可移除的 Infinite GE，避免切枪累加。初始发放和死亡清理依赖蓝图装配。
+
+### 换装组件与装备动画的动态装配边界
+
+- 装配合同：Pawn/Character 本体通过蓝图组件或原生默认子对象预装一个 Pawn Parts，早于 Possess/初始装备查询；Controller Parts 可由 GF 动态添加，只在权威端决定和应用角色部件。不在 GF 再注入第二份 Pawn Parts。动态 Pawn Parts 晚到属于兼容保底，不保证重播首次掏枪 Montage；两组件头文件已用英文注明该边界及生命周期。
+- 已实现：`IMGControllerComponent_CharacterParts` 保存实际承接句柄的 Pawn Parts 弱引用。已注册的预装组件在 BeginPlay 前也可承接部件，保留原 Possess 时序；缺组件时保留请求并 Warning，收到 `CharacterPartsReady` 后仅补未应用且未被 Cheat 抑制的条目。GF 添加 Controller 时 BeginPlay 追补既有 Possess；换 Pawn、组件替换/移除、Controller EndPlay 清理旧句柄与监听。部件请求可跨 Possess 保留，句柄不能跨 Pawn Parts 实例复用；取消请求后晚到事件不得重新添加。
+- 已验证：Pawn Parts 默认复制，CharacterPartList 无自主/模拟代理过滤。UE `GameFrameworkComponentManager.cpp::CreateComponentOnInstance` 对复制组件只在 ROLE_Authority 创建，客户端等待网络复制；GF 的 Client 勾选不保证客户端 Possess/装备回调前存在组件。专服不生成外观 Actor；监听服/单机及客户端生成本机外观。
+- 引擎接口：`GameFrameworkComponentManager.h` 中 `FComponentRequestHandle` 为 struct，前置声明须保持一致。共享句柄维持扩展监听，销毁句柄会同步发送 ExtensionRemoved；业务处理区分该事件与 ReceiverRemoved/PartsRemoved，不因解除自己的监听而清空他方外观。
+- 生命周期合同：Pawn Parts 在 Super::BeginPlay 后发送 `CharacterPartsReady`，EndPlay 清部件前发送 `CharacterPartsRemoved`。Ready 只说明组件可用，不表示客户端部件 FastArray 已到齐。PostReplicatedAdd/Change/Remove 经 BroadcastChanged 更新 BodyMeshes，再发 OnCharacterPartsChanged；委托不回放历史，消费者先订阅并读取快照。PawnExtension.GameplayReady 不保证 Parts 就绪。UE Mesh.InitAnim 可能重建 LinkedInstances，OnAnimInitialized 后才适合补动画层。
+- 武器保底：配置了 EquippedAnimSet 的 IMGWeaponInstance 在非专服 OnEquipped 进入蓝图前仅建立观察并安排下一 Tick（不即时 Link），同步 OnUnequipped 可取消本轮；正常蓝图仍优先执行装备/卸下事件、选层与 Montage。Parts 就绪/变更、Mesh.OnAnimInitialized 合并刷新；当前 DefaultLayer 或任一 LayerRule 的层若已由正常链链接则直接保留，不按本地 Tags 再覆盖。仅缺层或本方保底层待部件晚到更新时，按现有 PickBestAnimLayer 补 Link；补 Link 后复核当前监听、组件及主 AnimInstance，避免中断/重建后的旧回调回写。
+- 表现所有权：C++ 保底不调用 UnlinkAnimClassLayers、不重播装备/卸下事件或 Montage、不重置热量与设备效果。层切换及卸下/死亡过渡继续归蓝图，LinkedInstance 生命周期由 Mesh 原生管理；C++ 只保留 Mesh/补层实例弱引用区分保底结果。卸下、Pawn ReceiverRemoved 或观察到死亡时取消待刷新并解绑；Parts 移除解除旧组件委托但不强拆当前表现，新组件就绪再读取快照。死亡与组件卸载不强制恢复持枪层；没有配置 EquippedAnimSet 的武器不启用该保底。
+- Warning 入口为 LogIMG：Controller 有待应用部件却缺 Pawn Parts 时记录 Controller/Pawn 路径及装配提示；武器缺 Parts/Mesh/AnimInstance、无匹配层或 Link 失败时记录配置提示。同次缺失抑制重复告警，正常恢复后允许后续缺失再次告警。没有持续轮询、固定等待时长或新增复制状态。
+- 已验证（用户提供的蓝图文本）：服务端初始发放沿 ReceivePossessed → Authority → WaitForExperienceReady.OnReady → WaitForInventoryReadiness → AddInitialInventory；Remote 未连接。宏内部条件未提供，不能由宏名推定 ASC/Parts 就绪，也不能保证客户端复制顺序。客户端装备表现由 Equipment FastArray.PostReplicatedAdd → OnEquipped 触发，Parts 与装备之间没有网络到达顺序保证。
+- 独立上游边界：传统 FastArraySerializer 的 UpdateUnmappedObjects 用 PostReplicatedChange 通知引用晚映射，而本工程 EquipmentList.PostReplicatedChange 当前为空；若新增项的 Instance 首次为空，现有逻辑可能漏掉 OnEquipped。本次保底以既有 OnEquipped 已分派为前提，未扩改装备复制回调；当前复制路径与该场景是否触发仍待专项运行验证。
+- 待验证：新增收紧后的 GF 两组件动态装配、Parts 移除重加、切枪/死亡过渡与潜在蓝图潜伏回调，仍须 PIE 验证；用户提供的装备事件截图不含宏内部，未修改或推断其内部过渡实现。基础动画仍须提供兼容骨架、层接口和有效 EquippedAnimSet；该保底不解决能力授予、弹药、输入或其他系统主动换层的通用优先级。
 
 ### 输入、开火与换弹
 
@@ -71,6 +85,12 @@
 - Lyra 参考：`D:/Workspace/UnrealEngine/Projects/LyraStarterGame`。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
 - GTA 参考：`D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`，工程导航见该源码根目录 `AGENTS.md`；旧 `C:/Application/gta5` 路径当前不存在。仅作为本地源码快照对照，不代表所有发行版本启用的能力；保留 UE/GAS/CMC 网络体系。
 - UE 源码位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4；`D:/Application/UnrealEngine` 路径不存在。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+
+### 编辑器资产搜索缓存诊断
+
+- 已验证：`LogFileInfo` 来自引擎 `Engine/Plugins/Editor/AssetSearch/Source/Private/FileInfoDatabase.cpp`；`FFileInfoDatabase::Open` 以读写/可创建模式打开 `Saved/Search/FileInfo.db`，保存文件路径、修改时间与哈希。`AssetSearchManager.cpp::TryConnectToDatabase` 同时连接该库及 `AssetSearch.db`，失败后按至少30秒间隔重试；这属于编辑器资产搜索索引链。
+- 排查入口：`LogSQLiteDatabase ... disk I/O error` 表示数据库打开阶段的I/O失败，仅凭该日志不能判定硬盘损坏或数据库损坏。先退出使用该工程的编辑器，再将 `Saved/Search` 整体改名备份，重启让搜索缓存重建；仍失败再核对目录写权限、其他进程占用及存储错误。不要在数据库打开期间单独移除日志文件，也不要为此删除整个Saved。
+- 待验证：具体I/O根因须结合现场进程、文件访问和系统存储日志确认；缓存重建是否恢复须由实际重启结果判断。
 
 ### ImagineEditor 目录与接口
 

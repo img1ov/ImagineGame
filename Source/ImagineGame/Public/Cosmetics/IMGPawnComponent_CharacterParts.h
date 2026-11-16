@@ -118,7 +118,14 @@ struct TStructOpsTypeTraits<FIMGCharacterPartList> : public TStructOpsTypeTraits
 
 //////////////////////////////////////////////////////////////////////
 
-// A component that handles spawning cosmetic actors attached to the owner pawn on all clients
+/**
+ * Spawns cosmetic actors locally from a replicated part list on each non-dedicated peer.
+ * Add one instance to the Pawn/Character Blueprint (or as a native default subobject) before possession.
+ * This is the supported assembly contract for consumers that query parts during initial equip.
+ * Do not also inject a second copy through GF; recovery handles a missing dependency, not duplicate components.
+ * GF injection of this replicated component can arrive later on clients; recovery does not replay equip montages.
+ * The server owns the part list. Component readiness and replicated part/tag readiness are separate events.
+ */
 UCLASS(meta=(BlueprintSpawnableComponent))
 class UIMGPawnComponent_CharacterParts : public UPawnComponent
 {
@@ -126,6 +133,11 @@ class UIMGPawnComponent_CharacterParts : public UPawnComponent
 
 public:
 	UIMGPawnComponent_CharacterParts(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	// BeginPlay completed; read the current snapshot and observe OnCharacterPartsChanged for later replication.
+	static const FName NAME_CharacterPartsReady;
+	// Sent before EndPlay clears parts. Consumers must discard handles/bindings tied to this instance.
+	static const FName NAME_CharacterPartsRemoved;
 
 	//~UActorComponent interface
 	virtual void BeginPlay() override;
@@ -163,7 +175,7 @@ public:
 	void BroadcastChanged();
 
 public:
-	// Delegate that will be called when the list of spawned character parts has changed
+	// Fired after body mesh updates; not replayed to late subscribers. Read a snapshot when subscribing.
 	UPROPERTY(BlueprintAssignable, Category=Cosmetics, BlueprintCallable)
 	FIMGSpawnedCharacterPartsChanged OnCharacterPartsChanged;
 

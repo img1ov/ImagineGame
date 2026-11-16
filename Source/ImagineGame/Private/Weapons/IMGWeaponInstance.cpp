@@ -7,6 +7,13 @@
 #include "GameFramework/InputDeviceSubsystem.h"
 #include "GameFramework/InputDeviceProperties.h"
 #include "Character/IMGHealthComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Components/GameFrameworkComponentManager.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Cosmetics/IMGPawnComponent_CharacterParts.h"
+#include "GameFramework/Character.h"
+#include "IMGLogChannels.h"
+#include "TimerManager.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGWeaponInstance)
 
@@ -33,6 +40,9 @@ UIMGWeaponInstance::UIMGWeaponInstance(const FObjectInitializer& ObjectInitializ
 
 void UIMGWeaponInstance::OnEquipped()
 {
+	// Only enqueue recovery here. Blueprint still gets the first chance to link/play presentation.
+	// Observing before the event also lets a synchronous unequip cancel this activation's recovery.
+	StartAnimLayerObservation();
 	Super::OnEquipped();
 
 	UWorld* World = GetWorld();
@@ -44,9 +54,214 @@ void UIMGWeaponInstance::OnEquipped()
 
 void UIMGWeaponInstance::OnUnequipped()
 {
+	// Cancel recovery first; the Blueprint may need the current layer for its unequip montage.
+	StopAnimLayerObservation();
 	Super::OnUnequipped();
 
 	RemoveDeviceProperties();
+}
+
+void UIMGWeaponInstance::StartAnimLayerObservation()
+{
+	APawn* Pawn = GetPawn();
+	if (bObservingAnimLayer || !Pawn || Pawn->IsNetMode(NM_DedicatedServer) ||
+		(!EquippedAnimSet.DefaultLayer && EquippedAnimSet.LayerRules.IsEmpty()))
+	{
+		return;
+	}
+
+	bObservingAnimLayer = true;
+	if (UGameFrameworkComponentManager* Manager = UGameFrameworkComponentManager::GetForActor(Pawn))
+	{
+		PawnExtensionHandle = Manager->AddExtensionHandler(Pawn->GetClass(),
+			UGameFrameworkComponentManager::FExtensionHandlerDelegate::CreateUObject(this, &ThisClass::HandlePawnExtension));
+	}
+	QueueAnimLayerRefresh();
+}
+
+void UIMGWeaponInstance::StopAnimLayerObservation()
+{
+	bObservingAnimLayer = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AnimLayerRefreshTimer);
+	}
+	PawnExtensionHandle.Reset();
+	if (UIMGPawnComponent_CharacterParts* Customizer = ObservedPawnCustomizer.Get())
+	{
+		Customizer->OnCharacterPartsChanged.RemoveDynamic(this, &ThisClass::HandleCharacterPartsChanged);
+	}
+	ObservedPawnCustomizer.Reset();
+	if (USkeletalMeshComponent* Mesh = ObservedMesh.Get())
+	{
+		Mesh->OnAnimInitialized.RemoveDynamic(this, &ThisClass::HandleAnimInitialized);
+	}
+	ObservedMesh.Reset();
+	bWarnedMissingAnimationDependency = false;
+	// Linked instances belong to the mesh. Blueprint owns layer transitions, including unequip/death.
+	FallbackLinkedMesh.Reset();
+	FallbackLinkedInstance.Reset();
+}
+
+void UIMGWeaponInstance::HandlePawnExtension(AActor* Actor, FName EventName)
+{
+	if (!bObservingAnimLayer || Actor != GetPawn())
+	{
+		return;
+	}
+	if (EventName == UGameFrameworkComponentManager::NAME_ReceiverRemoved)
+	{
+		StopAnimLayerObservation();
+	}
+	else if (EventName == UIMGPawnComponent_CharacterParts::NAME_CharacterPartsRemoved)
+	{
+		if (UIMGPawnComponent_CharacterParts* Customizer = ObservedPawnCustomizer.Get())
+		{
+			Customizer->OnCharacterPartsChanged.RemoveDynamic(this, &ThisClass::HandleCharacterPartsChanged);
+		}
+		ObservedPawnCustomizer.Reset();
+		QueueAnimLayerRefresh();
+	}
+	else if (EventName == UIMGPawnComponent_CharacterParts::NAME_CharacterPartsReady)
+	{
+		QueueAnimLayerRefresh();
+	}
+}
+
+void UIMGWeaponInstance::HandleCharacterPartsChanged(UIMGPawnComponent_CharacterParts* Component)
+{
+	if (Component == ObservedPawnCustomizer.Get())
+	{
+		QueueAnimLayerRefresh();
+	}
+}
+
+void UIMGWeaponInstance::HandleAnimInitialized()
+{
+	QueueAnimLayerRefresh();
+}
+
+void UIMGWeaponInstance::QueueAnimLayerRefresh()
+{
+	if (bObservingAnimLayer && !AnimLayerRefreshTimer.IsValid())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			// Parts may be replacing the mesh inside InitAnim; link after that stack has unwound.
+			AnimLayerRefreshTimer = World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::RefreshEquippedAnimLayer);
+		}
+	}
+}
+
+void UIMGWeaponInstance::RefreshEquippedAnimLayer()
+{
+	AnimLayerRefreshTimer.Invalidate();
+	APawn* Pawn = GetPawn();
+	if (!bObservingAnimLayer || !IsValid(Pawn) || Pawn->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	if (const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Pawn); Health && Health->IsDeadOrDying())
+	{
+		StopAnimLayerObservation();
+		return;
+	}
+
+	ACharacter* Character = Cast<ACharacter>(Pawn);
+	USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	if (ObservedMesh.Get() != Mesh)
+	{
+		FallbackLinkedMesh.Reset();
+		FallbackLinkedInstance.Reset();
+		if (USkeletalMeshComponent* OldMesh = ObservedMesh.Get())
+		{
+			OldMesh->OnAnimInitialized.RemoveDynamic(this, &ThisClass::HandleAnimInitialized);
+		}
+		ObservedMesh = Mesh;
+		if (Mesh)
+		{
+			Mesh->OnAnimInitialized.AddUniqueDynamic(this, &ThisClass::HandleAnimInitialized);
+		}
+	}
+
+	UIMGPawnComponent_CharacterParts* Customizer = Pawn->FindComponentByClass<UIMGPawnComponent_CharacterParts>();
+	if (!IsValid(Customizer) || !Customizer->IsRegistered() || !Customizer->HasBegunPlay() || Customizer->IsBeingDestroyed())
+	{
+		Customizer = nullptr;
+	}
+	if (ObservedPawnCustomizer.Get() != Customizer)
+	{
+		if (UIMGPawnComponent_CharacterParts* OldCustomizer = ObservedPawnCustomizer.Get())
+		{
+			OldCustomizer->OnCharacterPartsChanged.RemoveDynamic(this, &ThisClass::HandleCharacterPartsChanged);
+		}
+		ObservedPawnCustomizer = Customizer;
+		if (Customizer)
+		{
+			Customizer->OnCharacterPartsChanged.AddUniqueDynamic(this, &ThisClass::HandleCharacterPartsChanged);
+		}
+	}
+
+	if (!Customizer || !Mesh || !Mesh->IsRegistered() || Mesh->IsBeingDestroyed() || !Mesh->GetAnimInstance())
+	{
+		if (!bWarnedMissingAnimationDependency)
+		{
+			bWarnedMissingAnimationDependency = true;
+			UE_LOG(LogIMG, Warning, TEXT("Weapon %s: cannot refresh equipped animation on Pawn %s (Pawn Parts: %s, Mesh: %s, AnimInstance: %s). Waiting for Parts/animation initialization; check Game Feature components and the character mesh."),
+				*GetPathName(), *GetPathNameSafe(Pawn), *GetNameSafe(Customizer), *GetNameSafe(Mesh), *GetNameSafe(Mesh ? Mesh->GetAnimInstance() : nullptr));
+		}
+		return;
+	}
+
+	// Preserve any valid equipped layer chosen by Blueprint, even if its tags differ from this snapshot.
+	// A layer created by recovery may still need updating when the actual parts arrive after the component.
+	const auto HasBlueprintLayer = [this, Mesh](TSubclassOf<UAnimInstance> Candidate)
+	{
+		UAnimInstance* Instance = Candidate ? Mesh->GetLinkedAnimLayerInstanceByClass(Candidate) : nullptr;
+		return Instance && (FallbackLinkedMesh.Get() != Mesh || FallbackLinkedInstance.Get() != Instance);
+	};
+	if (HasBlueprintLayer(EquippedAnimSet.DefaultLayer) || EquippedAnimSet.LayerRules.ContainsByPredicate(
+		[&HasBlueprintLayer](const FIMGAnimLayerSelectionEntry& Rule) { return HasBlueprintLayer(Rule.Layer); }))
+	{
+		bWarnedMissingAnimationDependency = false;
+		return;
+	}
+
+	const TSubclassOf<UAnimInstance> Layer = PickBestAnimLayer(true, Customizer->GetCombinedTags(FGameplayTag()));
+	if (!Layer)
+	{
+		if (!bWarnedMissingAnimationDependency)
+		{
+			bWarnedMissingAnimationDependency = true;
+			UE_LOG(LogIMG, Warning, TEXT("Weapon %s: EquippedAnimSet has no matching layer or DefaultLayer for Pawn %s. Check animation layer rules and cosmetic tags."),
+				*GetPathName(), *GetPathNameSafe(Pawn));
+		}
+		return;
+	}
+
+	if (!Mesh->GetLinkedAnimLayerInstanceByClass(Layer))
+	{
+		UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
+		Mesh->LinkAnimClassLayers(Layer);
+		if (!bObservingAnimLayer || ObservedMesh.Get() != Mesh || ObservedPawnCustomizer.Get() != Customizer ||
+			Mesh->GetAnimInstance() != AnimInstance)
+		{
+			return;
+		}
+		FallbackLinkedMesh = Mesh;
+		FallbackLinkedInstance = Mesh->GetLinkedAnimLayerInstanceByClass(Layer);
+		if (!FallbackLinkedInstance.IsValid())
+		{
+			if (!bWarnedMissingAnimationDependency)
+			{
+				bWarnedMissingAnimationDependency = true;
+				UE_LOG(LogIMG, Warning, TEXT("Weapon %s: failed to link equipped layer %s on Pawn %s. Check skeleton compatibility and the animation layer interface."),
+					*GetPathName(), *GetNameSafe(Layer.Get()), *GetPathNameSafe(Pawn));
+			}
+			return;
+		}
+	}
+	bWarnedMissingAnimationDependency = false;
 }
 
 void UIMGWeaponInstance::UpdateFiringTime()
@@ -132,6 +347,7 @@ void UIMGWeaponInstance::RemoveDeviceProperties()
 
 void UIMGWeaponInstance::OnDeathStarted(AActor* OwningActor)
 {
+	StopAnimLayerObservation();
 	// Remove any possibly active device properties when we die to make sure that there aren't any lingering around
 	RemoveDeviceProperties();
 }

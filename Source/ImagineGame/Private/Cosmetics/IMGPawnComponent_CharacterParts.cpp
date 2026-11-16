@@ -3,6 +3,7 @@
 #include "Cosmetics/IMGPawnComponent_CharacterParts.h"
 
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/GameFrameworkComponentManager.h"
 #include "Cosmetics/IMGCharacterPartTypes.h"
 #include "GameFramework/Character.h"
 #include "GameplayTagAssetInterface.h"
@@ -14,6 +15,9 @@ class FLifetimeProperty;
 class UPhysicsAsset;
 class USkeletalMesh;
 class UWorld;
+
+const FName UIMGPawnComponent_CharacterParts::NAME_CharacterPartsReady(TEXT("CharacterPartsReady"));
+const FName UIMGPawnComponent_CharacterParts::NAME_CharacterPartsRemoved(TEXT("CharacterPartsRemoved"));
 
 //////////////////////////////////////////////////////////////////////
 
@@ -246,10 +250,14 @@ void UIMGPawnComponent_CharacterParts::RemoveAllCharacterParts()
 void UIMGPawnComponent_CharacterParts::BeginPlay()
 {
 	Super::BeginPlay();
+	// This announces component availability, not completion of the client's replicated part list.
+	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(GetOwner(), NAME_CharacterPartsReady);
 }
 
 void UIMGPawnComponent_CharacterParts::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Invalidate consumers before child actors and their cosmetic tags disappear.
+	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(GetOwner(), NAME_CharacterPartsRemoved);
 	CharacterPartList.ClearAllEntries(/*bBroadcastChangeDelegate=*/ false);
 
 	Super::EndPlay(EndPlayReason);

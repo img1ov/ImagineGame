@@ -3,6 +3,7 @@
 #include "Cosmetics/IMGCosmeticAnimationTypes.h"
 #include "Equipment/IMGEquipmentInstance.h"
 #include "GameFramework/InputDevicePropertyHandle.h"
+#include "Engine/TimerHandle.h"
 
 #include "IMGWeaponInstance.generated.h"
 
@@ -13,6 +14,9 @@ class UObject;
 struct FFrame;
 struct FGameplayTagContainer;
 class UInputDeviceProperty;
+class USkeletalMeshComponent;
+class UIMGPawnComponent_CharacterParts;
+struct FComponentRequestHandle;
 
 /**
  * UIMGWeaponInstance
@@ -78,6 +82,28 @@ protected:
 	UE_API void RemoveDeviceProperties();
 
 private:
+	// Blueprint equip/unequip events own presentation. This observer only repairs missing equipped layers.
+	void StartAnimLayerObservation();
+	void StopAnimLayerObservation();
+	void HandlePawnExtension(AActor* Actor, FName EventName);
+	void QueueAnimLayerRefresh();
+	void RefreshEquippedAnimLayer();
+
+	UFUNCTION()
+	void HandleCharacterPartsChanged(UIMGPawnComponent_CharacterParts* Component);
+
+	UFUNCTION()
+	void HandleAnimInitialized();
+
+	TSharedPtr<FComponentRequestHandle> PawnExtensionHandle;
+	TWeakObjectPtr<UIMGPawnComponent_CharacterParts> ObservedPawnCustomizer;
+	TWeakObjectPtr<USkeletalMeshComponent> ObservedMesh;
+	// Attribution only; the mesh and Blueprint retain ownership of linked layers and their transitions.
+	TWeakObjectPtr<USkeletalMeshComponent> FallbackLinkedMesh;
+	TWeakObjectPtr<UAnimInstance> FallbackLinkedInstance;
+	FTimerHandle AnimLayerRefreshTimer;
+	bool bObservingAnimLayer = false;
+	bool bWarnedMissingAnimationDependency = false;
 
 	/** Set of device properties activated by this weapon. Populated by ApplyDeviceProperties */
 	UPROPERTY(Transient)
