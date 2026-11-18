@@ -8,7 +8,7 @@
 namespace IMGCameraDamping
 {
 	/**
-	 * Unit-mass spring constant k, not Hz. The GTA reference's critical/overdamped branches retain only the slow mode.
+	 * Unit-mass spring constant k, not Hz. Critical/overdamped responses retain only the slow exponential mode.
 	 * Zero strength snaps to the target; zero time preserves initialized state. Invalid input clears velocity and follows
 	 * a finite target (otherwise zero). Initialize Value to the first target and Velocity to zero before advancing.
 	 */
@@ -85,6 +85,9 @@ private:
 struct IMAGINEGAME_API FIMGCameraLocationDampingState
 {
 	void Reset();
+
+	/** Re-express position history after changing the caller's reference origin; velocity is unchanged. */
+	void Rebase(const FVector& Offset);
 
 	/**
 	 * ResponseSpeed is sqrt(k); the other numeric controls retain the camera lag property's units.

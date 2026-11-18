@@ -34,12 +34,10 @@ public:
 
 protected:
 
-	virtual void UpdateViewTarget(FTViewTarget& OutVT, float DeltaTime) override;
-
 	virtual void DisplayDebug(UCanvas* Canvas, const FDebugDisplayInfo& DebugDisplay, float& YL, float& YPos) override;
 
 private:
-	/** The UI Camera Component, controls the camera when UI is doing something important that gameplay doesn't get priority over. */
+	/** Explicit UI requests are forwarded through the native view-target transition path. */
 	UPROPERTY(Transient)
 	TObjectPtr<UIMGUICameraManagerComponent> UICamera;
 };

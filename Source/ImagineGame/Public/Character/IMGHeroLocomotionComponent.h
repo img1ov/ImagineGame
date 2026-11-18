@@ -1,12 +1,16 @@
 #pragma once
 
 #include "Character/IMGLocomotionComponent.h"
+#include "Camera/IMGCameraShake.h"
 #include "Engine/TimerHandle.h"
 #include "GameplayTagContainer.h"
 #include "UObject/SoftObjectPtr.h"
 #include "IMGHeroLocomotionComponent.generated.h"
 
 class UCurveFloat;
+class UIMGCameraComponent;
+class UIMGCameraShakeInstance;
+class UIMGCameraShakeDefinition;
 struct FHitResult;
 
 UENUM(BlueprintType)
@@ -35,6 +39,8 @@ class IMAGINEGAME_API UIMGHeroLocomotionComponent : public UIMGLocomotionCompone
 {
 	GENERATED_BODY()
 public:
+	UIMGHeroLocomotionComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	FVector WalkDirectionScale = FVector(1.f, 150.f / 165.f, 130.f / 165.f);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
@@ -65,8 +71,29 @@ public:
 	float CalculateBrakingFriction() const;
 
 protected:
+	/** Shared waveform and envelopes for running and sprinting. Playback instances are owned by the camera. */
+	UPROPERTY(EditDefaultsOnly, Category = "Locomotion|Running Camera Shake", meta = (DisplayName = "Pattern"))
+	FIMGCameraShakeSettings RunningCameraShakePattern;
+
+	/** Pattern amplitude multiplier at run ratio zero. Zero disables this effect; sprint amplitude must be greater. */
+	UPROPERTY(EditDefaultsOnly, Category = "Locomotion|Running Camera Shake|Run", meta = (DisplayName = "Amplitude Scale", ClampMin = "0", ClampMax = "1"))
+	float RunningCameraShakeMinAmplitude = 0.6f;
+
+	/** Pattern amplitude multiplier at run ratio one; intermediate movement blends from the running value. */
+	UPROPERTY(EditDefaultsOnly, Category = "Locomotion|Running Camera Shake|Sprint", meta = (DisplayName = "Amplitude Scale", ClampMin = "0", ClampMax = "2"))
+	float RunningCameraShakeMaxAmplitude = 1.f;
+
+	/** Extra frequency growth, as in GTA: multiplier = 1 + RunRatio * Increase. A value of 0.25 reaches 1.25x. */
+	UPROPERTY(EditDefaultsOnly, Category = "Locomotion|Running Camera Shake|Sprint", meta = (DisplayName = "Frequency Increase", ClampMin = "0", ClampMax = "2"))
+	float RunningCameraShakeMaxFrequencyScale = 0.25f;
+
+	/** Smooths the shared run ratio driving amplitude and frequency. Unit-mass k, not Hz; zero follows immediately. */
+	UPROPERTY(EditDefaultsOnly, Category = "Locomotion|Running Camera Shake|Response", meta = (DisplayName = "Run Ratio Spring Constant", ClampMin = "0", ClampMax = "1000"))
+	float RunningCameraShakeSpringConstant = 5.f;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnLocomotionReadyNative() override;
 	virtual void OnLocomotionUnavailableNative() override;
 	virtual uint8 GetMovementRequest() const override { return CurrentRequest; }
@@ -81,6 +108,12 @@ private:
 	void ClearLandingBraking();
 	float GetDirectionMap(bool bControllerFacing) const;
 	float GetDirectionScale(const FVector& Scales, float Map) const;
+	UIMGCameraComponent* GetRunningCameraShakeCamera() const;
+	bool IsRunningCameraShakeMovementValid() const;
+	void UpdateRunningCameraShake(float DeltaTime);
+	void StopRunningCameraShake(bool bImmediately);
+	UFUNCTION()
+	void HandleRunningCameraShakeMovementUpdated(float DeltaSeconds, FVector OldLocation, FVector OldVelocity);
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
 
@@ -91,6 +124,16 @@ private:
 	TMap<FGameplayTag, FDelegateHandle> IntentTagHandles;
 	uint8 CurrentRequest = 0;
 	FTimerHandle LandingTimer;
+
+	TWeakObjectPtr<UIMGCameraComponent> RunningShakeCamera;
+	TWeakObjectPtr<UIMGCameraShakeInstance> RunningShakeInstance;
+	UPROPERTY(Transient, DuplicateTransient)
+	TObjectPtr<UIMGCameraShakeDefinition> RunningShakeDefinition;
+	double RunningShakeRatio = 0.0;
+	double RunningShakeRatioVelocity = 0.0;
+	uint64 LastRunningShakeUpdateFrame = MAX_uint64;
+	bool bRunningShakeRatioInitialized = false;
+	bool bWarnedInvalidRunningShakeSettings = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Locomotion", meta = (AllowPrivateAccess = "true"))
 	bool bJustLanded = false;

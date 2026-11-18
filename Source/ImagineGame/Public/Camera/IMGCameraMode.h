@@ -3,6 +3,8 @@
 
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
+#include "Camera/IMGCameraCollision.h"
+#include "Camera/IMGCameraFraming.h"
 
 #include "IMGCameraMode.generated.h"
 
@@ -23,10 +25,10 @@ enum class EIMGCameraModeBlendFunction : uint8
 	// Does a simple linear interpolation.
 	Linear,
 
-	// Immediately accelerates, but smoothly decelerates into the target.  Ease amount controlled by the exponent.
+	// Smoothly accelerates into the target. Ease amount controlled by the exponent.
 	EaseIn,
 
-	// Smoothly accelerates, but does not decelerate into the target.  Ease amount controlled by the exponent.
+	// Smoothly decelerates into the target. Ease amount controlled by the exponent.
 	EaseOut,
 
 	// Smoothly accelerates and decelerates.  Ease amount controlled by the exponent.
@@ -55,6 +57,11 @@ public:
 	FRotator Rotation;
 	FRotator ControlRotation;
 	float FieldOfView;
+	float CameraShakeScale = 1.f;
+	// Values already include this mode's global scale; absent categories use CameraShakeScale.
+	TMap<FGameplayTag, float> CameraShakeCategoryScales;
+	FIMGCameraFramingResult Framing;
+	TOptional<FIMGCameraCollisionRequest> Collision;
 };
 
 
@@ -86,11 +93,11 @@ public:
 	// Called when this camera mode is deactivated on the camera mode stack.
 	virtual void OnDeactivation() {};
 
-	void UpdateCameraMode(float DeltaTime);
+	bool UpdateCameraMode(float DeltaTime);
 
 	/** Snap interpolation on this mode's next update, including while it is being blended. */
 	UFUNCTION(BlueprintCallable, Category = "IMG|Camera")
-	void ResetInterpolation() { bResetInterpolation = true; ++InterpolationResetRevision; }
+	void ResetInterpolation();
 
 	float GetBlendTime() const { return BlendTime; }
 	float GetBlendWeight() const { return BlendWeight; }
@@ -123,6 +130,14 @@ protected:
 	// The horizontal field of view (in degrees).
 	UPROPERTY(EditDefaultsOnly, Category = "View", Meta = (UIMin = "5.0", UIMax = "170", ClampMin = "5.0", ClampMax = "170.0"))
 	float FieldOfView;
+
+	/** Changes reception strength without restarting or freezing shared shake instances. */
+	UPROPERTY(EditDefaultsOnly, Category = "Shake", meta = (ClampMin = "0"))
+	float CameraShakeScale = 1.f;
+
+	/** Exact category overrides, multiplied by CameraShakeScale. Missing categories use one. */
+	UPROPERTY(EditDefaultsOnly, Category = "Shake")
+	TMap<FGameplayTag, float> CameraShakeCategoryScales;
 
 	// Minimum view pitch (in degrees).
 	UPROPERTY(EditDefaultsOnly, Category = "View", Meta = (UIMin = "-89.9", UIMax = "89.9", ClampMin = "-89.9", ClampMax = "89.9"))
@@ -192,12 +207,13 @@ protected:
 
 	UIMGCameraMode* GetCameraModeInstance(TSubclassOf<UIMGCameraMode> CameraModeClass);
 
-	void UpdateStack(float DeltaTime);
+	bool UpdateStack(float DeltaTime);
 	void BlendStack(FIMGCameraModeView& OutCameraModeView) const;
 
 protected:
 
 	bool bIsActive;
+	uint32 StackRevision = 0;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UIMGCameraMode>> CameraModeInstances;

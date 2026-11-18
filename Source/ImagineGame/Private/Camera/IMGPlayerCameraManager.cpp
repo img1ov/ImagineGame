@@ -1,17 +1,12 @@
 
 #include "Camera/IMGPlayerCameraManager.h"
 
-#include "Async/TaskGraphInterfaces.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
-#include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerController.h"
 #include "Camera/IMGCameraComponent.h"
 #include "Camera/IMGUICameraManagerComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGPlayerCameraManager)
-
-class FDebugDisplayInfo;
 
 static FName UICameraComponentName(TEXT("UICamera"));
 
@@ -30,19 +25,6 @@ UIMGUICameraManagerComponent* AIMGPlayerCameraManager::GetUICameraComponent() co
 	return UICamera;
 }
 
-void AIMGPlayerCameraManager::UpdateViewTarget(FTViewTarget& OutVT, float DeltaTime)
-{
-	// If the UI Camera is looking at something, let it have priority.
-	if (UICamera->NeedsToUpdateViewTarget())
-	{
-		Super::UpdateViewTarget(OutVT, DeltaTime);
-		UICamera->UpdateViewTarget(OutVT, DeltaTime);
-		return;
-	}
-
-	Super::UpdateViewTarget(OutVT, DeltaTime);
-}
-
 void AIMGPlayerCameraManager::DisplayDebug(UCanvas* Canvas, const FDebugDisplayInfo& DebugDisplay, float& YL, float& YPos)
 {
 	check(Canvas);
@@ -55,9 +37,9 @@ void AIMGPlayerCameraManager::DisplayDebug(UCanvas* Canvas, const FDebugDisplayI
 
 	Super::DisplayDebug(Canvas, DebugDisplay, YL, YPos);
 
-	const APawn* Pawn = (PCOwner ? PCOwner->GetPawn() : nullptr);
+	const AActor* Target = GetViewTarget();
 
-	if (const UIMGCameraComponent* CameraComponent = UIMGCameraComponent::FindCameraComponent(Pawn))
+	if (const UIMGCameraComponent* CameraComponent = UIMGCameraComponent::FindCameraComponent(Target))
 	{
 		CameraComponent->DrawDebug(Canvas);
 	}

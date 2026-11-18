@@ -3,17 +3,15 @@
 
 #include "Camera/IMGCameraMode.h"
 #include "Camera/IMGCameraDamping.h"
-#include "Camera/IMGCameraShake.h"
 #include "Curves/CurveFloat.h"
-#include "Camera/IMGPenetrationAvoidanceFeeler.h"
-#include "DrawDebugHelpers.h"
 #include "IMGCameraMode_ThirdPerson.generated.h"
 
-class UCurveVector;
 class APlayerController;
 class USkeletalMeshComponent;
 class USkeletalMesh;
 class UAnimInstance;
+class UCurveVector;
+class USceneComponent;
 
 /**
  * UIMGCameraMode_ThirdPerson
@@ -29,46 +27,55 @@ public:
 
 	UIMGCameraMode_ThirdPerson();
 
-	/** Queried once per view update while Shake is enabled. Gameplay/curves own activation and non-negative scales. */
-	UFUNCTION(BlueprintNativeEvent, Category = "Third Person|Shake")
-	void GetShakeInput(AActor* TargetActor, float DeltaTime, bool& bActive, float& AmplitudeScale, float& FrequencyScale);
+	/** An optional external focus target. Free look is used when bHasFocus is false. */
+	UFUNCTION(BlueprintNativeEvent, Category = "Third Person|Framing")
+	void GetFramingFocusPoint(AActor* TargetActor, bool& bHasFocus, FVector& FocusPoint);
 
 protected:
 
 	virtual void UpdateView(float DeltaTime) override;
 	virtual void OnActivation() override;
 	virtual void OnDeactivation() override;
-	virtual void GetShakeInput_Implementation(AActor* TargetActor, float DeltaTime, bool& bActive, float& AmplitudeScale, float& FrequencyScale);
+	virtual void GetFramingFocusPoint_Implementation(AActor* TargetActor, bool& bHasFocus, FVector& FocusPoint);
 
 	void UpdateForTarget();
-	void UpdatePreventPenetration(float DeltaTime);
-	void PreventCameraPenetration(class AActor const& ViewTarget, FVector const& SafeLoc, FVector& CameraLoc, float const& DeltaTime, float& DistBlockedPct, bool bSingleRayOnly);
+	void BuildCollisionRequest(const FVector& PivotLocation, const FRotator& PreviousControlRotation);
+	FIMGCameraFramingSettings EvaluateFramingSettings(float OrbitPitch) const;
 
 	virtual void DrawDebug(UCanvas* Canvas) const override;
 
 protected:
+	/** Full camera-local XYZ offset in cm, sampled using orbit pitch in degrees. */
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", meta = (EditCondition = "!bUseRuntimeFloatCurves"))
+	TObjectPtr<const UCurveVector> TargetOffsetCurve = nullptr;
 
-	// Curve that defines local-space offsets from the target using the view pitch to evaluate the curve.
-	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "!bUseRuntimeFloatCurves"))
-	TObjectPtr<const UCurveVector> TargetOffsetCurve;
-
-	// UE-103986: Live editing of RuntimeFloatCurves during PIE does not work (unlike curve assets).
-	// Once that is resolved this will become the default and TargetOffsetCurve will be removed.
+	/** A missing vector asset falls back to the inline XYZ curves. */
 	UPROPERTY(EditDefaultsOnly, Category = "Third Person")
-	bool bUseRuntimeFloatCurves;
+	bool bUseRuntimeFloatCurves = false;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", meta = (EditCondition = "bUseRuntimeFloatCurves"))
 	FRuntimeFloatCurve TargetOffsetX;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", meta = (EditCondition = "bUseRuntimeFloatCurves"))
 	FRuntimeFloatCurve TargetOffsetY;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", meta = (EditCondition = "bUseRuntimeFloatCurves"))
 	FRuntimeFloatCurve TargetOffsetZ;
 
-	// Controls how quickly crouch and crawl eye-height offsets blend in or out.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person")
-	float CrouchOffsetBlendMultiplier = 5.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category = "Third Person|Framing", meta = (ClampMin = "0", ClampMax = "1"))
+	float PostCollisionLookAtWeight = 0.625f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category = "Third Person|Framing", meta = (ClampMin = "1", Units = "cm"))
+	float MinFocusDistance = 50.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category = "Third Person|Framing", meta = (ClampMin = "0", Units = "cm"))
+	float OffAxisTolerance = 1.f;
+	/** Smooth changes in the standard view offset independently of whole-pawn movement and camera lag. Zero snaps. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Viewpoint", meta = (ClampMin = "0", ClampMax = "1000"))
+	float ViewpointSpringConstant = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Viewpoint", meta = (ClampMin = "0", ClampMax = "10"))
+	float ViewpointDampingRatio = 1.f;
 
 	/** Spring-damped pivot tracking, independently of rotation and pelvis damping. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag")
@@ -78,7 +85,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0"))
 	float CameraLocationLagSpeed = 10.0f;
 
-	/** One uses the reference's slow exponential mode; lower values allow inertial overshoot. */
+	/** One uses the slow exponential mode; lower values allow inertial overshoot. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Camera Lag", meta = (ClampMin = "0.0", ClampMax = "10.0"))
 	float CameraLagDampingRatio = 1.f;
 
@@ -119,73 +126,37 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Rotation Damping", meta = (EditCondition = "bEnableRotationDamping"))
 	FIMGCameraRotationDampingSettings RotationDampingSettings;
 
-	/** Camera-local visual offsets after the orbit and before collision; control rotation remains immediate. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Shake")
-	bool bEnableShake = false;
-
-	/** All axis amplitudes default to zero. Configure the pattern and override GetShakeInput to drive it. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person|Shake", meta = (EditCondition = "bEnableShake"))
-	FIMGCameraShakeSettings ShakeSettings;
-
-	// Penetration prevention
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
-	float PenetrationBlendInTime = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
-	float PenetrationBlendOutTime = 0.15f;
-
-	/** If true, does collision checks to keep the camera out of the world. */
+	/** Requests collision on the final blended view, once per camera update. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
 	bool bPreventPenetration = true;
 
-	/** If true, try to detect nearby walls and move the camera in anticipation.  Helps prevent popping. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
-	bool bDoPredictiveAvoidance = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	FIMGCameraCollisionSettings CollisionSettings;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
-	float CollisionPushOutDistance = 2.f;
+	bool bIgnoreTargetAttachments = true;
 
-	/** When the camera's distance is pushed into this percentage of its full distance due to penetration */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	/** Notify the existing camera assist interface below this remaining distance ratio; zero disables it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision", meta = (ClampMin = "0", ClampMax = "1"))
 	float ReportPenetrationPercent = 0.f;
 
-	/**
-	 * These are the feeler rays that are used to find where to place the camera.
-	 * Index: 0  : This is the normal feeler we use to prevent collisions.
-	 * Index: 1+ : These feelers are used if you bDoPredictiveAvoidance=true, to scan for potential impacts if the player
-	 *             were to rotate towards that direction and primitively collide the camera so that it pulls in before
-	 *             impacting the occluder.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Collision")
-	TArray<FIMGPenetrationAvoidanceFeeler> PenetrationAvoidanceFeelers;
-
-	UPROPERTY(Transient)
-	float AimLineToDesiredPosBlockedPct;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<const AActor>> DebugActorsHitDuringCameraPenetration;
-
-#if ENABLE_DRAW_DEBUG
-	mutable float LastDrawDebugTime = -MAX_FLT;
-#endif
-
 protected:
+	FVector UpdateViewpoint(const FVector& DesiredPivotLocation, float DeltaTime);
+	void ResetViewpoint();
 	FVector UpdateCameraLag(const FVector& DesiredPivotLocation, float DeltaTime);
 	double UpdatePelvisOffset(float DeltaTime);
 	void ResetPelvisOffset();
 	FRotator UpdateRotationDamping(const FRotator& TargetRotation, float DeltaTime);
-	void UpdateShake(float DeltaTime);
-	void ResetShake();
-	void SetTargetStanceOffset(FVector NewTargetOffset);
-	void UpdateStanceOffset(float DeltaTime);
 
 	FIMGCameraLocationDampingState LocationDampingState;
+	FIMGCameraLocationDampingState ViewpointDampingState;
+	TWeakObjectPtr<const USceneComponent> CachedViewRoot;
+	FVector PreviousViewReferenceOffset = FVector::ZeroVector;
+	float PreviousViewCapsuleHalfHeight = 0.f;
+	bool bViewpointUsesCapsuleBase = false;
 
 	FIMGCameraRotationDampingState RotationDampingState;
-	FIMGCameraShakeState ShakeState;
-	float ShakeAmplitudeScale = 1.f;
-	float ShakeFrequencyScale = 1.f;
 	TWeakObjectPtr<const AActor> CachedViewTarget;
 	TWeakObjectPtr<const APlayerController> CachedViewController;
 
@@ -197,10 +168,4 @@ protected:
 	TWeakObjectPtr<const UAnimInstance> CachedPelvisAnimInstance;
 	FName CachedPelvisOffsetCurve = NAME_None;
 	FName CachedPelvisBone = NAME_None;
-
-	FVector InitialStanceOffset = FVector::ZeroVector;
-	FVector TargetStanceOffset = FVector::ZeroVector;
-	float StanceOffsetBlendPct = 1.0f;
-	FVector CurrentStanceOffset = FVector::ZeroVector;
-	
 };

@@ -1,18 +1,14 @@
 
 #include "Camera/IMGUICameraManagerComponent.h"
 
-#include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/IMGPlayerCameraManager.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGUICameraManagerComponent)
 
-class AActor;
-class FDebugDisplayInfo;
-
 UIMGUICameraManagerComponent* UIMGUICameraManagerComponent::GetComponent(APlayerController* PC)
 {
-	if (PC != nullptr)
+	if (IsValid(PC))
 	{
 		if (AIMGPlayerCameraManager* PCCamera = Cast<AIMGPlayerCameraManager>(PC->PlayerCameraManager))
 		{
@@ -25,40 +21,15 @@ UIMGUICameraManagerComponent* UIMGUICameraManagerComponent::GetComponent(APlayer
 
 UIMGUICameraManagerComponent::UIMGUICameraManagerComponent()
 {
-	bWantsInitializeComponent = true;
-
-	if (!HasAnyFlags(RF_ClassDefaultObject))
-	{
-		// Register "showdebug" hook.
-		if (!IsRunningDedicatedServer())
-		{
-			AHUD::OnShowDebugInfo.AddUObject(this, &ThisClass::OnShowDebugInfo);
-		}
-	}
-}
-
-void UIMGUICameraManagerComponent::InitializeComponent()
-{
-	Super::InitializeComponent();
+	bWantsInitializeComponent = false;
 }
 
 void UIMGUICameraManagerComponent::SetViewTarget(AActor* InViewTarget, FViewTargetTransitionParams TransitionParams)
 {
+	AIMGPlayerCameraManager* Manager = Cast<AIMGPlayerCameraManager>(GetOwner());
+	if (!IsValid(Manager) || Manager->IsActorBeingDestroyed()) { return; }
 	TGuardValue<bool> UpdatingViewTargetGuard(bUpdatingViewTarget, true);
 
-	ViewTarget = InViewTarget;
-	CastChecked<AIMGPlayerCameraManager>(GetOwner())->SetViewTarget(ViewTarget, TransitionParams);
-}
-
-bool UIMGUICameraManagerComponent::NeedsToUpdateViewTarget() const
-{
-	return false;
-}
-
-void UIMGUICameraManagerComponent::UpdateViewTarget(struct FTViewTarget& OutVT, float DeltaTime)
-{
-}
-
-void UIMGUICameraManagerComponent::OnShowDebugInfo(AHUD* HUD, UCanvas* Canvas, const FDebugDisplayInfo& DisplayInfo, float& YL, float& YPos)
-{
+	ViewTarget = IsValid(InViewTarget) ? InViewTarget : nullptr;
+	Manager->SetViewTarget(ViewTarget.Get(), TransitionParams);
 }

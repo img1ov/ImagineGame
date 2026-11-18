@@ -1,149 +1,156 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
 #include "IMGCameraShake.generated.h"
 
-UENUM(BlueprintType)
-enum class EIMGCameraShakeWaveform : uint8
-{
-	Sine,
-	DampedSine
-};
+UENUM()
+enum class EIMGCameraShakeWaveform : uint8 { Sine, DampedSine };
 
-UENUM(BlueprintType)
+UENUM()
 enum class EIMGCameraShakeCurve : uint8
 {
-	Linear,
-	SmoothStep,
-	Exponential
+	Linear, Exponential,
+	SlowIn, SlowOut, SlowInOut,
+	VerySlowIn, VerySlowOut, VerySlowInSlowOut, SlowInVerySlowOut, VerySlowInVerySlowOut,
+	EaseIn, EaseOut,
+	QuadraticIn, QuadraticOut, QuadraticInOut,
+	CubicIn, CubicOut, CubicInOut,
+	QuarticIn, QuarticOut, QuarticInOut,
+	QuinticIn, QuinticOut, QuinticInOut,
+	CircularIn, CircularOut, CircularInOut
 };
 
-USTRUCT(BlueprintType)
-struct IMAGINEGAME_API FIMGCameraShakeOscillatorSettings
+UENUM()
+enum class EIMGCameraShakeComponent : uint8
 {
-	GENERATED_BODY()
-
-	/** Centimeters for position axes, degrees for rotation and FOV. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator", meta = (ClampMin = "0"))
-	float Amplitude = 0.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator", meta = (ClampMin = "0", ClampMax = "100", ForceUnits = "Hz"))
-	float Frequency = 1.f;
-
-	/** Initial phase in cycles; a negative value selects a seeded random phase. Applied when a new instance starts. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Phase = 0.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator")
-	EIMGCameraShakeWaveform Waveform = EIMGCameraShakeWaveform::Sine;
-
-	/** Periodic attenuation of DampedSine, matching GTA's secondary decay oscillator. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator", meta = (ClampMin = "0", ClampMax = "40", EditCondition = "Waveform == EIMGCameraShakeWaveform::DampedSine"))
-	float Decay = 1.f;
-
-	/** Constant offset in the same units as Amplitude; also scaled by the envelope. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator")
-	float DCOffset = 0.f;
-
-	bool IsValid() const;
+	WorldLocationX, WorldLocationY, WorldLocationZ,
+	CameraLocationX, CameraLocationY, CameraLocationZ,
+	Pitch, Yaw, Roll, FieldOfView, ZoomFactor
 };
 
-USTRUCT(BlueprintType)
+USTRUCT()
 struct IMAGINEGAME_API FIMGCameraShakeEnvelopeSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "0", ForceUnits = "s"))
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "0", Units = "s"))
 	float PreDelayTime = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "0", ForceUnits = "s"))
-	float AttackTime = 0.15f;
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "0", Units = "s"))
+	float AttackTime = 0.f;
 
-	/** With decay, attack reaches one before decaying to SustainLevel. Without decay, attack reaches SustainLevel. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "0", ForceUnits = "s"))
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "0", Units = "s"))
 	float DecayTime = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "0", ClampMax = "1"))
+	/** With decay, attack reaches one before decaying to sustain. Otherwise attack reaches sustain directly. */
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "0", ClampMax = "10"))
 	float SustainLevel = 1.f;
 
-	/** Negative means hold until Release; zero proceeds directly to release. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "-1", ForceUnits = "s"))
-	float HoldTime = -1.f;
+	/** Negative holds until release. Continuous playback overrides the overall hold at runtime. */
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "-1", Units = "s"))
+	float HoldTime = 1.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope", meta = (ClampMin = "0", ForceUnits = "s"))
-	float ReleaseTime = 0.2f;
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (ClampMin = "0", Units = "s"))
+	float ReleaseTime = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope")
+	UPROPERTY(EditAnywhere, Category = "Envelope")
 	EIMGCameraShakeCurve AttackCurve = EIMGCameraShakeCurve::Linear;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope")
+	UPROPERTY(EditAnywhere, Category = "Envelope")
 	EIMGCameraShakeCurve ReleaseCurve = EIMGCameraShakeCurve::Exponential;
+
+	bool IsValid() const;
+	double GetDuration() const;
+};
+
+USTRUCT()
+struct IMAGINEGAME_API FIMGCameraShakeOscillatorSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Component")
+	EIMGCameraShakeComponent Component = EIMGCameraShakeComponent::Pitch;
+
+	/** Position uses cm, rotation/FOV use degrees, and zoom is dimensionless. Camera XYZ are forward/right/up. */
+	UPROPERTY(EditAnywhere, Category = "Oscillator", meta = (ClampMin = "0"))
+	float Amplitude = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Oscillator", meta = (ClampMin = "0", ClampMax = "100", Units = "Hz"))
+	float Frequency = 1.f;
+
+	/** Initial phase in cycles; negative selects a fresh random phase from the instance seed. */
+	UPROPERTY(EditAnywhere, Category = "Oscillator", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Phase = -1.f;
+
+	UPROPERTY(EditAnywhere, Category = "Oscillator")
+	EIMGCameraShakeWaveform Waveform = EIMGCameraShakeWaveform::Sine;
+
+	/** Periodic attenuation driven by a secondary oscillator, not a one-way fade. */
+	UPROPERTY(EditAnywhere, Category = "Oscillator", meta = (ClampMin = "0", ClampMax = "40", EditCondition = "Waveform == EIMGCameraShakeWaveform::DampedSine"))
+	float Decay = 1.f;
+
+	UPROPERTY(EditAnywhere, Category = "Oscillator")
+	float DCOffset = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Envelope")
+	bool bUseEnvelope = false;
+
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (EditCondition = "bUseEnvelope"))
+	FIMGCameraShakeEnvelopeSettings Envelope;
 
 	bool IsValid() const;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT()
 struct IMAGINEGAME_API FIMGCameraShakeSettings
 {
 	GENERATED_BODY()
 
-	/** Camera-local position axes: X forward, Y right, Z up. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Location")
-	FIMGCameraShakeOscillatorSettings X;
+	/** Evaluated in order. Multiple oscillators may contribute to the same component. */
+	UPROPERTY(EditAnywhere, Category = "Pattern", meta = (TitleProperty = "Component"))
+	TArray<FIMGCameraShakeOscillatorSettings> Components;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Location")
-	FIMGCameraShakeOscillatorSettings Y;
+	UPROPERTY(EditAnywhere, Category = "Envelope")
+	bool bUseEnvelope = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Location")
-	FIMGCameraShakeOscillatorSettings Z;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation")
-	FIMGCameraShakeOscillatorSettings Pitch;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation")
-	FIMGCameraShakeOscillatorSettings Yaw;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation")
-	FIMGCameraShakeOscillatorSettings Roll;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FOV")
-	FIMGCameraShakeOscillatorSettings FOV;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope")
+	UPROPERTY(EditAnywhere, Category = "Envelope", meta = (EditCondition = "bUseEnvelope"))
 	FIMGCameraShakeEnvelopeSettings Envelope;
 
-	/** Used only by oscillators with a negative Phase. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Oscillator")
-	int32 RandomSeed = 0;
-
 	bool IsValid() const;
+	double GetDuration() const;
+	/** Continuous playback owns the overall hold; the configured envelope toggle remains effective. */
+	void MakeContinuous();
 };
 
-/** Caller-owned numeric instance. No actor, gait, clock, Tick, replication or camera-manager dependency. */
+/** Numeric history only; the caller supplies an immutable pattern, seed, scales and elapsed time. */
 struct IMAGINEGAME_API FIMGCameraShakeState
 {
-	/** Repeated starts are idempotent; starting during release resumes attack without resetting oscillator phases. */
-	void Start(const FIMGCameraShakeSettings& Settings);
+	void Start(const FIMGCameraShakeSettings& Settings, int32 RandomSeed);
+	/** Preserves oscillator phases, resumes an overall release, and refreshes a finite overall hold. */
+	void AutoStart(const FIMGCameraShakeSettings& Settings);
 	void Release();
 	void Reset();
 
-	bool IsActive() const { return Phase != EPhase::Stopped; }
-	bool IsReleasing() const { return Phase == EPhase::Release; }
-	double GetEnvelopeLevel() const { return EnvelopeLevel; }
+	bool IsActive() const { return bActive; }
+	bool IsReleasing() const;
+	double GetEnvelopeLevel() const;
+	double GetReleaseLevel() const;
 
-	/** Invalid inputs or a gap longer than 32/120 seconds stop this instance and return zero offsets. */
-	void Update(float DeltaTime, float AmplitudeScale, float FrequencyScale, const FIMGCameraShakeSettings& Settings,
-		FVector& OutLocationOffset, FRotator& OutRotationOffset, float& OutFOVOffset);
+	/** Closed-form oscillator steps and bounded envelope transitions handle long positive frames too. */
+	void Update(float DeltaTime, float FrequencyScale, const FIMGCameraShakeSettings& Settings, TArray<double>& OutValues);
 
 private:
 	enum class EPhase : uint8 { Stopped, PreDelay, Attack, Decay, Hold, Release };
-	void UpdateEnvelope(double DeltaTime, const FIMGCameraShakeEnvelopeSettings& Settings);
+	void StartEnvelope(int32 Index, const FIMGCameraShakeEnvelopeSettings& Settings, double InitialLevel);
+	void UpdateEnvelope(int32 Index, double DeltaTime, const FIMGCameraShakeEnvelopeSettings& Settings);
 
-	double Angles[7] = {};
-	double DecayAngles[7] = {};
-	double EnvelopeLevel = 0.0;
-	double ReleaseStartLevel = 0.0;
-	double PhaseTime = 0.0;
-	EPhase Phase = EPhase::Stopped;
+	TArray<double> Angles;
+	TArray<double> DecayAngles;
+	// Index zero is the overall envelope; component envelopes follow in pattern order.
+	TArray<double> EnvelopeLevels;
+	TArray<double> ReleaseStartLevels;
+	TArray<double> PhaseTimes;
+	TArray<EPhase> Phases;
+	bool bActive = false;
+	bool bHasOverallEnvelope = false;
 };

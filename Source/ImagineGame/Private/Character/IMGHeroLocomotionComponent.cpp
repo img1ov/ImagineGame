@@ -35,6 +35,7 @@ void UIMGHeroLocomotionComponent::BeginPlay()
 
 void UIMGHeroLocomotionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	StopRunningCameraShake(true);
 	Super::EndPlay(EndPlayReason);
 	ResolvedStrafeSpeedMapCurve = nullptr;
 }
@@ -53,10 +54,13 @@ void UIMGHeroLocomotionComponent::OnLocomotionReadyNative()
 	}
 	RefreshRequestFromTags();
 	GetIMGCharacter()->LandedDelegate.AddDynamic(this, &ThisClass::HandleLanded);
+	GetIMGCharacter()->OnCharacterMovementUpdated.AddUniqueDynamic(this, &ThisClass::HandleRunningCameraShakeMovementUpdated);
 }
 
 void UIMGHeroLocomotionComponent::ReleaseBindings()
 {
+	StopRunningCameraShake(true);
+	RunningShakeDefinition = nullptr;
 	if (UIMGAbilitySystemComponent* ASC = BoundASC.Get())
 	{
 		for (const auto& Binding : IntentTagHandles)
@@ -69,6 +73,7 @@ void UIMGHeroLocomotionComponent::ReleaseBindings()
 	if (AIMGCharacter* Character = GetIMGCharacter())
 	{
 		Character->LandedDelegate.RemoveDynamic(this, &ThisClass::HandleLanded);
+		Character->OnCharacterMovementUpdated.RemoveDynamic(this, &ThisClass::HandleRunningCameraShakeMovementUpdated);
 	}
 	CurrentRequest = 0;
 	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(LandingTimer); }

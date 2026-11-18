@@ -663,9 +663,21 @@ void AIMGCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAd
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
+void AIMGCharacter::RecalculateBaseEyeHeight()
+{
+	if (IsCrawling())
+	{
+		BaseEyeHeight = CrawledEyeHeight;
+	}
+	else
+	{
+		Super::RecalculateBaseEyeHeight();
+	}
+}
+
 void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	BaseEyeHeight = CrawledEyeHeight;
+	RecalculateBaseEyeHeight();
 	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
 	if (GetMesh() && DefaultCharacter->GetMesh())
 	{
@@ -687,11 +699,11 @@ void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightA
 
 void AIMGCharacter::OnEndCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
+	RecalculateBaseEyeHeight();
 	// Crouch installs its own final offset; do not reset the mesh between callbacks.
 	if (GetStance() == EIMGStance::Stand)
 	{
 		const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
-		BaseEyeHeight = DefaultCharacter->BaseEyeHeight;
 		if (GetMesh() && DefaultCharacter->GetMesh())
 		{
 			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();

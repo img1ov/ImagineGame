@@ -7,12 +7,14 @@
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "GameplayCueFunctionLibrary.h"
 #include "Inventory/IMGInventoryItemInstance.h"
 #include "Physics/IMGCollisionChannels.h"
 #include "TimerManager.h"
 #include "Weapons/IMGWeaponStateComponent.h"
 #include "Weapons/IMGRangedWeaponInstance.h"
+#include "Camera/IMGCameraComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_WeaponFire)
 
@@ -151,12 +153,21 @@ void UIMGGameplayAbility_WeaponFire::OnTargetDataReady(const FGameplayAbilityTar
 			}
 		}
 	}
-	if (bCommitted)
+	UIMGRangedWeaponInstance* Weapon = GetWeaponInstance();
+	if (bCommitted && IsActive() && IsValid(Weapon))
 	{
-		GetWeaponInstance()->AddSpread();
+		Weapon->AddSpread();
+		const APlayerController* LocalPlayerController = Cast<APlayerController>(GetControllerFromActorInfo());
+		if (LocalPlayerController && LocalPlayerController->IsLocalController())
+		{
+			if (UIMGCameraComponent* Camera = UIMGCameraComponent::FindCameraComponent(GetAvatarActorFromActorInfo()))
+			{
+				Camera->PlayCameraShake(Weapon->GetFireCameraShake(), Weapon->GetFireCameraShakeScale(), Weapon->GetFireCameraShakeFrequencyScale());
+			}
+		}
 		HandleTargetData(LocalTargetData);
 	}
-	else
+	else if (IsActive())
 	{
 		K2_EndAbility();
 	}

@@ -6,6 +6,8 @@
 
 #include "IMGCameraAssistInterface.generated.h"
 
+class UPrimitiveComponent;
+
 /** */
 UINTERFACE(BlueprintType)
 class IMAGINEGAME_API UIMGCameraAssistInterface : public UInterface
@@ -25,9 +27,15 @@ public:
 	 */
 	virtual void GetIgnoredActorsForCameraPentration(TArray<const AActor*>& OutActorsAllowPenetration) const { }
 
+	/** Occlusion-only exclusions; final camera clearance still considers these components. */
+	virtual void GetIgnoredComponentsForCameraOcclusion(TArray<const UPrimitiveComponent*>& OutComponents) const { }
+
+	/** Ignore radial occlusion, but keep the camera beyond the specified actors' collision bounds. */
+	virtual void GetActorsToPushCameraBeyond(TArray<const AActor*>& OutActors) const { }
+
 	/**
 	 * The target actor to prevent penetration on.  Normally, this is almost always the view target, which if
-	 * unimplemented will remain true.  However, sometimes the view target, isn't the same as the root actor 
+	 * unimplemented will remain true.  However, sometimes the view target, isn't the same as the root actor
 	 * you need to keep in frame.
 	 */
 	virtual TOptional<AActor*> GetCameraPreventPenetrationTarget() const

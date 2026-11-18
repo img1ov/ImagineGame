@@ -55,7 +55,7 @@ namespace
 		}
 		else
 		{
-			// Match the reference's slow-mode approximation, including at critical damping.
+			// Retain the slow exponential mode, including at critical damping.
 			const double Rate = -HalfDamping + FMath::Sqrt(FMath::Max(-OmegaSquared, 0.0));
 			NextDisplacement = Displacement * FMath::Exp(Rate * DeltaTime);
 			Velocity = Rate * NextDisplacement;
@@ -87,6 +87,15 @@ void FIMGCameraLocationDampingState::Reset()
 	Velocity = FVector::ZeroVector;
 	PreviousTargetLocation = FVector::ZeroVector;
 	bInitialized = false;
+}
+
+void FIMGCameraLocationDampingState::Rebase(const FVector& Offset)
+{
+	if (Offset.ContainsNaN()) { Reset(); return; }
+	if (!bInitialized) { return; }
+	LaggedLocation += Offset;
+	PreviousTargetLocation += Offset;
+	if (LaggedLocation.ContainsNaN() || PreviousTargetLocation.ContainsNaN()) { Reset(); }
 }
 
 FVector FIMGCameraLocationDampingState::Update(const FVector& DesiredLocation, float DeltaTime,

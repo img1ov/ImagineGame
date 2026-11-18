@@ -4,8 +4,16 @@
 
 UIMGCameraMode_Default::UIMGCameraMode_Default()
 {
-	bUseRuntimeFloatCurves = true;
-	TargetOffsetX.GetRichCurve()->AddKey(0.0f, -300.0f);
-	TargetOffsetY.GetRichCurve()->AddKey(0.0f, 0.0f);
-	TargetOffsetZ.GetRichCurve()->AddKey(0.0f, -50.f);
+	BlendTime = 0.25f;
+	BlendFunction = EIMGCameraModeBlendFunction::EaseInOut;
+	BlendExponent = 2.f;
+
+	const float DefaultPitches[] = { ViewPitchMin, 0.f, ViewPitchMax };
+	for (const float Pitch : DefaultPitches)
+	{
+		TargetOffsetY.EditorCurveData.UpdateOrAddKey(Pitch, 0.f);
+		TargetOffsetZ.EditorCurveData.UpdateOrAddKey(Pitch, -50.f);
+	}
+	TargetOffsetY.EditorCurveData.AutoSetTangents();
+	TargetOffsetZ.EditorCurveData.AutoSetTangents();
 }

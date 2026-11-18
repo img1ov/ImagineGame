@@ -1,9 +1,8 @@
 
 #include "Camera/IMGCameraMode.h"
 
-#include "Components/CapsuleComponent.h"
 #include "Engine/Canvas.h"
-#include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
 #include "Camera/IMGCameraComponent.h"
 #include "Camera/IMGPlayerCameraManager.h"
 
@@ -42,6 +41,44 @@ void FIMGCameraModeView::Blend(const FIMGCameraModeView& Other, float OtherWeigh
 	ControlRotation = ControlRotation + (OtherWeight * DeltaControlRotation);
 
 	FieldOfView = FMath::Lerp(FieldOfView, Other.FieldOfView, OtherWeight);
+	TMap<FGameplayTag, float> BlendedShakeScales;
+	for (const auto& Pair : CameraShakeCategoryScales)
+	{
+		const float* OtherScale = Other.CameraShakeCategoryScales.Find(Pair.Key);
+		BlendedShakeScales.Add(Pair.Key, FMath::Lerp(Pair.Value, OtherScale ? *OtherScale : Other.CameraShakeScale, OtherWeight));
+	}
+	for (const auto& Pair : Other.CameraShakeCategoryScales)
+	{
+		if (!CameraShakeCategoryScales.Contains(Pair.Key))
+		{
+			BlendedShakeScales.Add(Pair.Key, FMath::Lerp(CameraShakeScale, Pair.Value, OtherWeight));
+		}
+	}
+	CameraShakeScale = FMath::Lerp(CameraShakeScale, Other.CameraShakeScale, OtherWeight);
+	CameraShakeCategoryScales = MoveTemp(BlendedShakeScales);
+	Framing.Blend(Other.Framing, OtherWeight);
+
+	if (Other.Collision.IsSet())
+	{
+		FIMGCameraCollisionRequest Request = Other.Collision.GetValue();
+		if (Collision.IsSet() && Collision->Target.HasSameIndexAndSerialNumber(Request.Target)
+			&& Collision->Anchor.HasSameIndexAndSerialNumber(Request.Anchor))
+		{
+			Request.Input.Origin = FMath::Lerp(Collision->Input.Origin, Request.Input.Origin, OtherWeight);
+			Request.Input.Fallback = FMath::Lerp(Collision->Input.Fallback, Request.Input.Fallback, OtherWeight);
+			Request.Input.Pivot = FMath::Lerp(Collision->Input.Pivot, Request.Input.Pivot, OtherWeight);
+			Request.Input.MaxProbeRadius = FMath::Min(Collision->Input.MaxProbeRadius, Request.Input.MaxProbeRadius);
+			for (const auto& Actor : Collision->Input.IgnoredActors) { Request.Input.IgnoredActors.AddUnique(Actor); }
+			for (const auto& Component : Collision->Input.IgnoredOcclusionComponents) { Request.Input.IgnoredOcclusionComponents.AddUnique(Component); }
+			for (const auto& Actor : Collision->Input.PushBeyondActors) { Request.Input.PushBeyondActors.AddUnique(Actor); }
+		}
+		Request.Input.bForcePushIn = true;
+		Collision = MoveTemp(Request);
+	}
+	else if (Collision.IsSet())
+	{
+		Collision->Input.bForcePushIn = true;
+	}
 }
 
 
@@ -85,25 +122,6 @@ FVector UIMGCameraMode::GetPivotLocation() const
 
 	if (const APawn* TargetPawn = Cast<APawn>(TargetActor))
 	{
-		// Height adjustments for characters to account for crouching.
-		if (const ACharacter* TargetCharacter = Cast<ACharacter>(TargetPawn))
-		{
-			const ACharacter* TargetCharacterCDO = TargetCharacter->GetClass()->GetDefaultObject<ACharacter>();
-			check(TargetCharacterCDO);
-
-			const UCapsuleComponent* CapsuleComp = TargetCharacter->GetCapsuleComponent();
-			check(CapsuleComp);
-
-			const UCapsuleComponent* CapsuleCompCDO = TargetCharacterCDO->GetCapsuleComponent();
-			check(CapsuleCompCDO);
-
-			const float DefaultHalfHeight = CapsuleCompCDO->GetUnscaledCapsuleHalfHeight();
-			const float ActualHalfHeight = CapsuleComp->GetUnscaledCapsuleHalfHeight();
-			const float HeightAdjustment = (DefaultHalfHeight - ActualHalfHeight) + TargetCharacterCDO->BaseEyeHeight;
-
-			return TargetCharacter->GetActorLocation() + (FVector::UpVector * HeightAdjustment);
-		}
-
 		return TargetPawn->GetPawnViewLocation();
 	}
 
@@ -123,16 +141,40 @@ FRotator UIMGCameraMode::GetPivotRotation() const
 	return TargetActor->GetActorRotation();
 }
 
-void UIMGCameraMode::UpdateCameraMode(float DeltaTime)
+bool UIMGCameraMode::UpdateCameraMode(float DeltaTime)
 {
 	const uint32 ResetRevision = InterpolationResetRevision;
-	UpdateView(DeltaTime);
-	// Keep a new request made by a view-update callback for the next complete update.
-	if (ResetRevision == InterpolationResetRevision)
+	View.Framing = FIMGCameraFramingResult();
+	View.Collision.Reset();
+	View.CameraShakeScale = FMath::IsFinite(CameraShakeScale) ? FMath::Max(0.f, CameraShakeScale) : 0.f;
+	View.CameraShakeCategoryScales.Reset();
+	for (const auto& Pair : CameraShakeCategoryScales)
 	{
-		bResetInterpolation = false;
+		const float Scale = View.CameraShakeScale * Pair.Value;
+		View.CameraShakeCategoryScales.Add(Pair.Key, FMath::IsFinite(Scale) ? FMath::Max(0.f, Scale) : 0.f);
 	}
+	UpdateView(DeltaTime);
+	// A callback invalidating this sample must not publish a partially rebuilt view.
+	if (ResetRevision != InterpolationResetRevision)
+	{
+		View.Collision.Reset();
+		return false;
+	}
+	bResetInterpolation = false;
 	UpdateBlending(DeltaTime);
+	if (ResetRevision != InterpolationResetRevision)
+	{
+		View.Collision.Reset();
+		return false;
+	}
+	return true;
+}
+
+void UIMGCameraMode::ResetInterpolation()
+{
+	bResetInterpolation = true;
+	++InterpolationResetRevision;
+	if (UIMGCameraComponent* Component = Cast<UIMGCameraComponent>(GetOuter())) { Component->ResetCollision(); }
 }
 
 void UIMGCameraMode::UpdateView(float DeltaTime)
@@ -150,10 +192,10 @@ void UIMGCameraMode::UpdateView(float DeltaTime)
 
 void UIMGCameraMode::SetBlendWeight(float Weight)
 {
-	BlendWeight = FMath::Clamp(Weight, 0.0f, 1.0f);
+	BlendWeight = FMath::IsFinite(Weight) ? FMath::Clamp(Weight, 0.0f, 1.0f) : 1.f;
 
 	// Since we're setting the blend weight directly, we need to calculate the blend alpha to account for the blend function.
-	const float InvExponent = (BlendExponent > 0.0f) ? (1.0f / BlendExponent) : 1.0f;
+	const float InvExponent = FMath::IsFinite(BlendExponent) && BlendExponent > 0.f ? 1.f / BlendExponent : 1.f;
 
 	switch (BlendFunction)
 	{
@@ -174,24 +216,24 @@ void UIMGCameraMode::SetBlendWeight(float Weight)
 		break;
 
 	default:
-		checkf(false, TEXT("SetBlendWeight: Invalid BlendFunction [%d]\n"), (uint8)BlendFunction);
+		BlendAlpha = BlendWeight;
 		break;
 	}
 }
 
 void UIMGCameraMode::UpdateBlending(float DeltaTime)
 {
-	if (BlendTime > 0.0f)
+	if (FMath::IsFinite(DeltaTime) && DeltaTime >= 0.f && FMath::IsFinite(BlendTime) && BlendTime > 0.f)
 	{
 		BlendAlpha += (DeltaTime / BlendTime);
-		BlendAlpha = FMath::Min(BlendAlpha, 1.0f);
+		BlendAlpha = FMath::IsFinite(BlendAlpha) ? FMath::Clamp(BlendAlpha, 0.f, 1.f) : 1.f;
 	}
 	else
 	{
 		BlendAlpha = 1.0f;
 	}
 
-	const float Exponent = (BlendExponent > 0.0f) ? BlendExponent : 1.0f;
+	const float Exponent = FMath::IsFinite(BlendExponent) && BlendExponent > 0.f ? BlendExponent : 1.f;
 
 	switch (BlendFunction)
 	{
@@ -212,7 +254,7 @@ void UIMGCameraMode::UpdateBlending(float DeltaTime)
 		break;
 
 	default:
-		checkf(false, TEXT("UpdateBlending: Invalid BlendFunction [%d]\n"), (uint8)BlendFunction);
+		BlendWeight = BlendAlpha;
 		break;
 	}
 }
@@ -241,11 +283,14 @@ void UIMGCameraModeStack::ActivateStack()
 	if (!bIsActive)
 	{
 		bIsActive = true;
+		++StackRevision;
 
 		// Notify camera modes that they are being activated.
-		for (UIMGCameraMode* CameraMode : CameraModeStack)
+		const auto Modes = CameraModeStack;
+		for (UIMGCameraMode* CameraMode : Modes)
 		{
-			check(CameraMode);
+			if (!bIsActive) { break; }
+			if (!IsValid(CameraMode) || !CameraModeStack.Contains(CameraMode)) { continue; }
 			CameraMode->OnActivation();
 		}
 	}
@@ -256,11 +301,14 @@ void UIMGCameraModeStack::DeactivateStack()
 	if (bIsActive)
 	{
 		bIsActive = false;
+		++StackRevision;
 
 		// Notify camera modes that they are being deactivated.
-		for (UIMGCameraMode* CameraMode : CameraModeStack)
+		const auto Modes = CameraModeStack;
+		for (UIMGCameraMode* CameraMode : Modes)
 		{
-			check(CameraMode);
+			if (bIsActive) { break; }
+			if (!IsValid(CameraMode)) { continue; }
 			CameraMode->OnDeactivation();
 		}
 	}
@@ -268,9 +316,13 @@ void UIMGCameraModeStack::DeactivateStack()
 
 void UIMGCameraModeStack::PushCameraMode(TSubclassOf<UIMGCameraMode> CameraModeClass)
 {
-	if (!CameraModeClass)
+	if (!CameraModeClass || CameraModeClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
 	{
 		return;
+	}
+	if (CameraModeStack.RemoveAll([](const UIMGCameraMode* Mode) { return !IsValid(Mode); }) > 0)
+	{
+		++StackRevision;
 	}
 
 	UIMGCameraMode* CameraMode = GetCameraModeInstance(CameraModeClass);
@@ -321,12 +373,13 @@ void UIMGCameraModeStack::PushCameraMode(TSubclassOf<UIMGCameraMode> CameraModeC
 
 	// Add new entry to top of stack.
 	CameraModeStack.Insert(CameraMode, 0);
+	++StackRevision;
 
 	// Make sure stack bottom is always weighted 100%.
 	CameraModeStack.Last()->SetBlendWeight(1.0f);
 
 	// Let the camera mode know if it's being added to the stack.
-	if (ExistingStackIndex == INDEX_NONE)
+	if (bIsActive && ExistingStackIndex == INDEX_NONE)
 	{
 		CameraMode->OnActivation();
 	}
@@ -339,17 +392,22 @@ bool UIMGCameraModeStack::EvaluateStack(float DeltaTime, FIMGCameraModeView& Out
 		return false;
 	}
 
-	UpdateStack(DeltaTime);
+	if (!UpdateStack(DeltaTime)) { return false; }
 	BlendStack(OutCameraModeView);
+	if (OutCameraModeView.Collision.IsSet() && CameraModeStack.Num() > 1)
+	{
+		OutCameraModeView.Collision->Input.bForcePushIn = true;
+	}
 
 	return true;
 }
 
 void UIMGCameraModeStack::ResetInterpolation()
 {
+	++StackRevision;
 	for (UIMGCameraMode* CameraMode : CameraModeStack)
 	{
-		CameraMode->ResetInterpolation();
+		if (IsValid(CameraMode)) { CameraMode->ResetInterpolation(); }
 	}
 }
 
@@ -360,7 +418,7 @@ UIMGCameraMode* UIMGCameraModeStack::GetCameraModeInstance(TSubclassOf<UIMGCamer
 	// First see if we already created one.
 	for (UIMGCameraMode* CameraMode : CameraModeInstances)
 	{
-		if ((CameraMode != nullptr) && (CameraMode->GetClass() == CameraModeClass))
+		if (IsValid(CameraMode) && CameraMode->GetClass() == CameraModeClass)
 		{
 			return CameraMode;
 		}
@@ -375,23 +433,25 @@ UIMGCameraMode* UIMGCameraModeStack::GetCameraModeInstance(TSubclassOf<UIMGCamer
 	return NewCameraMode;
 }
 
-void UIMGCameraModeStack::UpdateStack(float DeltaTime)
+bool UIMGCameraModeStack::UpdateStack(float DeltaTime)
 {
 	const int32 StackSize = CameraModeStack.Num();
 	if (StackSize <= 0)
 	{
-		return;
+		return false;
 	}
 
 	int32 RemoveCount = 0;
 	int32 RemoveIndex = INDEX_NONE;
+	uint32 Revision = StackRevision;
 
 	for (int32 StackIndex = 0; StackIndex < StackSize; ++StackIndex)
 	{
 		UIMGCameraMode* CameraMode = CameraModeStack[StackIndex];
-		check(CameraMode);
+		if (!IsValid(CameraMode)) { return false; }
 
-		CameraMode->UpdateCameraMode(DeltaTime);
+		if (!CameraMode->UpdateCameraMode(DeltaTime)) { return false; }
+		if (!bIsActive || Revision != StackRevision || !IsValid(CameraMode)) { return false; }
 
 		if (CameraMode->GetBlendWeight() >= 1.0f)
 		{
@@ -404,17 +464,19 @@ void UIMGCameraModeStack::UpdateStack(float DeltaTime)
 
 	if (RemoveCount > 0)
 	{
-		// Let the camera modes know they being removed from the stack.
+		TArray<TObjectPtr<UIMGCameraMode>> RemovedModes;
 		for (int32 StackIndex = RemoveIndex; StackIndex < StackSize; ++StackIndex)
 		{
-			UIMGCameraMode* CameraMode = CameraModeStack[StackIndex];
-			check(CameraMode);
-
-			CameraMode->OnDeactivation();
+			RemovedModes.Add(CameraModeStack[StackIndex]);
 		}
-
 		CameraModeStack.RemoveAt(RemoveIndex, RemoveCount);
+		Revision = ++StackRevision;
+		for (UIMGCameraMode* CameraMode : RemovedModes)
+		{
+			if (IsValid(CameraMode) && !CameraModeStack.Contains(CameraMode)) { CameraMode->OnDeactivation(); }
+		}
 	}
+	return bIsActive && Revision == StackRevision && !CameraModeStack.IsEmpty();
 }
 
 void UIMGCameraModeStack::BlendStack(FIMGCameraModeView& OutCameraModeView) const
@@ -451,8 +513,7 @@ void UIMGCameraModeStack::DrawDebug(UCanvas* Canvas) const
 
 	for (const UIMGCameraMode* CameraMode : CameraModeStack)
 	{
-		check(CameraMode);
-		CameraMode->DrawDebug(Canvas);
+		if (IsValid(CameraMode)) { CameraMode->DrawDebug(Canvas); }
 	}
 
 	DisplayDebugManager.SetDrawColor(FColor::Green);
@@ -461,16 +522,21 @@ void UIMGCameraModeStack::DrawDebug(UCanvas* Canvas) const
 
 void UIMGCameraModeStack::GetBlendInfo(float& OutWeightOfTopLayer, FGameplayTag& OutTagOfTopLayer) const
 {
-	if (CameraModeStack.Num() == 0)
+	if (!bIsActive || CameraModeStack.IsEmpty())
 	{
-		OutWeightOfTopLayer = 1.0f;
+		OutWeightOfTopLayer = 0.0f;
 		OutTagOfTopLayer = FGameplayTag();
 		return;
 	}
 	else
 	{
-		UIMGCameraMode* TopEntry = CameraModeStack.Last();
-		check(TopEntry);
+		UIMGCameraMode* TopEntry = CameraModeStack[0];
+		if (!IsValid(TopEntry))
+		{
+			OutWeightOfTopLayer = 0.f;
+			OutTagOfTopLayer = FGameplayTag();
+			return;
+		}
 		OutWeightOfTopLayer = TopEntry->GetBlendWeight();
 		OutTagOfTopLayer = TopEntry->GetCameraTypeTag();
 	}

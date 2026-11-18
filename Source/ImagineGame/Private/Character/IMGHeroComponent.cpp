@@ -439,7 +439,17 @@ void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (APawn* Pawn = GetPawn<APawn>())
 	{
 		Pawn->ReceiveControllerChangedDelegate.RemoveDynamic(this, &ThisClass::HandlePawnControllerChanged);
+		if (UIMGCameraComponent* Camera = UIMGCameraComponent::FindCameraComponent(Pawn))
+		{
+			if (Camera->DetermineCameraModeDelegate.IsBoundToObject(this))
+			{
+				Camera->DetermineCameraModeDelegate.Unbind();
+				Camera->ResetInterpolation();
+			}
+		}
 	}
+	AbilityCameraMode = nullptr;
+	AbilityCameraModeOwningSpecHandle = FGameplayAbilitySpecHandle();
 
 	ResetMovementIntent();
 	UnregisterInitStateFeature();
@@ -697,6 +707,10 @@ void UIMGHeroComponent::SetAbilityCameraMode(TSubclassOf<UIMGCameraMode> CameraM
 	{
 		AbilityCameraMode = CameraMode;
 		AbilityCameraModeOwningSpecHandle = OwningSpecHandle;
+	}
+	else
+	{
+		ClearAbilityCameraMode(OwningSpecHandle);
 	}
 }
 

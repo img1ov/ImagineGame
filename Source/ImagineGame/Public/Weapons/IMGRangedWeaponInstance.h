@@ -8,6 +8,7 @@
 #include "IMGRangedWeaponInstance.generated.h"
 
 class UPhysicalMaterial;
+class UIMGCameraShakeDefinition;
 
 /**
  * UIMGRangedWeaponInstance
@@ -66,7 +67,22 @@ public:
 		return BulletTraceSweepRadius;
 	}
 
+	const UIMGCameraShakeDefinition* GetFireCameraShake() const { return FireCameraShake; }
+	float GetFireCameraShakeScale() const { return FireCameraShakeScale; }
+	float GetFireCameraShakeFrequencyScale() const { return FireCameraShakeFrequencyScale; }
+
 protected:
+	/** Local visual feedback after a shot commits; does not drive control rotation or weapon spread. */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon Config|Camera")
+	TObjectPtr<UIMGCameraShakeDefinition> FireCameraShake;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon Config|Camera", meta = (ClampMin = "0"))
+	float FireCameraShakeScale = 1.f;
+
+	/** Oscillator frequency multiplier; does not change the weapon's firing interval. */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon Config|Camera", meta = (ClampMin = "0"))
+	float FireCameraShakeFrequencyScale = 1.f;
+
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(VisibleAnywhere, Category = "Spread|Fire Params")
 	float Debug_MinHeat = 0.0f;

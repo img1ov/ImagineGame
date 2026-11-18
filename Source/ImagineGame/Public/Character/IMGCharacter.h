@@ -147,6 +147,7 @@ public:
 
 	//~APawn interface
 	UE_API virtual void NotifyControllerChanged() override;
+	UE_API virtual void RecalculateBaseEyeHeight() override;
 	//~End of APawn interface
 
 	//~IActTeamAgentInterface interface
