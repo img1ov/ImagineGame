@@ -8,6 +8,7 @@
 #include "IMGEquipmentInstance.generated.h"
 
 class AActor;
+class ACharacter;
 class APawn;
 class UIMGPawnComponent_CharacterParts;
 class USceneComponent;
@@ -86,8 +87,14 @@ private:
 	void OnRep_SpawnedActors();
 
 	void StopAttachmentObservation();
+	void ClearAttachmentTargetObservers();
 	void DestroyLocalActors();
 	void RefreshLocalActors();
+	USkeletalMeshComponent* ResolveLocalAttachmentTarget(const FIMGEquipmentPartAttachment& PartAttachment,
+		const ACharacter* Character, const TArray<AActor*>& PartActors, int32& MatchingParts, int32& MeshCount, int32& TaggedMeshCount);
+	bool TryAttachLocalActor(AActor* Actor, TWeakObjectPtr<USkeletalMeshComponent> SelectedTarget,
+		const FIMGEquipmentActorToSpawn& Info, uint32 Generation, uint32 Revision);
+	bool CanRefreshAttachments(uint32 Generation) const;
 	void HandleAttachmentExtension(AActor* Actor, FName EventName);
 	void SetLocalActorWaiting(AActor* Actor, bool bWaiting);
 

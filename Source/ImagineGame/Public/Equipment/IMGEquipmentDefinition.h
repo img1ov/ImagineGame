@@ -11,6 +11,20 @@ class UIMGAbilitySet;
 class UIMGEquipmentInstance;
 
 USTRUCT()
+struct FIMGEquipmentPartAttachment
+{
+	GENERATED_BODY()
+
+	// Matches the spawned Part Actor's GameplayTags.
+	UPROPERTY(EditAnywhere, Category=Equipment, meta=(Categories="Cosmetic"))
+	FGameplayTag PartTag;
+
+	// Optional ComponentTags name on the matched Part. Falls back to its first skeletal mesh.
+	UPROPERTY(EditAnywhere, Category=Equipment)
+	FName ComponentTag;
+};
+
+USTRUCT()
 struct FIMGEquipmentActorToSpawn
 {
 	GENERATED_BODY()
@@ -21,14 +35,13 @@ struct FIMGEquipmentActorToSpawn
 	UPROPERTY(EditAnywhere, Category=Equipment)
 	TSubclassOf<AActor> ActorToSpawn;
 
-	// A valid tag opts this entry into non-replicated presentation on each non-dedicated peer.
-	// Matches the spawned Part Actor's GameplayTags, never the combined cosmetic tags.
-	UPROPERTY(EditAnywhere, Category=Equipment, meta=(Categories="Cosmetic"))
-	FGameplayTag AttachToPartTag;
-
-	// Optional ComponentTags name on the selected Part. If absent or unmatched, use its first skeletal mesh.
+	// Enables local presentation on non-dedicated peers, with the visible Character Mesh as fallback.
+	// When disabled, the authority spawns and attaches to the Character Mesh or other Pawn's root.
 	UPROPERTY(EditAnywhere, Category=Equipment)
-	FName AttachComponentTag;
+	bool bUsePartAttachment = false;
+
+	UPROPERTY(EditAnywhere, Category=Equipment, meta=(EditCondition="bUsePartAttachment"))
+	FIMGEquipmentPartAttachment PartAttachment;
 
 	UPROPERTY(EditAnywhere, Category=Equipment)
 	FName AttachSocket;

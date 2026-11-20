@@ -86,8 +86,7 @@ void UIMGEquipmentInstance::SpawnEquipmentActors(const TArray<FIMGEquipmentActor
 
 		for (const FIMGEquipmentActorToSpawn& SpawnInfo : ActorsToSpawn)
 		{
-			// Part actors are local cosmetics and cannot be attachment parents on a dedicated server.
-			if (SpawnInfo.AttachToPartTag.IsValid() || !SpawnInfo.ActorToSpawn)
+			if (SpawnInfo.bUsePartAttachment || !SpawnInfo.ActorToSpawn)
 			{
 				continue;
 			}
@@ -201,7 +200,7 @@ void UIMGEquipmentInstance::NotifyEquipped(TSubclassOf<UIMGEquipmentDefinition> 
 	{
 		for (const FIMGEquipmentActorToSpawn& Info : GetDefault<UIMGEquipmentDefinition>(Definition)->ActorsToSpawn)
 		{
-			if (Info.AttachToPartTag.IsValid())
+			if (Info.bUsePartAttachment)
 			{
 				LocalActorConfigurations.Add(Info);
 			}
@@ -215,12 +214,15 @@ void UIMGEquipmentInstance::NotifyEquipped(TSubclassOf<UIMGEquipmentDefinition> 
 			{
 				TSharedPtr<FComponentRequestHandle> Handle = Manager->AddExtensionHandler(Pawn->GetClass(),
 					UGameFrameworkComponentManager::FExtensionHandlerDelegate::CreateUObject(this, &ThisClass::HandleAttachmentExtension));
-				if (bObservingAttachments)
+				if (CanRefreshAttachments(Generation))
 				{
 					AttachmentExtensionHandle = MoveTemp(Handle);
 				}
 			}
-			RefreshLocalActors();
+			if (CanRefreshAttachments(Generation))
+			{
+				RefreshLocalActors();
+			}
 		}
 	}
 	if (bEquipmentActive && AttachmentGeneration == Generation)
@@ -285,6 +287,12 @@ void UIMGEquipmentInstance::StopAttachmentObservation()
 		Health->OnDeathStarted.RemoveDynamic(this, &ThisClass::HandleAttachmentDeath);
 	}
 	AttachmentHealth.Reset();
+	ClearAttachmentTargetObservers();
+	WarnedAttachmentEntries.Reset();
+}
+
+void UIMGEquipmentInstance::ClearAttachmentTargetObservers()
+{
 	for (const TWeakObjectPtr<AActor>& Part : ObservedAttachmentParts)
 	{
 		if (AActor* Actor = Part.Get())
@@ -301,7 +309,6 @@ void UIMGEquipmentInstance::StopAttachmentObservation()
 		}
 	}
 	ObservedAttachmentMeshes.Reset();
-	WarnedAttachmentEntries.Reset();
 }
 
 void UIMGEquipmentInstance::DestroyLocalActors()
@@ -334,11 +341,17 @@ void UIMGEquipmentInstance::SetLocalActorWaiting(AActor* Actor, bool bWaiting)
 		bLocalActorsChanged |= AttachmentTickTargets.Remove(Actor) > 0;
 		if (!Actor->IsHidden())
 		{
+			const uint32 Generation = AttachmentGeneration;
 			ActorsHiddenForAttachment.Add(Actor);
 			Actor->SetActorHiddenInGame(true);
+			if (AttachmentGeneration != Generation || !IsValid(Actor) || Actor->IsActorBeingDestroyed())
+			{
+				return;
+			}
 		}
 		if (USceneComponent* Root = Actor->GetRootComponent(); Root && Root->GetAttachParent())
 		{
+			bLocalActorsChanged = true;
 			Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 		}
 	}
@@ -346,6 +359,132 @@ void UIMGEquipmentInstance::SetLocalActorWaiting(AActor* Actor, bool bWaiting)
 	{
 		Actor->SetActorHiddenInGame(false);
 	}
+}
+
+bool UIMGEquipmentInstance::CanRefreshAttachments(uint32 Generation) const
+{
+	return bEquipmentActive && bObservingAttachments && AttachmentGeneration == Generation;
+}
+
+USkeletalMeshComponent* UIMGEquipmentInstance::ResolveLocalAttachmentTarget(const FIMGEquipmentPartAttachment& PartAttachment,
+	const ACharacter* Character, const TArray<AActor*>& PartActors, int32& MatchingParts, int32& MeshCount, int32& TaggedMeshCount)
+{
+	const bool bHasPartTag = PartAttachment.PartTag.IsValid();
+	const bool bUseComponentTag = !PartAttachment.ComponentTag.IsNone();
+	USkeletalMeshComponent* Target = nullptr;
+	USkeletalMeshComponent* FirstMesh = nullptr;
+	for (AActor* Part : PartActors)
+	{
+		if (!bHasPartTag || !IsValid(Part) || Part->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		const IGameplayTagAssetInterface* Tags = Cast<IGameplayTagAssetInterface>(Part);
+		if (!Tags || !Tags->HasMatchingGameplayTag(PartAttachment.PartTag))
+		{
+			continue;
+		}
+		++MatchingParts;
+		if (!Part->HasActorBegunPlay())
+		{
+			continue;
+		}
+		Part->OnEndPlay.AddUniqueDynamic(this, &ThisClass::HandleAttachmentPartEndPlay);
+		ObservedAttachmentParts.AddUnique(Part);
+		TArray<USkeletalMeshComponent*> Meshes;
+		Part->GetComponents(Meshes);
+		for (USkeletalMeshComponent* Mesh : Meshes)
+		{
+			if (!IsValid(Mesh) || Mesh->IsBeingDestroyed())
+			{
+				continue;
+			}
+			++MeshCount;
+			if (!FirstMesh)
+			{
+				FirstMesh = Mesh;
+			}
+			const bool bHasComponentTag = bUseComponentTag && Mesh->ComponentHasTag(PartAttachment.ComponentTag);
+			if (bHasComponentTag)
+			{
+				++TaggedMeshCount;
+				Target = Mesh;
+			}
+			if (!bUseComponentTag || bHasComponentTag || Mesh == FirstMesh)
+			{
+				Mesh->OnAnimInitialized.AddUniqueDynamic(this, &ThisClass::HandleAttachmentAnimInitialized);
+				ObservedAttachmentMeshes.AddUnique(Mesh);
+			}
+		}
+	}
+	if (TaggedMeshCount == 0)
+	{
+		Target = FirstMesh;
+	}
+	if (MatchingParts == 0 && Character)
+	{
+		if (USkeletalMeshComponent* CharacterMesh = Character->GetMesh(); IsValid(CharacterMesh) && !CharacterMesh->IsBeingDestroyed())
+		{
+			CharacterMesh->OnAnimInitialized.AddUniqueDynamic(this, &ThisClass::HandleAttachmentAnimInitialized);
+			ObservedAttachmentMeshes.AddUnique(CharacterMesh);
+			Target = CharacterMesh->IsVisible() ? CharacterMesh : nullptr;
+		}
+	}
+	else if (MatchingParts != 1 || TaggedMeshCount > 1)
+	{
+		Target = nullptr;
+	}
+	return Target;
+}
+
+bool UIMGEquipmentInstance::TryAttachLocalActor(AActor* Actor, TWeakObjectPtr<USkeletalMeshComponent> SelectedTarget,
+	const FIMGEquipmentActorToSpawn& Info, uint32 Generation, uint32 Revision)
+{
+	USkeletalMeshComponent* Target = SelectedTarget.Get();
+	if (Revision != AttachmentRevision || !Target || !Target->IsRegistered() ||
+		!IsValid(Target->GetOwner()) || Target->GetOwner()->IsActorBeingDestroyed())
+	{
+		return false;
+	}
+
+	const USceneComponent* Root = Actor->GetRootComponent();
+	if (Root && Root->GetAttachParent() == Target && Root->GetAttachSocketName() == Info.AttachSocket)
+	{
+		return true;
+	}
+
+	if (const TWeakObjectPtr<USceneComponent>* Previous = AttachmentTickTargets.Find(Actor); Previous && Previous->IsValid())
+	{
+		Actor->RemoveTickPrerequisiteComponent(Previous->Get());
+	}
+	bLocalActorsChanged |= AttachmentTickTargets.Remove(Actor) > 0;
+
+	const auto CanCompleteAttachment = [this, Generation, Revision, Actor, SelectedTarget]()
+	{
+		return CanRefreshAttachments(Generation) && Revision == AttachmentRevision &&
+			IsValid(Actor) && !Actor->IsActorBeingDestroyed() && SelectedTarget.IsValid() && SelectedTarget->IsRegistered();
+	};
+	if (!Actor->AttachToComponent(Target, FAttachmentTransformRules::KeepRelativeTransform, Info.AttachSocket) || !CanCompleteAttachment())
+	{
+		return false;
+	}
+
+	Actor->SetActorRelativeTransform(Info.AttachTransform);
+	if (!CanCompleteAttachment())
+	{
+		return false;
+	}
+
+	Root = Actor->GetRootComponent();
+	if (!Root || Root->GetAttachParent() != Target || Root->GetAttachSocketName() != Info.AttachSocket)
+	{
+		return false;
+	}
+
+	Actor->AddTickPrerequisiteComponent(Target);
+	AttachmentTickTargets.Add(Actor, Target);
+	bLocalActorsChanged = true;
+	return true;
 }
 
 void UIMGEquipmentInstance::RefreshLocalActors()
@@ -404,79 +543,20 @@ void UIMGEquipmentInstance::RefreshLocalActors()
 		}
 	}
 	// Subscribe before reading the snapshot. Parts notifications do not replay history.
-	for (const TWeakObjectPtr<AActor>& Part : ObservedAttachmentParts)
-	{
-		if (AActor* Actor = Part.Get())
-		{
-			Actor->OnEndPlay.RemoveDynamic(this, &ThisClass::HandleAttachmentPartEndPlay);
-		}
-	}
-	for (const TWeakObjectPtr<USkeletalMeshComponent>& Mesh : ObservedAttachmentMeshes)
-	{
-		if (USkeletalMeshComponent* Component = Mesh.Get())
-		{
-			Component->OnAnimInitialized.RemoveDynamic(this, &ThisClass::HandleAttachmentAnimInitialized);
-		}
-	}
-	ObservedAttachmentParts.Reset();
-	ObservedAttachmentMeshes.Reset();
+	ClearAttachmentTargetObservers();
+	const ACharacter* Character = Cast<ACharacter>(Pawn);
 	const TArray<AActor*> PartActors = Parts ? Parts->GetCharacterPartActors() : TArray<AActor*>();
 	for (int32 Index = 0; Index < LocalActorConfigurations.Num(); ++Index)
 	{
 		const FIMGEquipmentActorToSpawn Info = LocalActorConfigurations[Index];
-		const bool bUseComponentTag = !Info.AttachComponentTag.IsNone();
-		USkeletalMeshComponent* Target = nullptr;
-		USkeletalMeshComponent* FirstMesh = nullptr;
+		const FIMGEquipmentPartAttachment& PartAttachment = Info.PartAttachment;
 		int32 MatchingParts = 0;
 		int32 MeshCount = 0;
 		int32 TaggedMeshCount = 0;
-		for (AActor* Part : PartActors)
+		USkeletalMeshComponent* Target = ResolveLocalAttachmentTarget(PartAttachment, Character, PartActors, MatchingParts, MeshCount, TaggedMeshCount);
+		if (!CanRefreshAttachments(Generation))
 		{
-			if (!IsValid(Part) || Part->IsActorBeingDestroyed() || !Part->HasActorBegunPlay())
-			{
-				continue;
-			}
-			const IGameplayTagAssetInterface* Tags = Cast<IGameplayTagAssetInterface>(Part);
-			if (!Tags || !Tags->HasMatchingGameplayTag(Info.AttachToPartTag))
-			{
-				continue;
-			}
-			++MatchingParts;
-			Part->OnEndPlay.AddUniqueDynamic(this, &ThisClass::HandleAttachmentPartEndPlay);
-			ObservedAttachmentParts.AddUnique(Part);
-			TArray<USkeletalMeshComponent*> Meshes;
-			Part->GetComponents(Meshes);
-			for (USkeletalMeshComponent* Mesh : Meshes)
-			{
-				if (!IsValid(Mesh) || Mesh->IsBeingDestroyed())
-				{
-					continue;
-				}
-				++MeshCount;
-				if (!FirstMesh)
-				{
-					FirstMesh = Mesh;
-				}
-				const bool bHasComponentTag = bUseComponentTag && Mesh->ComponentHasTag(Info.AttachComponentTag);
-				if (bHasComponentTag)
-				{
-					++TaggedMeshCount;
-					Target = Mesh;
-				}
-				if (!bUseComponentTag || bHasComponentTag || Mesh == FirstMesh)
-				{
-					Mesh->OnAnimInitialized.AddUniqueDynamic(this, &ThisClass::HandleAttachmentAnimInitialized);
-					ObservedAttachmentMeshes.AddUnique(Mesh);
-				}
-			}
-		}
-		if (TaggedMeshCount == 0)
-		{
-			Target = FirstMesh;
-		}
-		if (MatchingParts != 1 || TaggedMeshCount > 1)
-		{
-			Target = nullptr;
+			return;
 		}
 		const TWeakObjectPtr<USkeletalMeshComponent> ChosenMesh = Target;
 		if (Target && (!Target->IsRegistered() || !Target->GetSkinnedAsset() ||
@@ -490,16 +570,27 @@ void UIMGEquipmentInstance::RefreshLocalActors()
 		{
 			Actor = GetWorld()->SpawnActorDeferred<AActor>(Info.ActorToSpawn, Pawn->GetActorTransform(), Pawn, Pawn,
 				ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-			if (IsValid(Actor))
+			if (IsValid(Actor) && !Actor->IsActorBeingDestroyed())
 			{
-				if (!bEquipmentActive || !bObservingAttachments || AttachmentGeneration != Generation)
+				if (CanRefreshAttachments(Generation))
 				{
-					Actor->Destroy();
+					Actor->SetReplicates(false);
+					Actor->SetActorEnableCollision(false);
+				}
+				if (!CanRefreshAttachments(Generation))
+				{
+					if (IsValid(Actor) && !Actor->IsActorBeingDestroyed())
+					{
+						Actor->Destroy();
+					}
 					return;
 				}
+				if (!IsValid(Actor) || Actor->IsActorBeingDestroyed())
+				{
+					LocalSpawnedActors[Index] = nullptr;
+					continue;
+				}
 				LocalSpawnedActors[Index] = Actor;
-				Actor->SetReplicates(false);
-				Actor->SetActorEnableCollision(false);
 				Actor->FinishSpawning(Pawn->GetActorTransform());
 				if (!bEquipmentActive || AttachmentGeneration != Generation)
 				{
@@ -513,6 +604,15 @@ void UIMGEquipmentInstance::RefreshLocalActors()
 				// Construction scripts must not turn a local representation into a network/gameplay actor.
 				Actor->SetReplicates(false);
 				Actor->SetActorEnableCollision(false);
+				if (!bEquipmentActive || AttachmentGeneration != Generation)
+				{
+					return;
+				}
+				if (!IsValid(Actor) || Actor->IsActorBeingDestroyed())
+				{
+					LocalSpawnedActors[Index] = nullptr;
+					continue;
+				}
 				if (!bObservingAttachments)
 				{
 					SetLocalActorWaiting(Actor, true);
@@ -521,79 +621,37 @@ void UIMGEquipmentInstance::RefreshLocalActors()
 				bLocalActorsChanged = true;
 			}
 		}
-		if (IsValid(Actor))
+		bool bAttached = false;
+		if (IsValid(Actor) && !Actor->IsActorBeingDestroyed())
 		{
-			Target = SelectedTarget.Get();
-			if (Revision != AttachmentRevision || !IsValid(Target) || !Target->IsRegistered() ||
-				!IsValid(Target->GetOwner()) || Target->GetOwner()->IsActorBeingDestroyed())
-			{
-				Target = nullptr;
-			}
-			if (Target)
-			{
-				USceneComponent* Root = Actor->GetRootComponent();
-				if (!Root || Root->GetAttachParent() != Target || Root->GetAttachSocketName() != Info.AttachSocket)
-				{
-					if (const TWeakObjectPtr<USceneComponent>* Previous = AttachmentTickTargets.Find(Actor); Previous && Previous->IsValid())
-					{
-						Actor->RemoveTickPrerequisiteComponent(Previous->Get());
-					}
-					bLocalActorsChanged |= AttachmentTickTargets.Remove(Actor) > 0;
-					const bool bAttached = Actor->AttachToComponent(Target, FAttachmentTransformRules::KeepRelativeTransform, Info.AttachSocket);
-					if (!bEquipmentActive || !bObservingAttachments || AttachmentGeneration != Generation)
-					{
-						return;
-					}
-					if (!IsValid(Actor) || Actor->IsActorBeingDestroyed())
-					{
-						LocalSpawnedActors[Index] = nullptr;
-						bLocalActorsChanged = true;
-						continue;
-					}
-					if (bAttached)
-					{
-						Actor->SetActorRelativeTransform(Info.AttachTransform);
-						if (!bEquipmentActive || !bObservingAttachments || AttachmentGeneration != Generation)
-						{
-							return;
-						}
-						if (!IsValid(Actor) || Actor->IsActorBeingDestroyed())
-						{
-							LocalSpawnedActors[Index] = nullptr;
-							bLocalActorsChanged = true;
-							continue;
-						}
-						if (Revision == AttachmentRevision && SelectedTarget.IsValid() && Target->IsRegistered())
-						{
-							Actor->AddTickPrerequisiteComponent(Target);
-							AttachmentTickTargets.Add(Actor, Target);
-							bLocalActorsChanged = true;
-						}
-						else
-						{
-							Target = nullptr;
-						}
-					}
-					else
-					{
-						Target = nullptr;
-					}
-				}
-			}
-			SetLocalActorWaiting(Actor, !Target);
-			if (!bEquipmentActive || !bObservingAttachments || AttachmentGeneration != Generation)
+			bAttached = TryAttachLocalActor(Actor, SelectedTarget, Info, Generation, Revision);
+			if (!CanRefreshAttachments(Generation))
 			{
 				return;
 			}
+			if (IsValid(Actor) && !Actor->IsActorBeingDestroyed())
+			{
+				SetLocalActorWaiting(Actor, !bAttached);
+				if (!CanRefreshAttachments(Generation))
+				{
+					return;
+				}
+			}
+			if (!IsValid(Actor) || Actor->IsActorBeingDestroyed())
+			{
+				LocalSpawnedActors[Index] = nullptr;
+				bLocalActorsChanged = true;
+				continue;
+			}
 		}
-		if ((!Target || !IsValid(Actor)) && !WarnedAttachmentEntries.Contains(Index))
+		if (!bAttached && !WarnedAttachmentEntries.Contains(Index))
 		{
 			WarnedAttachmentEntries.Add(Index);
-			UE_LOG(LogIMG, Warning, TEXT("Equipment %s: Part presentation is waiting or misconfigured (Class=%s Tag=%s ComponentTag=%s Socket=%s Parts=%d Meshes=%d TaggedMeshes=%d ChosenMesh=%s Actor=%s). Check Part GameplayTags, mesh/socket availability and actor attachment."),
-				*GetPathName(), *GetNameSafe(Info.ActorToSpawn), *Info.AttachToPartTag.ToString(), *Info.AttachComponentTag.ToString(),
+			UE_LOG(LogIMG, Warning, TEXT("Equipment %s: Part presentation is waiting or misconfigured (Class=%s Tag=%s ComponentTag=%s Socket=%s Parts=%d Meshes=%d TaggedMeshes=%d ChosenMesh=%s Actor=%s). Check Part GameplayTags, mesh/socket availability, fallback mesh visibility and actor attachment."),
+				*GetPathName(), *GetNameSafe(Info.ActorToSpawn), *PartAttachment.PartTag.ToString(), *PartAttachment.ComponentTag.ToString(),
 				*Info.AttachSocket.ToString(), MatchingParts, MeshCount, TaggedMeshCount, *GetNameSafe(ChosenMesh.Get()), *GetNameSafe(Actor));
 		}
-		else if (Target && IsValid(Actor))
+		else if (bAttached)
 		{
 			WarnedAttachmentEntries.Remove(Index);
 		}
@@ -624,12 +682,17 @@ void UIMGEquipmentInstance::HandleAttachmentExtension(AActor* Actor, FName Event
 		}
 		AttachmentParts.Reset();
 		RefreshEquipmentActorAttachments();
+		const uint32 Generation = AttachmentGeneration;
 		const TArray<TObjectPtr<AActor>> Actors = LocalSpawnedActors;
 		for (AActor* LocalActor : Actors)
 		{
-			if (IsValid(LocalActor))
+			if (IsValid(LocalActor) && !LocalActor->IsActorBeingDestroyed() && LocalActor->GetAttachParentActor() != Actor)
 			{
 				SetLocalActorWaiting(LocalActor, true);
+				if (!CanRefreshAttachments(Generation))
+				{
+					return;
+				}
 			}
 		}
 	}
@@ -659,12 +722,17 @@ void UIMGEquipmentInstance::HandleAttachmentPartEndPlay(AActor* Actor, EEndPlayR
 		return;
 	}
 	RefreshEquipmentActorAttachments();
+	const uint32 Generation = AttachmentGeneration;
 	const TArray<TObjectPtr<AActor>> Actors = LocalSpawnedActors;
 	for (AActor* LocalActor : Actors)
 	{
-		if (IsValid(LocalActor) && LocalActor->GetAttachParentActor() == Actor)
+		if (IsValid(LocalActor) && !LocalActor->IsActorBeingDestroyed() && LocalActor->GetAttachParentActor() == Actor)
 		{
 			SetLocalActorWaiting(LocalActor, true);
+			if (!CanRefreshAttachments(Generation))
+			{
+				return;
+			}
 		}
 	}
 }
