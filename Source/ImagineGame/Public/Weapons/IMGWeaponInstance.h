@@ -15,6 +15,7 @@ struct FFrame;
 struct FGameplayTagContainer;
 class UInputDeviceProperty;
 class USkeletalMeshComponent;
+class UIMGHealthComponent;
 class UIMGPawnComponent_CharacterParts;
 struct FComponentRequestHandle;
 
@@ -108,6 +109,7 @@ private:
 	/** Set of device properties activated by this weapon. Populated by ApplyDeviceProperties */
 	UPROPERTY(Transient)
 	TSet<FInputDevicePropertyHandle> DevicePropertyHandles;
+	TWeakObjectPtr<UIMGHealthComponent> DeviceHealthComponent;
 
 	double TimeLastEquipped = 0.0;
 	double TimeLastFired = 0.0;

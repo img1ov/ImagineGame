@@ -7,6 +7,7 @@
 #include "Equipment/IMGEquipmentManagerComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Controller.h"
 #include "Inventory/InventoryFragment_EquippableItem.h"
 #include "NativeGameplayTags.h"
 #include "Net/UnrealNetwork.h"
@@ -36,12 +37,53 @@ void UIMGQuickBarComponent::GetLifetimeReplicatedProps(TArray< FLifetimeProperty
 
 void UIMGQuickBarComponent::BeginPlay()
 {
+	bEndingPlay = false;
 	if (Slots.Num() < NumSlots)
 	{
 		Slots.AddDefaulted(NumSlots - Slots.Num());
 	}
+	if (HasAuthority())
+	{
+		if (AController* Controller = GetController<AController>())
+		{
+			Controller->OnPossessedPawnChanged.AddUniqueDynamic(this, &ThisClass::HandlePossessedPawnChanged);
+		}
+	}
 
 	Super::BeginPlay();
+}
+
+void UIMGQuickBarComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bEndingPlay = true;
+	++SelectionRevision;
+	if (AController* Controller = GetController<AController>())
+	{
+		Controller->OnPossessedPawnChanged.RemoveDynamic(this, &ThisClass::HandlePossessedPawnChanged);
+	}
+	if (HasAuthority())
+	{
+		ActiveSlotIndex = -1;
+		ActiveSlotPawn.Reset();
+		UnequipItemInSlot();
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void UIMGQuickBarComponent::HandlePossessedPawnChanged(APawn* OldPawn, APawn* NewPawn)
+{
+	if (HasAuthority() && !bEndingPlay && OldPawn != NewPawn && NewPawn == GetPawn<APawn>() && ActiveSlotIndex != INDEX_NONE &&
+		(!NewPawn || ActiveSlotPawn.Get() != NewPawn))
+	{
+		const uint32 Revision = ++SelectionRevision;
+		ActiveSlotIndex = -1;
+		ActiveSlotPawn.Reset();
+		UnequipItemInSlot();
+		if (Revision == SelectionRevision)
+		{
+			OnRep_ActiveSlotIndex();
+		}
+	}
 }
 
 void UIMGQuickBarComponent::CycleActiveSlotForward()
@@ -98,10 +140,21 @@ void UIMGQuickBarComponent::EquipItemInSlot()
 			{
 				if (UIMGEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
 				{
-					EquippedItem = EquipmentManager->EquipItem(EquipDef);
-					if (EquippedItem != nullptr)
+					const uint32 Revision = SelectionRevision;
+					UIMGEquipmentInstance* NewEquipment = EquipmentManager->EquipItem(EquipDef);
+					if (IsValid(NewEquipment))
 					{
-						EquippedItem->SetInstigator(SlotItem);
+						// Actor construction or OnEquipped can change the selection or possession synchronously.
+						if (Revision == SelectionRevision && ActiveSlotPawn.Get() == NewEquipment->GetPawn() &&
+							ActiveSlotPawn.Get() == GetPawn<APawn>())
+						{
+							EquippedItem = NewEquipment;
+							EquippedItem->SetInstigator(SlotItem);
+						}
+						else if (IsValid(EquipmentManager))
+						{
+							EquipmentManager->UnequipItem(NewEquipment);
+						}
 					}
 				}
 			}
@@ -111,12 +164,17 @@ void UIMGQuickBarComponent::EquipItemInSlot()
 
 void UIMGQuickBarComponent::UnequipItemInSlot()
 {
-	if (UIMGEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
+	UIMGEquipmentInstance* PreviousItem = EquippedItem;
+	EquippedItem = nullptr;
+	if (IsValid(PreviousItem))
 	{
-		if (EquippedItem != nullptr)
+		// The Controller may already possess a different Pawn when this callback runs.
+		if (APawn* PreviousPawn = PreviousItem->GetPawn(); IsValid(PreviousPawn))
 		{
-			EquipmentManager->UnequipItem(EquippedItem);
-			EquippedItem = nullptr;
+			if (UIMGEquipmentManagerComponent* EquipmentManager = PreviousPawn->FindComponentByClass<UIMGEquipmentManagerComponent>())
+			{
+				EquipmentManager->UnequipItem(PreviousItem);
+			}
 		}
 	}
 }
@@ -135,14 +193,26 @@ UIMGEquipmentManagerComponent* UIMGQuickBarComponent::FindEquipmentManager() con
 
 void UIMGQuickBarComponent::SetActiveSlotIndex_Implementation(int32 NewIndex)
 {
-	if (Slots.IsValidIndex(NewIndex) && (ActiveSlotIndex != NewIndex))
+	if (bEndingPlay || !Slots.IsValidIndex(NewIndex))
 	{
-		UnequipItemInSlot();
-
-		ActiveSlotIndex = NewIndex;
-
-		EquipItemInSlot();
-
+		return;
+	}
+	APawn* Pawn = GetPawn<APawn>();
+	if (ActiveSlotIndex == NewIndex && ActiveSlotPawn.Get() == Pawn)
+	{
+		return;
+	}
+	const uint32 Revision = ++SelectionRevision;
+	UnequipItemInSlot();
+	if (Revision != SelectionRevision || Pawn != GetPawn<APawn>())
+	{
+		return;
+	}
+	ActiveSlotIndex = NewIndex;
+	ActiveSlotPawn = Pawn;
+	EquipItemInSlot();
+	if (Revision == SelectionRevision)
+	{
 		OnRep_ActiveSlotIndex();
 	}
 }
@@ -181,23 +251,27 @@ void UIMGQuickBarComponent::AddItemToSlot(int32 SlotIndex, UIMGInventoryItemInst
 
 UIMGInventoryItemInstance* UIMGQuickBarComponent::RemoveItemFromSlot(int32 SlotIndex)
 {
-	UIMGInventoryItemInstance* Result = nullptr;
+	if (!Slots.IsValidIndex(SlotIndex))
+	{
+		return nullptr;
+	}
+	UIMGInventoryItemInstance* Result = Slots[SlotIndex];
+	Slots[SlotIndex] = nullptr;
 
 	if (ActiveSlotIndex == SlotIndex)
 	{
-		UnequipItemInSlot();
+		const uint32 Revision = ++SelectionRevision;
 		ActiveSlotIndex = -1;
-	}
-
-	if (Slots.IsValidIndex(SlotIndex))
-	{
-		Result = Slots[SlotIndex];
-
-		if (Result != nullptr)
+		ActiveSlotPawn.Reset();
+		UnequipItemInSlot();
+		if (Revision == SelectionRevision)
 		{
-			Slots[SlotIndex] = nullptr;
-			OnRep_Slots();
+			OnRep_ActiveSlotIndex();
 		}
+	}
+	if (Result)
+	{
+		OnRep_Slots();
 	}
 
 	return Result;

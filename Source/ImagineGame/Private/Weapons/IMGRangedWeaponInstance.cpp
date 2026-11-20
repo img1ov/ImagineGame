@@ -46,6 +46,10 @@ void UIMGRangedWeaponInstance::UpdateDebugVisualization()
 void UIMGRangedWeaponInstance::OnEquipped()
 {
 	Super::OnEquipped();
+	if (!IsEquipmentActive())
+	{
+		return;
+	}
 
 	// Start heat in the middle
 	float MinHeatRange;

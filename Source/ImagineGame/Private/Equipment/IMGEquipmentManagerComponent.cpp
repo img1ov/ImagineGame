@@ -28,10 +28,12 @@ void FIMGEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndic
 {
  	for (int32 Index : RemovedIndices)
  	{
- 		const FIMGAppliedEquipmentEntry& Entry = Entries[Index];
-		if (Entry.Instance != nullptr)
+		FIMGAppliedEquipmentEntry& Entry = Entries[Index];
+		UIMGEquipmentInstance* Instance = Entry.NotifiedInstance.Get();
+		Entry.NotifiedInstance.Reset();
+		if (Instance)
 		{
-			Entry.Instance->OnUnequipped();
+			Instance->NotifyUnequipped();
 		}
  	}
 }
@@ -40,21 +42,44 @@ void FIMGEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, 
 {
 	for (int32 Index : AddedIndices)
 	{
-		const FIMGAppliedEquipmentEntry& Entry = Entries[Index];
-		if (Entry.Instance != nullptr)
-		{
-			Entry.Instance->OnEquipped();
-		}
+		NotifyEntryEquipped(Index);
 	}
 }
 
 void FIMGEquipmentList::PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize)
 {
-// 	for (int32 Index : ChangedIndices)
-// 	{
-// 		const FGameplayTagStack& Stack = Stacks[Index];
-// 		TagToCountMap[Stack.Tag] = Stack.StackCount;
-// 	}
+	for (int32 Index : ChangedIndices)
+	{
+		NotifyEntryEquipped(Index);
+	}
+}
+
+void FIMGEquipmentList::NotifyEntryEquipped(int32 Index)
+{
+	const UIMGEquipmentManagerComponent* Manager = Cast<UIMGEquipmentManagerComponent>(OwnerComponent);
+	if (!Entries.IsValidIndex(Index) || !IsValid(Manager) || Manager->bEndingPlay || !Manager->HasBegunPlay() || Manager->IsBeingDestroyed() ||
+		!IsValid(Manager->GetOwner()) || Manager->GetOwner()->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	FIMGAppliedEquipmentEntry& Entry = Entries[Index];
+	UIMGEquipmentInstance* Previous = Entry.NotifiedInstance.Get();
+	UIMGEquipmentInstance* Current = IsValid(Entry.Instance) && Entry.EquipmentDefinition ? Entry.Instance.Get() : nullptr;
+	if (Previous == Current)
+	{
+		return;
+	}
+	const TSubclassOf<UIMGEquipmentDefinition> Definition = Entry.EquipmentDefinition;
+	Entry.NotifiedInstance = Current;
+	if (Previous)
+	{
+		Previous->NotifyUnequipped();
+	}
+	if (IsValid(Current) && IsValid(Manager) && !Manager->bEndingPlay &&
+		Entries.IsValidIndex(Index) && Entries[Index].NotifiedInstance.Get() == Current)
+	{
+		Current->NotifyEquipped(Definition);
+	}
 }
 
 UIMGAbilitySystemComponent* FIMGEquipmentList::GetAbilitySystemComponent() const
@@ -85,11 +110,22 @@ UIMGEquipmentInstance* FIMGEquipmentList::AddEntry(TSubclassOf<UIMGEquipmentDefi
 	NewEntry.Instance = NewObject<UIMGEquipmentInstance>(OwnerComponent->GetOwner(), InstanceType);  //@TODO: Using the actor instead of component as the outer due to UE-127172
 	Result = NewEntry.Instance;
 
+	// Ability grants and actor construction may synchronously remove this entry or resize the list.
+	FIMGAbilitySet_GrantedHandles GrantedHandles;
 	if (UIMGAbilitySystemComponent* ASC = GetAbilitySystemComponent())
 	{
+		NewEntry.GrantingAbilitySystem = ASC;
 		for (const TObjectPtr<const UIMGAbilitySet>& AbilitySet : EquipmentCDO->AbilitySetsToGrant)
 		{
-			AbilitySet->GiveToAbilitySystem(ASC, /*inout*/ &NewEntry.GrantedHandles, Result);
+			if (AbilitySet)
+			{
+				AbilitySet->GiveToAbilitySystem(ASC, &GrantedHandles, Result);
+			}
+			if (!Entries.ContainsByPredicate([Result](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Result; }))
+			{
+				GrantedHandles.TakeFromAbilitySystem(ASC);
+				return nullptr;
+			}
 		}
 	}
 	else
@@ -97,30 +133,46 @@ UIMGEquipmentInstance* FIMGEquipmentList::AddEntry(TSubclassOf<UIMGEquipmentDefi
 		//@TODO: Warning logging?
 	}
 
+	int32 Index = Entries.IndexOfByPredicate([Result](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Result; });
+	if (Index == INDEX_NONE)
+	{
+		return nullptr;
+	}
+	Entries[Index].GrantedHandles = MoveTemp(GrantedHandles);
 	Result->SpawnEquipmentActors(EquipmentCDO->ActorsToSpawn);
-
-
-	MarkItemDirty(NewEntry);
+	Index = Entries.IndexOfByPredicate([Result](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Result; });
+	if (Index == INDEX_NONE)
+	{
+		return nullptr;
+	}
+	MarkItemDirty(Entries[Index]);
 
 	return Result;
 }
 
 void FIMGEquipmentList::RemoveEntry(UIMGEquipmentInstance* Instance)
 {
-	for (auto EntryIt = Entries.CreateIterator(); EntryIt; ++EntryIt)
+	const int32 Index = Entries.IndexOfByPredicate([Instance](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Instance; });
+	if (Index != INDEX_NONE && !Entries[Index].bRemoving)
 	{
-		FIMGAppliedEquipmentEntry& Entry = *EntryIt;
-		if (Entry.Instance == Instance)
+		// Keep the entry visible to the unequip event while rejecting recursive removal.
+		Entries[Index].bRemoving = true;
+		UIMGAbilitySystemComponent* ASC = Entries[Index].GrantingAbilitySystem.Get();
+		FIMGAbilitySet_GrantedHandles Handles = MoveTemp(Entries[Index].GrantedHandles);
+		if (OwnerComponent->IsUsingRegisteredSubObjectList() && OwnerComponent->IsReplicatedSubObjectRegistered(Instance))
 		{
-			if (UIMGAbilitySystemComponent* ASC = GetAbilitySystemComponent())
-			{
-				Entry.GrantedHandles.TakeFromAbilitySystem(ASC);
-			}
-
-			Instance->DestroyEquipmentActors();
-			
-
-			EntryIt.RemoveCurrent();
+			OwnerComponent->RemoveReplicatedSubObject(Instance);
+		}
+		Instance->NotifyUnequipped();
+		if (ASC)
+		{
+			Handles.TakeFromAbilitySystem(ASC);
+		}
+		Instance->DestroyEquipmentActors();
+		const int32 RemovedIndex = Entries.IndexOfByPredicate([Instance](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Instance; });
+		if (RemovedIndex != INDEX_NONE)
+		{
+			Entries.RemoveAt(RemovedIndex);
 			MarkArrayDirty();
 		}
 	}
@@ -147,12 +199,21 @@ void UIMGEquipmentManagerComponent::GetLifetimeReplicatedProps(TArray< FLifetime
 UIMGEquipmentInstance* UIMGEquipmentManagerComponent::EquipItem(TSubclassOf<UIMGEquipmentDefinition> EquipmentClass)
 {
 	UIMGEquipmentInstance* Result = nullptr;
-	if (EquipmentClass != nullptr)
+	if (!bEndingPlay && IsValid(GetOwner()) && !GetOwner()->IsActorBeingDestroyed() && GetOwner()->HasAuthority() && EquipmentClass != nullptr)
 	{
 		Result = EquipmentList.AddEntry(EquipmentClass);
 		if (Result != nullptr)
 		{
-			Result->OnEquipped();
+			Result->NotifyEquipped(EquipmentClass);
+			if (!Result->IsEquipmentActive())
+			{
+				EquipmentList.RemoveEntry(Result);
+				return nullptr;
+			}
+			if (!EquipmentList.Entries.ContainsByPredicate([Result](const FIMGAppliedEquipmentEntry& Entry) { return Entry.Instance == Result; }))
+			{
+				return nullptr;
+			}
 
 			if (IsUsingRegisteredSubObjectList() && IsReadyForReplication())
 			{
@@ -165,14 +226,8 @@ UIMGEquipmentInstance* UIMGEquipmentManagerComponent::EquipItem(TSubclassOf<UIMG
 
 void UIMGEquipmentManagerComponent::UnequipItem(UIMGEquipmentInstance* ItemInstance)
 {
-	if (ItemInstance != nullptr)
+	if (IsValid(ItemInstance) && GetOwner() && GetOwner()->HasAuthority())
 	{
-		if (IsUsingRegisteredSubObjectList())
-		{
-			RemoveReplicatedSubObject(ItemInstance);
-		}
-
-		ItemInstance->OnUnequipped();
 		EquipmentList.RemoveEntry(ItemInstance);
 	}
 }
@@ -199,22 +254,68 @@ void UIMGEquipmentManagerComponent::InitializeComponent()
 	Super::InitializeComponent();
 }
 
+void UIMGEquipmentManagerComponent::BeginPlay()
+{
+	bEndingPlay = false;
+	Super::BeginPlay();
+	if (!GetOwner()->HasAuthority())
+	{
+		for (int32 Index = 0; Index < EquipmentList.Entries.Num(); ++Index)
+		{
+			EquipmentList.NotifyEntryEquipped(Index);
+		}
+	}
+}
+
+void UIMGEquipmentManagerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ClearEquipment();
+	Super::EndPlay(EndPlayReason);
+}
+
 void UIMGEquipmentManagerComponent::UninitializeComponent()
 {
-	TArray<UIMGEquipmentInstance*> AllEquipmentInstances;
-
-	// gathering all instances before removal to avoid side effects affecting the equipment list iterator	
-	for (const FIMGAppliedEquipmentEntry& Entry : EquipmentList.Entries)
-	{
-		AllEquipmentInstances.Add(Entry.Instance);
-	}
-
-	for (UIMGEquipmentInstance* EquipInstance : AllEquipmentInstances)
-	{
-		UnequipItem(EquipInstance);
-	}
-
+	ClearEquipment();
 	Super::UninitializeComponent();
+}
+
+void UIMGEquipmentManagerComponent::ClearEquipment()
+{
+	if (bEndingPlay)
+	{
+		return;
+	}
+	bEndingPlay = true;
+	const bool bAuthority = GetOwner() && GetOwner()->HasAuthority();
+	// End presentation while the world and its local cosmetic actors are still available.
+	TArray<UIMGEquipmentInstance*> Instances;
+	for (FIMGAppliedEquipmentEntry& Entry : EquipmentList.Entries)
+	{
+		if (UIMGEquipmentInstance* Notified = Entry.NotifiedInstance.Get())
+		{
+			Instances.AddUnique(Notified);
+		}
+		Entry.NotifiedInstance.Reset();
+		if (IsValid(Entry.Instance))
+		{
+			Instances.AddUnique(Entry.Instance);
+		}
+	}
+	for (UIMGEquipmentInstance* Instance : Instances)
+	{
+		if (!IsValid(Instance))
+		{
+			continue;
+		}
+		if (bAuthority)
+		{
+			UnequipItem(Instance);
+		}
+		else
+		{
+			Instance->NotifyUnequipped();
+		}
+	}
 }
 
 void UIMGEquipmentManagerComponent::ReadyForReplication()

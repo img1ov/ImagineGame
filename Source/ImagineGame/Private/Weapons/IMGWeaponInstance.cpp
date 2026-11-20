@@ -23,19 +23,6 @@ struct FGameplayTagContainer;
 UIMGWeaponInstance::UIMGWeaponInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	// Listen for death of the owning pawn so that any device properties can be removed if we
-	// die and can't unequip
-	if (APawn* Pawn = GetPawn())
-	{
-		// We only need to do this for player controlled pawns, since AI and others won't have input devices on the client
-		if (Pawn->IsPlayerControlled())
-		{
-			if (UIMGHealthComponent* HealthComponent = UIMGHealthComponent::FindHealthComponent(GetPawn()))
-			{
-				HealthComponent->OnDeathStarted.AddDynamic(this, &ThisClass::OnDeathStarted);
-			}
-		}
-	}
 }
 
 void UIMGWeaponInstance::OnEquipped()
@@ -44,11 +31,27 @@ void UIMGWeaponInstance::OnEquipped()
 	// Observing before the event also lets a synchronous unequip cancel this activation's recovery.
 	StartAnimLayerObservation();
 	Super::OnEquipped();
+	if (!IsEquipmentActive())
+	{
+		return;
+	}
 
 	UWorld* World = GetWorld();
 	check(World);
 	TimeLastEquipped = World->GetTimeSeconds();
 
+	if (UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(GetPawn()))
+	{
+		if (Health->IsDeadOrDying())
+		{
+			return;
+		}
+		if (GetOwningUserId().IsValid())
+		{
+			DeviceHealthComponent = Health;
+			Health->OnDeathStarted.AddUniqueDynamic(this, &ThisClass::OnDeathStarted);
+		}
+	}
 	ApplyDeviceProperties();
 }
 
@@ -56,6 +59,11 @@ void UIMGWeaponInstance::OnUnequipped()
 {
 	// Cancel recovery first; the Blueprint may need the current layer for its unequip montage.
 	StopAnimLayerObservation();
+	if (UIMGHealthComponent* Health = DeviceHealthComponent.Get())
+	{
+		Health->OnDeathStarted.RemoveDynamic(this, &ThisClass::OnDeathStarted);
+	}
+	DeviceHealthComponent.Reset();
 	Super::OnUnequipped();
 
 	RemoveDeviceProperties();
@@ -332,16 +340,13 @@ void UIMGWeaponInstance::ApplyDeviceProperties()
 
 void UIMGWeaponInstance::RemoveDeviceProperties()
 {
-	const FPlatformUserId UserId = GetOwningUserId();
-	
-	if (UserId.IsValid() && !DevicePropertyHandles.IsEmpty())
+	if (!DevicePropertyHandles.IsEmpty())
 	{
-		// Remove any device properties that have been applied
 		if (UInputDeviceSubsystem* InputDeviceSubsystem = UInputDeviceSubsystem::Get())
 		{
 			InputDeviceSubsystem->RemoveDevicePropertyHandles(DevicePropertyHandles);
-			DevicePropertyHandles.Empty();
 		}
+		DevicePropertyHandles.Reset();
 	}
 }
 

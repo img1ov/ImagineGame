@@ -42,9 +42,19 @@ private:
 	UPROPERTY()
 	TObjectPtr<UIMGEquipmentInstance> Instance = nullptr;
 
+	// Local delivery state; FastArray references may be unmapped on the first add callback.
+	UPROPERTY(NotReplicated)
+	TWeakObjectPtr<UIMGEquipmentInstance> NotifiedInstance;
+
+	// Revoke on the ASC that received the grants, even after the Pawn's ASC binding changes.
+	UPROPERTY(NotReplicated)
+	TWeakObjectPtr<UIMGAbilitySystemComponent> GrantingAbilitySystem;
+
 	// Authority-only list of granted handles
 	UPROPERTY(NotReplicated)
 	FIMGAbilitySet_GrantedHandles GrantedHandles;
+
+	bool bRemoving = false;
 };
 
 /** List of applied equipment */
@@ -80,6 +90,7 @@ public:
 
 private:
 	UIMGAbilitySystemComponent* GetAbilitySystemComponent() const;
+	void NotifyEntryEquipped(int32 Index);
 
 	friend UIMGEquipmentManagerComponent;
 
@@ -122,8 +133,9 @@ public:
 	//~End of UObject interface
 
 	//~UActorComponent interface
-	//virtual void EndPlay() override;
 	UE_API virtual void InitializeComponent() override;
+	UE_API virtual void BeginPlay() override;
+	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	UE_API virtual void UninitializeComponent() override;
 	UE_API virtual void ReadyForReplication() override;
 	//~End of UActorComponent interface
@@ -143,6 +155,10 @@ public:
 	}
 
 private:
+	friend FIMGEquipmentList;
+	void ClearEquipment();
+	bool bEndingPlay = false;
+
 	UPROPERTY(Replicated)
 	FIMGEquipmentList EquipmentList;
 };
