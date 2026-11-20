@@ -9,8 +9,10 @@
 #include "Character/IMGHealthComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Components/GameFrameworkComponentManager.h"
+#include "Components/MeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Cosmetics/IMGPawnComponent_CharacterParts.h"
+#include "Equipment/IMGEquipmentManagerComponent.h"
 #include "GameFramework/Character.h"
 #include "IMGLogChannels.h"
 #include "TimerManager.h"
@@ -23,6 +25,76 @@ struct FGameplayTagContainer;
 UIMGWeaponInstance::UIMGWeaponInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+}
+
+AActor* UIMGWeaponInstance::FindEquippedWeaponActor(const AActor* CharacterActor)
+{
+	const APawn* Pawn = Cast<APawn>(CharacterActor);
+	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed())
+	{
+		return nullptr;
+	}
+
+	UIMGEquipmentManagerComponent* EquipmentManager = Pawn->FindComponentByClass<UIMGEquipmentManagerComponent>();
+	const UIMGWeaponInstance* Weapon = IsValid(EquipmentManager) ? EquipmentManager->GetFirstInstanceOfType<UIMGWeaponInstance>() : nullptr;
+	if (!IsValid(Weapon) || !Weapon->IsEquipmentActive())
+	{
+		return nullptr;
+	}
+
+	const TArray<AActor*> Actors = Weapon->GetSpawnedActors();
+	AActor* WeaponActor = Actors.Num() == 1 ? Actors[0] : nullptr;
+	if (!IsValid(WeaponActor) || WeaponActor->IsActorBeingDestroyed())
+	{
+		return nullptr;
+	}
+
+	const USceneComponent* Root = WeaponActor->GetRootComponent();
+	const USceneComponent* Parent = IsValid(Root) && Root->IsRegistered() ? Root->GetAttachParent() : nullptr;
+	const AActor* ParentActor = IsValid(Parent) && Parent->IsRegistered() ? Parent->GetOwner() : nullptr;
+	return IsValid(ParentActor) && !ParentActor->IsActorBeingDestroyed() && WeaponActor->IsAttachedTo(Pawn) ? WeaponActor : nullptr;
+}
+
+bool UIMGWeaponInstance::TryGetEquippedWeaponActor(const AActor* CharacterActor, AActor*& WeaponActor)
+{
+	WeaponActor = FindEquippedWeaponActor(CharacterActor);
+	return WeaponActor != nullptr;
+}
+
+bool UIMGWeaponInstance::TryGetEquippedWeaponMesh(const AActor* CharacterActor, UMeshComponent*& WeaponMesh, FName ComponentTag)
+{
+	WeaponMesh = nullptr;
+	const TInlineComponentArray<UMeshComponent*> Meshes(FindEquippedWeaponActor(CharacterActor));
+	for (UMeshComponent* Mesh : Meshes)
+	{
+		if (!IsValid(Mesh) || Mesh->IsBeingDestroyed() || (!ComponentTag.IsNone() && !Mesh->ComponentHasTag(ComponentTag)))
+		{
+			continue;
+		}
+		if (!Mesh->IsRegistered())
+		{
+			return false;
+		}
+
+		WeaponMesh = Mesh;
+		return true;
+	}
+	return false;
+}
+
+bool UIMGWeaponInstance::TryGetEquippedWeaponSocketTransform(const AActor* CharacterActor, FName SocketName, FTransform& SocketTransform,
+	ERelativeTransformSpace TransformSpace, FName ComponentTag)
+{
+	SocketTransform = FTransform::Identity;
+	UMeshComponent* WeaponMesh = nullptr;
+	if (SocketName.IsNone() || !TryGetEquippedWeaponMesh(CharacterActor, WeaponMesh, ComponentTag) || !WeaponMesh->DoesSocketExist(SocketName) ||
+		(TransformSpace == RTS_ParentBoneSpace && !WeaponMesh->IsA<USkinnedMeshComponent>()))
+	{
+		return false;
+	}
+
+	SocketTransform = WeaponMesh->GetSocketTransform(SocketName, TransformSpace);
+	return true;
 }
 
 void UIMGWeaponInstance::OnEquipped()

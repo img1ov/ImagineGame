@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Components/SceneComponent.h"
 #include "Cosmetics/IMGCosmeticAnimationTypes.h"
 #include "Equipment/IMGEquipmentInstance.h"
 #include "GameFramework/InputDevicePropertyHandle.h"
@@ -10,6 +11,7 @@
 #define UE_API IMAGINEGAME_API
 
 class UAnimInstance;
+class UMeshComponent;
 class UObject;
 struct FFrame;
 struct FGameplayTagContainer;
@@ -31,6 +33,22 @@ class UIMGWeaponInstance : public UIMGEquipmentInstance
 
 public:
 	UE_API UIMGWeaponInstance(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	/** Finds the single weapon Actor attached to the character's equipment hierarchy. */
+	UFUNCTION(BlueprintPure, Category="IMG|Weapon")
+	static UE_API AActor* FindEquippedWeaponActor(const AActor* CharacterActor);
+
+	UFUNCTION(BlueprintPure, Category="IMG|Weapon")
+	static UE_API bool TryGetEquippedWeaponActor(const AActor* CharacterActor, AActor*& WeaponActor);
+
+	/** Finds the first mesh on the equipped weapon that matches the optional component tag. */
+	UFUNCTION(BlueprintPure, Category="IMG|Weapon", meta=(AdvancedDisplay="ComponentTag"))
+	static UE_API bool TryGetEquippedWeaponMesh(const AActor* CharacterActor, UMeshComponent*& WeaponMesh, FName ComponentTag = NAME_None);
+
+	/** Reads a socket on the first weapon mesh matching ComponentTag, or the first mesh when the tag is empty. */
+	UFUNCTION(BlueprintPure, Category="IMG|Weapon", meta=(AdvancedDisplay="ComponentTag"))
+	static UE_API bool TryGetEquippedWeaponSocketTransform(const AActor* CharacterActor, FName SocketName, FTransform& SocketTransform,
+		ERelativeTransformSpace TransformSpace = RTS_World, FName ComponentTag = NAME_None);
 
 	//~UIMGEquipmentInstance interface
 	UE_API virtual void OnEquipped() override;

@@ -70,6 +70,10 @@
 
 ### Part Tag 装备表现的实现合同
 
+- `TryGetEquippedWeaponActor` 复用 `FindEquippedWeaponActor` 的查询，提供 BlueprintPure 布尔结果和 `WeaponActor` 输出，失败时输出空引用。单次 Socket 查询沿 `TryGetEquippedWeaponMesh` 调用一次 `FindEquippedWeaponActor`，每层只查一次，失败直接返回。
+- `TryGetEquippedWeaponMesh` 是手持武器 Mesh 的 BlueprintPure 查询。传入角色 Actor 和可选 `ComponentTag`，在枪体自身取第一个有效匹配的 `UMeshComponent`，留空取第一个有效 Mesh。选中组件须已注册，失败输出空引用。Socket 查询复用此入口。
+- 查询手持枪体：`UIMGWeaponInstance::FindEquippedWeaponActor` 是静态 BlueprintPure 节点，输入角色 Pawn Actor，查询首个武器实例并验证已激活、`GetSpawnedActors` 只有一个有效结果、枪体已附着在 Pawn 的组件树。主 Mesh 和表现 Part 挂接均可返回；无装备、引用晚到、Part 等待挂接或多个 Actor 时返回空。当前合同是单活跃槽、单枪体；多装备并存要有明确手持槽，枪体与配件分 Actor 时要有枪体角色标记。装备授予的 GA 可用 `GetAssociatedEquipment()` 取得自身 Spec.SourceObject，再直接调用其 `GetSpawnedActors`；武器实例蓝图也可从 Self 查询。需要缓存挂接结果时，可用武器实例的 `OnEquipmentActorsChanged` 刷新。
+- 查询手持武器 Socket：`UIMGWeaponInstance::TryGetEquippedWeaponSocketTransform` 接收角色 Pawn Actor、Socket 名称、`ERelativeTransformSpace`（默认 World）及可选 `ComponentTag`。复用手持枪体查询，在枪体 Actor 自有 `UMeshComponent` 中按 `ComponentTags` 取首个匹配，留空取运行时枚举的首个有效 Mesh，随后调用所选组件的原生 `GetSocketTransform`。SkeletalMesh 和 StaticMesh 均支持 World、Actor（相对枪体 Actor）和 Component；Parent Bone Space 只接受 SkinnedMesh，因为 UE 的 StaticMesh 实现会回退组件变换。枪体或组件未就绪、找不到指定 Tag 或 Socket、空间不支持时返回 false，清输出为 Identity。
 - 配置入口：`Equipment/IMGEquipmentDefinition.h::FIMGEquipmentActorToSpawn` 的 `AttachToPartTag` 匹配唯一 Part Actor 的 GameplayTags，包含子 Tag。`AttachComponentTag` 可选，精确匹配该 Actor 自身 SkeletalMeshComponent 的 ComponentTags；唯一标记组件优先，未配置或零匹配则用 Part 的 `GetComponents` 返回的第一个有效 SkeletalMeshComponent。多个同标记组件属配置歧义。选择组件后才检验注册、SkinnedAsset 和 Socket；空 Socket 表示组件原点。UE `Actor.h::GetComponents` 枚举 `OwnedComponents` 集合，首个组件以运行时枚举为准；依赖特定组件的 Part 应显式配置 ComponentTags。缺失、歧义、生成/挂接失败按条目抑制重复 Warning，正常后恢复告警资格。
 - 配置证据：项目 `DefaultGameplayTags.ini` 注册 `Cosmetic.EquipmentBody`；用户截图显示 `B_CasualGirl.StaticGameplayTags` 与 WID_Rifle 的 `AttachToPartTag` 一致，后续截图中 WID_Rifle 使用 `AttachComponentTag=EquipmentBody` 和 `AttachSocket=weapon_r`。组件自身的 Component Tags、Socket 实际归属和 Retarget 资产内部仍需编辑器/PIE 确认。
 - Socket 校验依据：UE `SkinnedMeshComponent.cpp::DoesSocketExist` 通过 `GetSocketBoneName` 接受选定 Mesh 上可解析的 Socket 或同名骨骼；另一 Mesh 上的同名项不会参与挂接校验。
