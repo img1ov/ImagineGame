@@ -31,8 +31,10 @@
 compile_commands.json
 .vsconfig
 
-# Local agent instructions
+# Local agent instructions and shared project guidance
 AGENTS.md
+!/AGENTS.md
+!/.agents/AGENTS.md
 
 # IDE and editor state
 /.vs/
