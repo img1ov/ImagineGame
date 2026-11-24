@@ -282,7 +282,9 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 			    : IsBeyondBackLedge(Hit.ImpactPoint) && Drop >= 0.0 && Drop <= Geometry.MaxDrop;
 			return bKnownSurface && bInSupportLayer && Hit.IsValidBlockingHit() &&
 			    Movement->IsWalkable(Hit) &&
-			    FIMGTraversalDetector::CanUseSurface(Component, Geometry, Candidate.RequestSource);
+			    (bRequireTopSupport
+			        ? FIMGTraversalDetector::CanUseSurface(Component, Geometry, Candidate.RequestSource)
+			        : FIMGTraversalDetector::CanUseFloor(Component, Geometry));
 		};
 		const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 		const float Radius = Capsule->GetScaledCapsuleRadius();
@@ -330,8 +332,9 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 			CompensationSkipReason = TEXT("Support trace is non-finite");
 			return;
 		}
+		const ECollisionChannel SupportChannel = bRequireTopSupport ? Channel : Geometry.FloorTraceChannel.GetValue();
 		const bool bHit = IMG_TRAVERSAL_QUERY(Character->GetWorld()->LineTraceSingleByChannel(
-		    Plane, TraceStart, TraceEnd, Channel, Params, Responses));
+		    Plane, TraceStart, TraceEnd, SupportChannel, Params, Responses));
 		const bool bHasPlaneSupport = bHit && IsPlacementSupport(Plane);
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bHit ? Plane.ImpactPoint : TraceEnd,
@@ -567,7 +570,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		FCollisionResponseParams Responses;
 		Character->GetIMGMovementComponent()->InitCollisionParams(FloorParams, Responses);
 		const bool bHit = IMG_TRAVERSAL_QUERY(Character->GetWorld()->LineTraceSingleByChannel(
-		    Floor, TraceStart, TraceEnd, Geometry.TraceChannel, FloorParams, Responses));
+		    Floor, TraceStart, TraceEnd, Geometry.FloorTraceChannel, FloorParams, Responses));
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		IMGTraversalDebug::Line(Character->GetWorld(), TraceStart, bHit ? Floor.ImpactPoint : TraceEnd,
 		    bHit ? FColor::Green : FColor::Red);
@@ -575,15 +578,14 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		{
 			IMGTraversalDebug::Intersection(Character->GetWorld(), Floor,
 			    IsBeyondBackLedge(Floor.ImpactPoint) && Character->GetIMGMovementComponent()->IsWalkable(Floor) &&
-			        FIMGTraversalDetector::CanUseSurface(
-			            Floor.GetComponent(), Geometry, Candidate.RequestSource),
+			        FIMGTraversalDetector::CanUseFloor(Floor.GetComponent(), Geometry),
 			    TEXT("Animation-selected floor"), IMGTraversalDebug::EStage::Execution);
 		}
 #endif
 		UPrimitiveComponent* FloorComponent = Floor.GetComponent();
 		if (!bHit || !IsBeyondBackLedge(Floor.ImpactPoint) ||
 		    !Character->GetIMGMovementComponent()->IsWalkable(Floor) ||
-		    !FIMGTraversalDetector::CanUseSurface(FloorComponent, Geometry, Candidate.RequestSource))
+		    !FIMGTraversalDetector::CanUseFloor(FloorComponent, Geometry))
 		{
 			return Reject(TEXT("Selected landing floor is unusable or is not beyond the rear ledge"));
 		}
@@ -727,13 +729,13 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 			IMGTraversalDebug::Intersection(Character->GetWorld(), RootFloor.HitResult,
 			    RootFloor.IsWalkableFloor() && RootDrop >= 0.f && RootDrop <= Geometry.MaxDrop &&
 			        IsBeyondBackLedge(RootFloor.HitResult.ImpactPoint) &&
-			        FIMGTraversalDetector::CanUseSurface(RootSupport, Geometry, Candidate.RequestSource),
+			        FIMGTraversalDetector::CanUseFloor(RootSupport, Geometry),
 			    TEXT("Actual capsule support"), IMGTraversalDebug::EStage::Execution);
 		}
 #endif
 		if (!RootFloor.IsWalkableFloor() || RootDrop < 0.f || RootDrop > Geometry.MaxDrop ||
 		    !IsBeyondBackLedge(RootFloor.HitResult.ImpactPoint) ||
-		    !FIMGTraversalDetector::CanUseSurface(RootSupport, Geometry, Candidate.RequestSource))
+		    !FIMGTraversalDetector::CanUseFloor(RootSupport, Geometry))
 		{
 			return Reject(TEXT("Selected landing capsule has no usable floor support beyond the rear ledge"));
 		}
@@ -795,6 +797,11 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 	}
 	if (PlacementSupportToIgnore)
 	{
+		if (Selection.Action == EIMGTraversalAction::Hurdle &&
+		    !Candidate.ObstacleComponents.Contains(PlacementSupportToIgnore))
+		{
+			Candidate.FloorOnlyComponents.AddUnique(PlacementSupportToIgnore);
+		}
 		Candidate.ObstacleComponents.AddUnique(PlacementSupportToIgnore);
 	}
 	for (const FIMGTraversalWarpBinding& Binding : Settings.WarpBindings)
@@ -812,6 +819,10 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 			    TEXT("Warp target %s has no valid geometric anchor"), *Binding.TargetName.ToString()));
 		}
 		FIMGTraversalWarpTarget& Target = OutTargets.AddDefaulted_GetRef();
+		if (Binding.Anchor == EIMGTraversalAnchor::BackFloor && !Candidate.ObstacleComponents.Contains(Component))
+		{
+			Candidate.FloorOnlyComponents.AddUnique(Component);
+		}
 		Target.Name = Binding.TargetName;
 		Target.Component = Component;
 		Target.LocalTransform = Transform->GetRelativeTransform(Component->GetComponentTransform());

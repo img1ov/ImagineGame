@@ -119,6 +119,10 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
 	TEnumAsByte<ECollisionChannel> TraceChannel = IMG_TraceChannel_Traversal;
 
+	/** Rear-floor support queries, independent of climbable surfaces. Capsule clearance still uses movement collision. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	TEnumAsByte<ECollisionChannel> FloorTraceChannel = ECC_Visibility;
+
 	/** Used only by the advisory action recommendation, never to reject a CHT selection. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RunningSpeedThreshold = 350.f;
@@ -310,7 +314,7 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0", ClampMax = "90"))
 	float MaxApproachAngle = 42.5f;
 
-	/** Component or owning actor tags; use project surface semantics, not engine entity classes. */
+	/** Climbing exclusions on the component or owning actor; do not restrict rear-floor support. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	TArray<FName> BlockedSurfaceTags;
 
@@ -391,6 +395,10 @@ struct FIMGTraversalCandidate
 	/** Every component that contributed obstacle geometry and must be tracked/ignored during execution. */
 	UPROPERTY(BlueprintReadOnly)
 	TArray<TObjectPtr<UPrimitiveComponent>> ObstacleComponents;
+
+	/** Floor carriers added by placement, including any floor-only collision ignore. */
+	UPROPERTY()
+	TArray<TObjectPtr<UPrimitiveComponent>> FloorOnlyComponents;
 
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UPrimitiveComponent> BackFloorComponent = nullptr;
@@ -744,6 +752,10 @@ struct FIMGTraversalRepState
 
 	UPROPERTY()
 	TArray<TObjectPtr<UPrimitiveComponent>> ObstacleComponents;
+
+	/** Keeps floor-only validation consistent when authority targets replace predicted targets. */
+	UPROPERTY()
+	TArray<TObjectPtr<UPrimitiveComponent>> FloorOnlyComponents;
 
 	UPROPERTY()
 	TArray<FIMGTraversalWarpTarget> WarpTargets;

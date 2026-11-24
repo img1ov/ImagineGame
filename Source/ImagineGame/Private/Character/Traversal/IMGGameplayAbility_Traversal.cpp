@@ -481,7 +481,9 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
 	{
 		const UPrimitiveComponent* Surface = ActiveObstacleComponents[Index].Get();
-		if (!FIMGTraversalDetector::CanUseSurface(Surface, Component->GetDetectorSettings(), Candidate.RequestSource))
+		if (!(Candidate.FloorOnlyComponents.Contains(Surface)
+		        ? FIMGTraversalDetector::CanUseFloor(Surface, Component->GetDetectorSettings())
+		        : FIMGTraversalDetector::CanUseSurface(Surface, Component->GetDetectorSettings(), Candidate.RequestSource)))
 		{
 			LogTraversalEvent(TEXT("PostCommitSurfaceRejected"), GetNameSafe(Surface), true);
 			return false;
@@ -628,7 +630,9 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	}
 	for (const UPrimitiveComponent* Obstacle : Candidate.ObstacleComponents)
 	{
-		if (!FIMGTraversalDetector::CanUseSurface(Obstacle, Traversal->GetDetectorSettings(), Candidate.RequestSource))
+		if (!(Candidate.FloorOnlyComponents.Contains(Obstacle)
+		        ? FIMGTraversalDetector::CanUseFloor(Obstacle, Traversal->GetDetectorSettings())
+		        : FIMGTraversalDetector::CanUseSurface(Obstacle, Traversal->GetDetectorSettings(), Candidate.RequestSource)))
 		{
 			return Reject(FString::Printf(TEXT("Obstacle surface is no longer usable: %s"), *GetNameSafe(Obstacle)));
 		}
@@ -895,6 +899,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	{
 		const FIMGTraversalRepState& State = Component->GetActiveTraversalState();
 		LocalCandidate.ObstacleComponents = State.ObstacleComponents;
+		LocalCandidate.FloorOnlyComponents = State.FloorOnlyComponents;
 		TrackActiveTargets(LocalCandidate, State.WarpTargets);
 		TrackedTargetsRevision = Component->GetTraversalTargetsRevision();
 	}
@@ -925,7 +930,9 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
 	{
 		UPrimitiveComponent* Target = ActiveObstacleComponents[Index].Get();
-		if (!FIMGTraversalDetector::CanUseSurface(Target, Settings, LocalCandidate.RequestSource))
+		if (!(LocalCandidate.FloorOnlyComponents.Contains(Target)
+		        ? FIMGTraversalDetector::CanUseFloor(Target, Settings)
+		        : FIMGTraversalDetector::CanUseSurface(Target, Settings, LocalCandidate.RequestSource)))
 		{
 			LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(TEXT("Obstacle lost or surface policy changed: %s"),
 			    *GetNameSafe(Target)), true);

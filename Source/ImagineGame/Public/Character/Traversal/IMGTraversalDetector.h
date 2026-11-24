@@ -10,4 +10,6 @@ public:
 	    const FIMGTraversalQuery& Query, FIMGTraversalCandidate& OutCandidate, EIMGTraversalFailure& OutFailure);
 	static bool CanUseSurface(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings,
 	    EIMGTraversalRequestSource Source);
+	/** Floor eligibility does not require climbable-channel responses or climbing tags. */
+	static bool CanUseFloor(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings);
 };

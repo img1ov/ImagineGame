@@ -418,6 +418,7 @@ bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	ActiveState.Montage = Selection.Montage;
 	ActiveState.MontageStartTime = Selection.StartTime;
 	ActiveState.ObstacleComponents = Candidate.ObstacleComponents;
+	ActiveState.FloorOnlyComponents = Candidate.FloorOnlyComponents;
 	ActiveState.WarpTargets = WarpTargets;
 	ActiveState.bActive = true;
 	bLocallyPredictedTraversal = Character->GetLocalRole() == ROLE_AutonomousProxy;
@@ -641,6 +642,7 @@ void UIMGTraversalComponent::ReconcilePredictedTargets()
 	SetTargetTickPrerequisites(false);
 	RestoreMovementIgnores();
 	ActiveState.ObstacleComponents = ReplicatedState.ObstacleComponents;
+	ActiveState.FloorOnlyComponents = ReplicatedState.FloorOnlyComponents;
 	ActiveState.WarpTargets = ReplicatedState.WarpTargets;
 	// The owner restores its own pre-traversal targets, independently of the authority's history.
 	AppliedAuthoritySequence = ReplicatedState.Sequence;

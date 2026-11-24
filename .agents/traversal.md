@@ -45,6 +45,8 @@
 - PreSelect、Select、Commit 回调后复核原 ASC/Avatar/Component。Commit 后还须核对入场位姿、胶囊、Mesh/AnimInstance、BaseOffset 和参与表面的变换，防止旧落位结果应用到已变化的对象。候选默认时效 `MaxCandidateAge=0.25 s`。
 - Supports 与推荐动作分开：Mantle 是登顶，要求前沿；Hurdle 是有后方支撑的翻越，要求前沿+后沿+`bHasBackFloor`；Vault 是没有确认后方支撑的翻越，要求前沿+后沿且 `!bHasBackFloor`。Mantle 可与其中一种翻越同时可选，由 CHT 决定覆盖与优先级；高度/深度/速度不在 Supports 中硬编码。`RecommendedAction` 仅作建议，Hurdle/Vault 各用自己的推荐高度限制，不因 Hurdle 超出建议高度改推有地面的 Vault。
 - `bHasBackFloor=false` 表示探测范围内尚未确认可用后方支撑，不证明世界中不存在地面，也不能当作落点。`BackLedge` 在 `bHasBackLedge=false` 时仍保留最后顶面采样位置，坐标与 ObstacleDepth 都不能代替已确认后沿。空中 Height 随当前脚底升高而减小，需结合 StartTime 和选片核对。
+- 后方地面即使命中且 `CMC.IsWalkable=true`，仍须满足 `0 <= DropHeight <= DetectorSettings.MaxDrop`（默认180 cm）、Block FloorTraceChannel 及组件可用，才置 `bHasBackFloor=true`；`DropHeight` 从前沿量到采样地面，`BackLedgeHeight` 从后沿量到该地面。`DepthProbeLength` 默认500 cm，探针可量到超过准入落差的地面；`Sampled floor: drop ... max ... walkable ...` 可区分命中与接纳。`AutomaticMaxGroundDrop` 是另一项相对角色地面/脚底基准的自动发起限制，不代替此处 MaxDrop。入口：`IMGTraversalDetector.cpp::ValidateCandidateDirection`、`IMGTraversalTypes.h`。
+- 编辑器配置归角色蓝图的 `IMGTraversalComponent` 默认值：`IMG|Traversal|Detection → Detector Settings → Max Drop` 控制后方支撑接纳；`IMG|Traversal|Execution → Action Settings → Action=Hurdle → Settings → Landing` 配置通用落地规则，特定动画用同分类 `Montage Settings → Action + Montage → Settings → Landing` 整份覆盖。三组属性均为 `EditDefaultsOnly`，应编辑蓝图组件默认值而非关卡实例或运行时实例；Warp 窗口时间及 Modifier 参数仍在 Montage 的 MotionWarping Notify 中。入口：`IMGTraversalComponent.h`、`IMGTraversalTypes.h::FIMGTraversalLandingSettings`。
 
 ## 手点、坡面与表面规则
 
@@ -52,9 +54,11 @@
 - 手点取前侧命中点上方的中心/左右实际顶部接触，不固定向内平移或投影回前侧平面。`UseRequestDirectionBelowHeight=80 cm` 以下优先请求方向，设0关闭；左右接触连线求交并插值高度，调整范围50 cm，失败再用原始手点/墙面法线重检。此近似不替代双手 IK。`MinFacingDot` 默认 Manual/AI=0.3、Automatic=0.65；HClear/VClear 是净空，不是动画轨迹。
 - `AngularSurfaceTag` 默认 `Traversal.Angular`，读取命中组件或所属 Actor 的 FName 标签。请求与入面方向 dot>0.95 时，高障碍也可保留请求方向，失败回退法线。低障碍、棱面或 Automatic 要求双侧支撑；其余 Manual/AI 可追加外侧探针并重定中心，新中心组件须纳入障碍跟踪。标签不引入车辆滑行动作。
 - 楼梯由 `StairSurfaceTag=Traversal.Stairs` 指定：前侧/顶部命中带标签，或站立时脚下带标签，启用轮廓过滤；未标记不保证识别。边缘跨度截止值默认22.5 cm、命中楼梯表面时30 cm，严格小于才拒绝，等于可过；跨度<40 cm且水平漂移>10 cm也拒绝。Span 不等于台阶高度，Height 默认相对脚底；独立顶部组件也须覆盖标签。
-- `BlockedSurfaceTags` 拒绝全部来源；`AutomaticBlockedSurfaceTags` 仅拒绝 Automatic。Actor Tags 作用于全部组件，局部限制优先 Component Tags。例如 `Traversal.NoAuto` 必须显式加入自动禁用列表才生效；`Traversal.Stairs` 只是启用过滤，不禁止全部攀爬。自动深度限制、高位开放接近拒绝和楼梯下行方向限制只用于 Automatic，楼梯轮廓也用于 Manual/AI。
+- `BlockedSurfaceTags` 拒绝全部来源的攀爬接触；`AutomaticBlockedSurfaceTags` 仅拒绝 Automatic 的攀爬接触，两者不禁止后方落脚。Actor Tags 作用于全部组件，局部限制优先 Component Tags。例如 `Traversal.NoAuto` 必须显式加入自动禁用列表才生效；`Traversal.Stairs` 只是启用过滤，不禁止全部攀爬。自动深度限制、高位开放接近拒绝和楼梯下行方向限制只用于 Automatic，楼梯轮廓也用于 Manual/AI。
 - 深度断层可能在曲面上形成后沿。`AutomaticMinDepthSamples` 是结束扫描前的最小扫描次数，不是连续顶面通过次数。`Candidate.GroundNormal` 是深度命中的平均法线，不能替代补偿实际命中的法线或可走判定。
 - **平台可走坡度归 CMC。** BackFloor、补偿与落地检查使用 CMC.IsWalkable。通用上限为角色 Character Movement → Walking → Walkable Floor Angle（UE 5.8 原生约44.8°，以组件实际配置为准）；局部平台用碰撞组件 Physics → Walkable Slope Override。`MaxClearanceSlopeAngle=42.5°` 只控制净空探针方向。`MaxMovingSpeed=500 cm/s`、`MaxAngularSpeedDegrees=85°/s` 限制载体运动，检测及执行均复核。
+- **攀爬与后方落脚通道独立。** 角色蓝图 Traversal 组件的 `Detector Settings → Collision` 下，`TraceChannel` 默认映射 Traversable，负责搜索/手点/后沿及检测层接近/净空；`FloorTraceChannel` 默认 Visibility，负责后方地面查询与接纳。深度采样同时查询两通道并保留最近阻挡，保证障碍即使 Ignore Visibility 仍保留顶面轮廓，地面即使 Ignore Traversable 仍可量到落差；通道相同则不重复查询。连续顶面和后沿仍须通过攀爬资格，BackFloor 则走 `CanUseFloor`，不受攀爬标签限制，仍核对组件有效性、物理/载体速度限制、CMC 可走性及落差。入口：`IMGTraversalTypes.h`、`IMGTraversalDetector.cpp`。
+- `IMGTraversalPlacement.cpp` 的选片后落地线探针及 Hurdle 补偿的支撑平面线探针使用 FloorTraceChannel；Mantle 顶面补偿保留原有攀爬资格。完整胶囊支撑扫掠、净空/可选直线路径及 `ComputeFloorDist` 继续使用角色移动碰撞，Hurdle 支撑接纳额外要求 `CanUseFloor`，所以 Block Visibility 不等于角色实际可站立。`FloorOnlyComponents` 记录准备阶段新增的纯落脚载体（含向上补偿加入的碰撞忽略），与执行快照一同复制/回填；选片复检、Commit 后及定时复检据此使用落脚规则，结束随候选/快照清理。同组件原本参与攀爬几何时仍保留攀爬资格要求。`DetectionBegin` 明文记录两通道，Trace/导出事件结构未改变。
 
 ### 手部接触表现合同
 

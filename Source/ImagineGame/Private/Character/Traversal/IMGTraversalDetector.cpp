@@ -148,7 +148,8 @@ bool AreSettingsValid(const FIMGTraversalDetectorSettings& Settings)
 			return false;
 		}
 	}
-	return Settings.TraceChannel < ECC_MAX && FMath::IsFinite(Settings.SearchStartHeightOffset) && FMath::IsFinite(Settings.HandholdPathVerticalOffset) &&
+	return Settings.TraceChannel < ECC_MAX && Settings.FloorTraceChannel < ECC_MAX &&
+	    FMath::IsFinite(Settings.SearchStartHeightOffset) && FMath::IsFinite(Settings.HandholdPathVerticalOffset) &&
 	    FMath::IsFinite(Settings.MinFacingDot) && Settings.MinFacingDot >= -1.f && Settings.MinFacingDot <= 1.f &&
 	    FMath::IsFinite(Settings.AutomaticMinFacingDot) && FMath::Abs(Settings.AutomaticMinFacingDot) <= 1.f &&
 	    Settings.HandholdMinNormalZ <= 1.f && Settings.WalkableSlopeMinNormalZ <= 1.f &&
@@ -182,11 +183,12 @@ void DrawFailure(const AIMGCharacter& Character, EIMGTraversalFailure Failure, c
 
 #endif
 
-bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings)
+bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings,
+    ECollisionChannel Channel)
 {
 	return IsValid(Component) && IsValid(Component->GetOwner()) && Component->IsRegistered() &&
 	    Component->IsQueryCollisionEnabled() &&
-	    Component->GetCollisionResponseToChannel(Settings.TraceChannel) == ECR_Block &&
+	    Component->GetCollisionResponseToChannel(Channel) == ECR_Block &&
 	    Component->GetComponentTransform().IsValid() &&
 	    (!Component->IsSimulatingPhysics() || Settings.bAllowSimulatingPhysics) &&
 	    Component->GetComponentVelocity().Size() <= Settings.MaxMovingSpeed &&
@@ -196,7 +198,7 @@ bool IsComponentUsable(const UPrimitiveComponent* Component, const FIMGTraversal
 bool AddObstacleComponent(
     FIMGTraversalCandidate& Candidate, UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings)
 {
-	if (!IsComponentUsable(Component, Settings))
+	if (!IsComponentUsable(Component, Settings, Settings.TraceChannel))
 	{
 		return false;
 	}
@@ -839,10 +841,20 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 		const FVector Start = Probe + Up * DepthStartOffset;
 		const FVector End = Start - Up * Settings.DepthProbeLength;
 		FHitResult Hit;
-		// Depth measures geometry even if the hit cannot be used as a walkable landing.
-		const bool bHit = IMG_TRAVERSAL_QUERY(World->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
-							  Settings.TraceChannel, FCollisionShape::MakeSphere(DepthProbeRadius), Params)) &&
-			Hit.bBlockingHit && !Hit.bStartPenetrating;
+		// Preserve the nearest geometry from either policy; a rear floor need not be climbable.
+		IMG_TRAVERSAL_QUERY(World->SweepSingleByChannel(Hit, Start, End, FQuat::Identity,
+		    Settings.TraceChannel, FCollisionShape::MakeSphere(DepthProbeRadius), Params));
+		if (Settings.FloorTraceChannel != Settings.TraceChannel)
+		{
+			FHitResult FloorHit;
+			if (IMG_TRAVERSAL_QUERY(World->SweepSingleByChannel(FloorHit, Start, End, FQuat::Identity,
+			        Settings.FloorTraceChannel, FCollisionShape::MakeSphere(DepthProbeRadius), Params)) &&
+			    (!Hit.bBlockingHit || FloorHit.Time < Hit.Time))
+			{
+				Hit = FloorHit;
+			}
+		}
+		const bool bHit = Hit.bBlockingHit && !Hit.bStartPenetrating;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		if (IMGTraversalDebug::IsEnabled())
 		{
@@ -1169,8 +1181,7 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 	{
 		Out.BackLedgeHeight = LastTopPoint.Z - FirstDropHit.ImpactPoint.Z;
 		if (Out.DropHeight >= 0.f && Out.DropHeight <= Settings.MaxDrop && Movement->IsWalkable(FirstDropHit) &&
-		    IsSurfaceAllowed(FirstDropHit.GetComponent(), Query.Settings, Query.Source) &&
-		    IsComponentUsable(FirstDropHit.GetComponent(), Settings))
+		    FIMGTraversalDetector::CanUseFloor(FirstDropHit.GetComponent(), Settings))
 		{
 			// The selected animation resolves the final landing; this is only sampled rear support.
 			Out.bHasBackFloor = true;
@@ -1264,7 +1275,13 @@ bool MakeCandidate(const FIMGTraversalQuery& Query, const FHitResult& Face, cons
 bool FIMGTraversalDetector::CanUseSurface(const UPrimitiveComponent* Component,
     const FIMGTraversalDetectorSettings& Settings, EIMGTraversalRequestSource Source)
 {
-	return IsSurfaceAllowed(Component, Settings, Source) && IsComponentUsable(Component, Settings);
+	return IsSurfaceAllowed(Component, Settings, Source) && IsComponentUsable(Component, Settings, Settings.TraceChannel);
+}
+
+bool FIMGTraversalDetector::CanUseFloor(
+    const UPrimitiveComponent* Component, const FIMGTraversalDetectorSettings& Settings)
+{
+	return IsComponentUsable(Component, Settings, Settings.FloorTraceChannel);
 }
 
 bool FIMGTraversalDetector::Detect(
@@ -1277,9 +1294,10 @@ bool FIMGTraversalDetector::Detect(
 	if (IMGTraversalDebug::IsEnabled())
 	{
 		IMGTraversalDebug::Event(nullptr, TEXT("DetectionBegin"),
-			FString::Printf(TEXT("Source=%s Direction=%s TraceChannel=%d Height=%.1f..%.1f SearchDistance=%.1f"),
+			FString::Printf(TEXT("Source=%s Direction=%s TraceChannel=%d FloorTraceChannel=%d Height=%.1f..%.1f SearchDistance=%.1f"),
 				*UEnum::GetValueAsString(Query.Source), *Query.Direction.ToCompactString(),
-				static_cast<int32>(Query.Settings.TraceChannel), Query.Settings.MinHeight, Query.Settings.MaxHeight,
+				static_cast<int32>(Query.Settings.TraceChannel), static_cast<int32>(Query.Settings.FloorTraceChannel),
+				Query.Settings.MinHeight, Query.Settings.MaxHeight,
 				Query.Settings.SearchDistance),
 			false, EStage::Search);
 	}
