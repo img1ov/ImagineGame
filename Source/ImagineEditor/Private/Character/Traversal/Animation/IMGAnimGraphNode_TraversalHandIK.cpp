@@ -1,5 +1,6 @@
 #include "Character/Traversal/Animation/IMGAnimGraphNode_TraversalHandIK.h"
 
+#include "DetailCategoryBuilder.h"
 #include "DetailLayoutBuilder.h"
 #include "EdGraph/EdGraphPin.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -25,7 +26,7 @@ FText UIMGAnimGraphNode_TraversalHandIK::GetTooltipText() const
 {
 	return LOCTEXT("Tooltip",
 	    "Place after foot placement and before any hand IK. Each hand has its own Float or Curve alpha that blends the solved arm chain. "
-	    "The game thread probes the previous pre-IK pose sample; this node applies the result to its current input pose.");
+	    "The game thread probes the previous pre-IK pose sample; this node smooths contact positions before solving its current input pose.");
 }
 
 FString UIMGAnimGraphNode_TraversalHandIK::GetNodeCategory() const
@@ -40,7 +41,7 @@ void UIMGAnimGraphNode_TraversalHandIK::ValidateAnimNodeDuringCompilation(USkele
 
 	const auto ValidateHandAlpha = [this, &MessageLog](EAnimAlphaInputType InputType, FName CurveProperty,
 	                                                 FName CurveName, const TCHAR* Side) {
-		if (InputType != EAnimAlphaInputType::Float && InputType != EAnimAlphaInputType::Curve)
+		if (!FIMGAnimNode_TraversalHandIK::IsSupportedHandAlphaInput(InputType))
 		{
 			MessageLog.Error(*FString::Printf(TEXT("@@ supports only Float or Curve alpha for the %s hand."), Side), this);
 			return false;
@@ -67,19 +68,22 @@ void UIMGAnimGraphNode_TraversalHandIK::ValidateAnimNodeDuringCompilation(USkele
 		MessageLog.Error(TEXT("@@ requires different wrist bones for the left and right hands."), this);
 	}
 
-	const auto ValidateDistance = [this, &MessageLog](const TCHAR* Name, float Value, bool bAllowZero = false) {
+	const auto ValidatePositive = [this, &MessageLog](const TCHAR* Name, float Value, bool bAllowZero = false) {
 		if (!FMath::IsFinite(Value) || (bAllowZero ? Value < 0.f : Value <= 0.f))
 		{
 			MessageLog.Error(*FString::Printf(TEXT("@@ %s must be finite and %s."), Name,
 			    bAllowZero ? TEXT("non-negative") : TEXT("positive")), this);
 		}
 	};
-	ValidateDistance(TEXT("Vertical Trace Half Height"), Node.VerticalTraceHalfHeight);
-	ValidateDistance(TEXT("Vertical Trace Radius"), Node.VerticalTraceRadius, true);
-	ValidateDistance(TEXT("Front Edge Trace Distance"), Node.FrontEdgeTraceDistance);
-	ValidateDistance(TEXT("Front Edge Trace Radius"), Node.FrontEdgeTraceRadius, true);
-	ValidateDistance(TEXT("Max Hand Correction Distance"), Node.MaxHandCorrectionDistance);
-	ValidateDistance(TEXT("Contact Break Distance"), Node.ContactBreakDistance);
+	ValidatePositive(TEXT("Attach Blend Time"), Node.AttachBlendTime, true);
+	ValidatePositive(TEXT("Detach Blend Time"), Node.DetachBlendTime, true);
+	ValidatePositive(TEXT("Target Interp Speed"), Node.TargetInterpSpeed, true);
+	ValidatePositive(TEXT("Vertical Trace Half Height"), Node.VerticalTraceHalfHeight);
+	ValidatePositive(TEXT("Vertical Trace Radius"), Node.VerticalTraceRadius, true);
+	ValidatePositive(TEXT("Front Edge Trace Distance"), Node.FrontEdgeTraceDistance);
+	ValidatePositive(TEXT("Front Edge Trace Radius"), Node.FrontEdgeTraceRadius, true);
+	ValidatePositive(TEXT("Max Hand Correction Distance"), Node.MaxHandCorrectionDistance);
+	ValidatePositive(TEXT("Contact Break Distance"), Node.ContactBreakDistance);
 	if (Node.ContactBreakDistance < Node.MaxHandCorrectionDistance)
 	{
 		MessageLog.Warning(TEXT("@@ Contact Break Distance is smaller than Max Hand Correction Distance; a newly acquired contact may break on its next update."), this);
@@ -97,20 +101,18 @@ void UIMGAnimGraphNode_TraversalHandIK::CustomizePinData(UEdGraphPin* Pin, FName
 
 	const auto CustomizeHandPin = [Pin](EAnimAlphaInputType InputType, FName AlphaProperty, FName CurveProperty,
 	                                    const FInputScaleBias& ScaleBias, const FInputScaleBiasClamp& ScaleBiasClamp) {
-		if (Pin->PinName == AlphaProperty)
+		const bool bIsFloatPin = Pin->PinName == AlphaProperty;
+		if (!bIsFloatPin && Pin->PinName != CurveProperty)
 		{
-			Pin->bHidden = InputType != EAnimAlphaInputType::Float;
-			if (!Pin->bHidden)
-			{
-				Pin->PinFriendlyName = ScaleBias.GetFriendlyName(ScaleBiasClamp.GetFriendlyName(Pin->PinFriendlyName));
-			}
+			return;
 		}
-		else if (Pin->PinName == CurveProperty)
+		Pin->bHidden = InputType != (bIsFloatPin ? EAnimAlphaInputType::Float : EAnimAlphaInputType::Curve);
+		if (!Pin->bHidden)
 		{
-			Pin->bHidden = InputType != EAnimAlphaInputType::Curve;
-			if (!Pin->bHidden)
+			Pin->PinFriendlyName = ScaleBiasClamp.GetFriendlyName(Pin->PinFriendlyName);
+			if (bIsFloatPin)
 			{
-				Pin->PinFriendlyName = ScaleBiasClamp.GetFriendlyName(Pin->PinFriendlyName);
+				Pin->PinFriendlyName = ScaleBias.GetFriendlyName(Pin->PinFriendlyName);
 			}
 		}
 	};
@@ -130,6 +132,17 @@ void UIMGAnimGraphNode_TraversalHandIK::CustomizeDetails(IDetailLayoutBuilder& D
 
 	TSharedRef<IPropertyHandle> NodeHandle =
 	    DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UIMGAnimGraphNode_TraversalHandIK, Node), GetClass());
+
+	// Keep property rows native so Persona can install the bone selectors and pin/binding controls.
+	int32 SortOrder = 0;
+	DetailBuilder.EditCategory(TEXT("Left Hand")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Right Hand")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Contact")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Solver")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Alpha")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Performance")).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Functions")).InitiallyCollapsed(true).SetSortOrder(SortOrder++);
+	DetailBuilder.EditCategory(TEXT("Tag")).InitiallyCollapsed(true).SetSortOrder(SortOrder++);
 
 	const auto CustomizeHandDetails = [&DetailBuilder, &NodeHandle](EAnimAlphaInputType InputType,
 	                                                                FName AlphaProperty, FName ScaleBiasProperty,
@@ -166,31 +179,42 @@ void UIMGAnimGraphNode_TraversalHandIK::PostEditChangeProperty(FPropertyChangedE
 		FScopedTransaction Transaction(LOCTEXT("ChangeHandAlphaInputType", "Change Hand Alpha Input Type"));
 		Modify();
 
-		const auto BreakUnusedHandAlphaLinks = [this](EAnimAlphaInputType InputType, FName AlphaProperty,
-		                                              FName CurveProperty) {
-			for (UEdGraphPin* Pin : Pins)
+		const auto UpdateHandAlphaPins = [this](EAnimAlphaInputType InputType, FName AlphaProperty,
+		                                       FName CurveProperty) {
+			const FName ActiveProperty = FIMGAnimNode_TraversalHandIK::IsSupportedHandAlphaInput(InputType)
+			    ? (InputType == EAnimAlphaInputType::Float ? AlphaProperty : CurveProperty) : NAME_None;
+			for (const FName Property : {AlphaProperty, CurveProperty})
 			{
-				if (Pin->PinName == AlphaProperty && InputType != EAnimAlphaInputType::Float)
+				if (Property == ActiveProperty)
 				{
-					Pin->BreakAllPinLinks();
-					RemoveBindings(Pin->PinName);
+					continue;
 				}
-				else if (Pin->PinName == CurveProperty && InputType != EAnimAlphaInputType::Curve)
+				if (UEdGraphPin* Pin = FindPin(Property))
 				{
 					Pin->BreakAllPinLinks();
-					RemoveBindings(Pin->PinName);
+				}
+				RemoveBindings(Property);
+			}
+
+			// Reconstruction preserves saved optional-pin visibility instead of reapplying PinShownByDefault.
+			for (FOptionalPinFromProperty& OptionalPin : ShowPinForProperties)
+			{
+				if (OptionalPin.PropertyName == ActiveProperty)
+				{
+					OptionalPin.bShowPin = true;
+					break;
 				}
 			}
 		};
 		if (bLeftChanged)
 		{
-			BreakUnusedHandAlphaLinks(Node.LeftAlphaInputType,
+			UpdateHandAlphaPins(Node.LeftAlphaInputType,
 			    GET_MEMBER_NAME_CHECKED(FIMGAnimNode_TraversalHandIK, LeftAlpha),
 			    GET_MEMBER_NAME_CHECKED(FIMGAnimNode_TraversalHandIK, LeftAlphaCurveName));
 		}
 		else
 		{
-			BreakUnusedHandAlphaLinks(Node.RightAlphaInputType,
+			UpdateHandAlphaPins(Node.RightAlphaInputType,
 			    GET_MEMBER_NAME_CHECKED(FIMGAnimNode_TraversalHandIK, RightAlpha),
 			    GET_MEMBER_NAME_CHECKED(FIMGAnimNode_TraversalHandIK, RightAlphaCurveName));
 		}

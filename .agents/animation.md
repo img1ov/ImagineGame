@@ -49,9 +49,9 @@
 - 手部表现仅通过专用 `Traversal Hand IK` 接入。运行时和编辑器包装分别位于 ImagineGame/ImagineEditor 的 `Character/Traversal/Animation`；`FIMGTraversalHandContact` 同属 Traversal，Component 仅供只读执行数据，不持有表现历史。完整职责见 [Traversal 手部接触表现合同](traversal.md#手部接触表现合同)。
 - 输入接 Root Offset、脚部处理之后的 Pre-IK Component-Space Pose。左右默认 `hand_l/r`；每侧用独立 Alpha（Float 值或 0–1 动画曲线）控制 IK 执行权重，Curve 模式直接读当前输入姿势的曲线；可选掌点 Socket 必须直接挂到对应手骨。`Procedural_Hand` 的具体资产装配和与装备叠放由用户维护。
 - `EvaluateSkeletalControl_AnyThread` 在改骨前从同一份输入 Pose 采左右掌点。下一次游戏线程 `PreUpdate` 消费数值样本、解析执行参照并逐手查询；游戏线程代理入口等待前一次并行任务。节点求值只读取数值和当前输入姿势，不访问玩法 UObject 或发碰撞。采样与查询允许一个动画求值周期；缺参照/样本、超时、LOD 跳过、动作或载体变更会失效，专用服务器及 CMC Replay 不查询。
-- 每侧以当前姿势计算 `WristTarget = Wrist + (PalmTarget - Palm)`，先复核当帧掌点到目标不超出 `MaxHandCorrectionDistance`，再调用原生 `AnimationCore::SolveTwoBoneIK`，按该手 Alpha 在局部空间混合回输入姿势。完整求解保留输入手骨朝向、不拉伸，以动画肘部弯曲方向为参考；肩腕距离受 `MaxArmReachRatio` 限制，仅输出上臂、前臂、手骨。左右 Float Alpha 默认0，继承的整体 Alpha 默认1；无效侧透传，不共用左右有效开关。
-- Pre-IK 样本切断已求解手骨对下一探针的反馈，但不保证整段锁点，也不新增目标位置平滑。探测范围 `VerticalTraceHalfHeight/VerticalTraceRadius`、允许修正距离 `MaxHandCorrectionDistance`、断开距离 `ContactBreakDistance` 及前沿细化参数的默认值和消费边界集中在 [Traversal 参数表](traversal.md#手部接触表现合同)。动态 Alpha 来源变更、骨骼缓存重建与接触失效的清理同归该合同。
-- 调试球是游戏线程得到的 PalmTarget，修正线从上次 Pre-IK 掌点样本连向它，不代表本次改骨后的误差。最终贴点仍须结合可达性、曲线、后续姿势混合/PostProcess/Retarget 核对；当前节点仅支持 Character 主 Mesh。
+- 每侧以当前姿势计算 `WristTarget = Wrist + (SmoothedPalmTarget - Palm)`，先复核当帧掌点到原始目标及插值位置均不超出 `MaxHandCorrectionDistance`，再调用原生 `AnimationCore::SolveTwoBoneIK`，按该手 Alpha 在局部空间混合回输入姿势。完整求解保留输入手骨朝向、不拉伸，以动画肘部弯曲方向为参考；肩腕距离受 `MaxArmReachRatio` 限制，仅输出上臂、前臂、手骨。左右 Float Alpha 默认0，继承的整体 Alpha 默认1；无效侧透传，不共用左右有效开关。
+- Pre-IK 样本切断已求解手骨对下一探针的反馈，但不保证整段锁点。节点 Contact 分类的 `AttachBlendTime/DetachBlendTime` 均默认0.1秒，分别控制进入接触与探测失效后的恢复时长；`TargetInterpSpeed` 默认20，控制有效接触位置的指数跟随，各设0关闭对应效果。入场位置平滑在实际命中表面局部空间执行，变换由游戏线程复制；退出使用最后有效的未加Alpha局部旋转差量，逐步恢复到当前动画姿势，不继续追随失效接触点。逐手Alpha仍在最后混合一次，正常曲线松手与归零清理不延迟。恢复中重新命中的衔接、位置历史、距离校验及漏探宽限集中在 [Traversal 手部表现合同](traversal.md#手部接触表现合同)。
+- 调试球是游戏线程得到的原始 PalmTarget，修正线从上次 Pre-IK 掌点样本连向它，不代表位置插值后的求解目标或本次改骨后的误差。最终贴点仍须结合位置平滑、可达性、曲线、后续姿势混合/PostProcess/Retarget 核对；当前节点仅支持 Character 主 Mesh。
 
 ### 引擎与 GTA 求解参考
 

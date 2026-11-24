@@ -65,13 +65,16 @@
 - `Traversal Hand IK` 为唯一手部入口，运行时和编辑器包装位于各模块的 `Character/Traversal/Animation`。手骨、掌点 Socket、左右 Alpha 和接触参数归节点，Component 只提供执行数据。输入姿势与装配见 [动画](animation.md#traversal-手部表现参考)。
 - `ResolvePalmOffsetLocal` 只读取直接挂到对应手骨的 Socket 局部位置，再用当前输入手骨变换得到掌点；None 使用腕骨原点，无效 Socket 关闭该侧。Socket 旋转不参与贴面，节点没有命中后的掌点高度偏移。
 - `Left/RightAlphaInputType` 支持 Float/Curve，逐手 Float 默认0。Float 可接 Pin/绑定，先用 `AlphaScaleBiasClamp` 再用 `AlphaScaleBias`；Curve 从当前输入 `Output.Curve` 读取 `AlphaCurveName`，只使用 `AlphaScaleBiasClamp`，缺失曲线或无效值透传该侧。有效结果夹到0–1；修饰器默认直通、插值默认关闭。重复求值继续读当前曲线，但同一次 Update 的时间步长只消费一次。继承的整体 Alpha 默认1，作为独立总控制。
-- 执行顺序：`PreUpdate` 在游戏线程读取活动参照、消费上次 Pre-IK 数值样本，并逐手调用 `FIMGTraversalHandContact::UpdateContact`；`UpdateInternal` 记录动画时间步长；求值时 `EvaluateHandAlpha` 读取当前输入曲线，`EvaluateHandIK` 从同份输入姿势采左右掌点并完整求解，再按逐手 Alpha 在局部空间混合回输入姿势。每侧权重只用一次，求解不先乘目标位移；任一侧失效不影响另一侧。求值不读取玩法 UObject 或发碰撞。
-- 参照为补偿后的最终执行 Warp Target：`LocalTransform * ComponentTransform` 包含绑定偏移与成功落位补偿。`FindWarpTarget(Anchor, TargetName)` 只读执行数据；明确名字覆盖 Anchor 查询，无名字时要求唯一已解析的 Anchor 绑定。动画侧 `ResolveContactReference` 核对本地 Montage，模拟代理另核对 ASC 实例；自主代理先消费预测目标再接受匹配权威快照，模拟代理消费权威快照。手点不增加复制、准入或 Montage 前置条件，不回写 Warp Target、落地或移动状态。
+- 执行顺序：`PreUpdate` 在游戏线程读取活动参照、消费上次 Pre-IK 数值样本，并逐手调用 `FIMGTraversalHandContact::UpdateContact`，复制实际命中表面的变换；`UpdateInternal` 记录动画时间步长；求值时 `EvaluateHandAlpha` 读取当前输入曲线，`EvaluateHandIK` 从同份输入姿势采左右掌点，经 `InterpolatePalmTarget` 平滑位置后完整求解，再按逐手 Alpha 在局部空间混合回输入姿势。每侧权重只用一次，位置平滑不再乘该权重；任一侧失效不影响另一侧。求值不读取玩法 UObject 或发碰撞。
+- 参照为补偿后的最终执行 Warp Target：`LocalTransform * ComponentTransform` 包含绑定偏移与成功落位补偿。HandIK 固定调用 `FindWarpTarget(EIMGTraversalAnchor::FrontLedge)` 只读执行数据，要求唯一已解析的前沿绑定；不提供额外名称覆盖配置，缺失或歧义时关闭本次手部修正。动画侧 `ResolveContactReference` 核对本地 Montage，模拟代理另核对 ASC 实例；自主代理先消费预测目标再接受匹配权威快照，模拟代理消费权威快照。手点不增加复制、准入或 Montage 前置条件，不回写 Warp Target、落地或移动状态。
 - 历史只存在节点的 `FHandState`：动作/AnimInstance/载体/参照局部变换/允许表面集合变化、骨骼缓存重建、LOD 禁用或样本超时均清理。骨名、Socket/局部偏移变更仅清理该侧；Alpha 输入类型/曲线名变更在求值阶段识别，因为 Pin/绑定晚于 `PreUpdate` 更新，不能拿旧来源的探测结果驱动新来源。无参照/样本、专服及 CMC Replay 不探测。权威回填未改变接触参照时保留历史；接触几何参数变化会作废已接纳点和断开标记。
-- 竖扫中心为逐手 Pre-IK 掌点 XY、执行前沿 Z；斜坡高低差来自各手实际命中。探测范围、允许修正距离与接触断开距离分责，参数定义在 `IMGAnimNode_TraversalHandIK.h`，默认值如下，长度单位为 cm：
+- 竖扫中心为逐手 Pre-IK 掌点 XY、执行前沿 Z；斜坡高低差来自各手实际命中。位置平滑、探测范围、允许修正距离与接触断开距离分责，参数定义在 `IMGAnimNode_TraversalHandIK.h`，默认值如下，长度单位为 cm，时间单位为 s：
 
 | 参数 | 默认值 | 消费位置与含义 |
 | --- | --- | --- |
+| `AttachBlendTime` | 0.1 | Contact 分类；首次有效求值从当帧 Pre-IK 掌点起步，经 SmoothStep 在此时间内过渡到跟随目标。0立即附着。 |
+| `DetachBlendTime` | 0.1 | Contact 分类；探测/目标距离校验失效后，将最后有效手臂修正按 SmoothStep 衰减到当前输入动画姿势。0立即恢复。曲线Alpha仍在最后应用一次，不延迟曲线松手。 |
+| `TargetInterpSpeed` | 20 | Contact 分类；实际接触表面局部空间中的目标指数跟随速率（1/s），系数为 `1-exp(-Speed*DeltaTime)`。越大越快，0直接跟随目标。 |
 | `VerticalTraceHalfHeight` | 30 | 竖扫上下各延伸此距离，同时用于命中点高度过滤；不是命中后高度偏移。 |
 | `VerticalTraceRadius` | 7.5 | 竖向球扫半径，0可退化为线探测。 |
 | `MaxHandCorrectionDistance` | 25 | 掌点到候选的三维距离必须小于此值；接纳新点、短时漏探复用和当帧求解前均检查。 |
@@ -81,7 +84,15 @@
 | `MaxArmReachRatio` | 0.98 | 肩腕距离相对上下臂总长的最大比例；不拉伸骨骼。 |
 
 - 编辑器按输入类型切换对应 Pin/Details，只解除变更侧不再使用的连接和绑定；曲线名校验考虑 Pin 默认值、连接及属性绑定，不仅检查结构默认值。距离必须有限且为正，半径允许0，伸臂比例在(0,1]；断开距离小于允许修正距离给 Warning，避免接纳后下一次更新立即断开。
-- 目标不新增位置平滑：作者的0–1 Alpha曲线控制IK介入/退出，Alpha=1时目标变化仍可直接传到手上。现有接触算法保留前0.5秒同组件横扫细化、0.1秒漏探宽限、同表面接触0.1秒后的60 cm/s Z限速；XY仍逐次更新，不构成整段锁点。固定抓点需求应归未来行为自身的锁点策略。
+- 切换逐手 Float/Curve 时，编辑器先选定唯一活动属性，清理该侧其余输入的连接及绑定，再把活动属性的 `ShowPinForProperties[].bShowPin` 置为 true，统一重建一次；之后仍可从原生菜单切换 Pin/属性/绑定。只改 `PinShownByDefault` 不会覆盖旧节点的可选引脚状态（`BlueprintGraph/Private/K2Node.cpp::FOptionalPinManager::RebuildProperty` 恢复旧 bShowPin）。已有 Curve 模式的隐藏 Pin 可用原生菜单 Expose As Pin，或在更新编辑器模块后切回 Float 再选 Curve。
+- 逐手类型已复用引擎 `EAnimAlphaInputType`，修饰器复用 `FInputScaleBias/FInputScaleBiasClamp`；支持范围统一由 `FIMGAnimNode_TraversalHandIK::IsSupportedHandAlphaInput` 提供给运行时和编辑器校验。父类只有一组总 Alpha 状态，在 `AnimNode_SkeletalControlBase.cpp::Update_AnyThread` 中求权重，Curve 路径读 `UAnimInstance::GetCurveValue`，并在求值后统一混合全部输出骨骼。逐手权重须分别保存状态，并在 Evaluate 从当前输入 `Output.Curve` 读值，不能直接拿父类的单份字段/Update 求值代替。
+- 节点 Details 固定按 `Left Hand → Right Hand → Contact → Solver → Alpha → Performance → Functions → Tag` 排列，Functions/Tag 默认折叠。逐手骨骼、Socket 和 Alpha 合并到对应手分类，不再使用会显示为独立分类的 `Left/Right Hand|Alpha`；位置平滑及接触探测参数归 Contact，MaxArmReachRatio 归 Solver。左右权重显示为 `Left/Right Hand Alpha`，曲线名和修饰器采用相同前缀；总 Alpha 保留原名。名称只定义在 UPROPERTY 的 DisplayName，`FOptionalPinManager::CreateVisiblePins` 每次生成 Pin 时赋予此基础名称，节点仅追加当前模式使用的修饰器表达式，不另写重复 LOCTEXT。不改上述 Alpha 的反射属性名或引脚标识。
+- `Persona/Private/AnimGraphNodeDetails.cpp::FAnimGraphNodeDetails::CustomizeDetails` 在节点 CustomizeDetails 之后生成原生属性行及 Pin/绑定、骨骼/曲线控件，跳过 `IsCustomized()` 属性；因此本节点只调整分类、排序和按输入类型隐藏字段，不提前将这些属性搬入自建 AddGroup/AddPropertyRow，避免丢失原生控件。
+- 位置平滑仅属于节点表现，不参与 Traversal 移动、Warp、准入或复制。`AttachBlendTime/DetachBlendTime/TargetInterpSpeed` 由左右手共用配置、各自保存历史；Alpha曲线仍独立控制姿势权重与正常松手。首次起点是当前Pre-IK掌点，首次求值不推进附着时间；后续 Update 推进 SmoothStep 附着计时及目标指数跟随，同次 Update 重复求值只消费一次时间步长。入场时长与目标跟随速率均为0时直接使用有效接触位置，退出另由 DetachBlendTime 控制。目标跟随只过滤相对实际接触表面的变化；游戏线程提供数值变换快照，求值不读取该表面组件，也不使用角色组件空间保存跨帧目标。
+- `UpdateContact` 的 `bOutNewContact` 在接纳新表面、丢失后重接或几何参数重置后重新接纳时置true，短时漏探复用返回false。新接触、探测失败、当帧原始目标或插值位置超出修正距离时清该侧位置历史；探测失败保留接触算法的断开状态，0.1秒漏探宽限内的有效复用保留位置历史。原始接触点继续独立接受距离和资格校验，无效目标不再参与IK求解。
+- 探测失效的 BlendOut 由 `FHandState` 保存数值姿势修正：有效求解后、逐手Alpha混合前，缓存上臂/前臂/腕骨相对输入动画的局部旋转差量。首次失效冻结该修正，计时从0开始，按 DetachBlendTime 衰减并应用到每次求值的当前动画局部姿势，保留当前局部位移/骨长；不缓存失效世界目标继续追点。重复求值不重复推进退出时间。恢复期间重新取得有效目标时，将退出修正与新附着求解按附着进度衔接；衔接中再次失效，从最近实际生成的未加Alpha修正重新开始退出。逐手Alpha只在最终局部姿势混合时应用一次，归零后立即清理，不另延长作者松手曲线。
+- 无参照/样本、动作切换、骨骼重建、LOD跳过、样本超时、无效姿势/配置或Alpha来源变化仍硬清全部历史（包含退出修正）；BlendOut只覆盖可继续求值的有效姿势下接触丢失/距离复核失败等表现退出，不跨动作保存状态。
+- 接触算法仍保留前0.5秒同组件横扫细化、0.1秒漏探宽限、同表面接触0.1秒后的60 cm/s Z限速；这些与新增位置平滑分责，不构成整段锁点。固定抓点需求应归未来行为自身的锁点策略。新配置须有限且非负，编辑器编译及运行时均校验。
 - `SampleHandhold` 的左右顶面命中只用于几何验证、前沿重定与障碍归属，不发布为左右掌点。`FrontLedgeNormal` 是前侧法线，`GroundNormal` 是深度采样均值，`TopSupportHeightRange` 是检测层位范围，均不能替代逐手当前顶面命中。顶面和前立面、左右手可分属同一已验证障碍的不同有效组件。GTA 的0–10 cm上坡偏移发生在目标提交时，IMG不套用该抬高量；探测范围和修正距离仍须独立调节。
 
 ## 播放路径与预测能力

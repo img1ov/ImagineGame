@@ -18,56 +18,69 @@ struct IMAGINEGAME_API FIMGAnimNode_TraversalHandIK : public FAnimNode_SkeletalC
 public:
 	FIMGAnimNode_TraversalHandIK();
 
-	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin))
+	static bool IsSupportedHandAlphaInput(EAnimAlphaInputType InputType)
+	{
+		return InputType == EAnimAlphaInputType::Float || InputType == EAnimAlphaInputType::Curve;
+	}
+
+	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin, DisplayName = "Left Hand Bone"))
 	FBoneReference LeftHand;
 
 	/** Optional socket attached directly to the left hand bone. */
 	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin))
 	FName LeftPalmSocket = NAME_None;
 
-	UPROPERTY(EditAnywhere, Category = "Left Hand|Alpha", meta = (NeverAsPin, ValidEnumValues = "Float,Curve"))
+	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin, DisplayName = "Left Hand Alpha Input Type", ValidEnumValues = "Float,Curve"))
 	EAnimAlphaInputType LeftAlphaInputType = EAnimAlphaInputType::Float;
 
 	/** Independent left-arm pose weight. May be bound directly to an animation curve. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Left Hand|Alpha", meta = (PinShownByDefault, ClampMin = "0", ClampMax = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Left Hand", meta = (PinShownByDefault, DisplayName = "Left Hand Alpha", ClampMin = "0", ClampMax = "1"))
 	float LeftAlpha = 0.f;
 
-	UPROPERTY(EditAnywhere, Category = "Left Hand|Alpha", meta = (NeverAsPin))
+	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin, DisplayName = "Left Hand Alpha Scale Bias"))
 	FInputScaleBias LeftAlphaScaleBias;
 
 	/** Curve mode reads this curve from the current input pose. A missing curve disables this side. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Left Hand|Alpha", meta = (PinShownByDefault))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Left Hand", meta = (PinShownByDefault, DisplayName = "Left Hand Alpha Curve Name"))
 	FName LeftAlphaCurveName = NAME_None;
 
-	UPROPERTY(EditAnywhere, Category = "Left Hand|Alpha", meta = (NeverAsPin))
+	UPROPERTY(EditAnywhere, Category = "Left Hand", meta = (NeverAsPin, DisplayName = "Left Hand Alpha Scale Bias Clamp"))
 	FInputScaleBiasClamp LeftAlphaScaleBiasClamp;
 
-	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin))
+	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin, DisplayName = "Right Hand Bone"))
 	FBoneReference RightHand;
 
 	/** Optional socket attached directly to the right hand bone. */
 	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin))
 	FName RightPalmSocket = NAME_None;
 
-	UPROPERTY(EditAnywhere, Category = "Right Hand|Alpha", meta = (NeverAsPin, ValidEnumValues = "Float,Curve"))
+	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin, DisplayName = "Right Hand Alpha Input Type", ValidEnumValues = "Float,Curve"))
 	EAnimAlphaInputType RightAlphaInputType = EAnimAlphaInputType::Float;
 
 	/** Independent right-arm pose weight. May be bound directly to an animation curve. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Right Hand|Alpha", meta = (PinShownByDefault, ClampMin = "0", ClampMax = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Right Hand", meta = (PinShownByDefault, DisplayName = "Right Hand Alpha", ClampMin = "0", ClampMax = "1"))
 	float RightAlpha = 0.f;
 
-	UPROPERTY(EditAnywhere, Category = "Right Hand|Alpha", meta = (NeverAsPin))
+	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin, DisplayName = "Right Hand Alpha Scale Bias"))
 	FInputScaleBias RightAlphaScaleBias;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Right Hand|Alpha", meta = (PinShownByDefault))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Right Hand", meta = (PinShownByDefault, DisplayName = "Right Hand Alpha Curve Name"))
 	FName RightAlphaCurveName = NAME_None;
 
-	UPROPERTY(EditAnywhere, Category = "Right Hand|Alpha", meta = (NeverAsPin))
+	UPROPERTY(EditAnywhere, Category = "Right Hand", meta = (NeverAsPin, DisplayName = "Right Hand Alpha Scale Bias Clamp"))
 	FInputScaleBiasClamp RightAlphaScaleBiasClamp;
 
-	/** None selects the only resolved front-edge binding. */
-	UPROPERTY(EditAnywhere, Category = Settings, meta = (NeverAsPin))
-	FName ContactTargetName = NAME_None;
+	/** Seconds to ease from the current pre-IK palm into a new contact. Zero attaches immediately. Shared settings, independent hand histories. */
+	UPROPERTY(EditAnywhere, Category = "Contact", meta = (NeverAsPin, ClampMin = "0", Units = "s"))
+	float AttachBlendTime = 0.1f;
+
+	/** Seconds to fade the last arm correction back to the current animation after contact loss. Zero restores immediately. Alpha still applies once. */
+	UPROPERTY(EditAnywhere, Category = "Contact", meta = (NeverAsPin, ClampMin = "0", Units = "s"))
+	float DetachBlendTime = 0.1f;
+
+	/** Exponential follow rate for changing targets in contact-surface local space (1/seconds). Higher is faster; zero follows immediately. */
+	UPROPERTY(EditAnywhere, Category = "Contact", meta = (NeverAsPin, ClampMin = "0"))
+	float TargetInterpSpeed = 20.f;
 
 	/** Vertical sweep extends this far above and below the execution front-edge height, in cm. */
 	UPROPERTY(EditAnywhere, Category = "Contact", meta = (NeverAsPin, ClampMin = "0.01", Units = "cm"))
@@ -92,7 +105,7 @@ public:
 	float FrontEdgeTraceRadius = 5.f;
 
 	/** Maximum shoulder-to-wrist reach as a fraction of the combined arm lengths. No bone stretching. */
-	UPROPERTY(EditAnywhere, Category = "Settings", AdvancedDisplay, meta = (NeverAsPin, ClampMin = "0.01", ClampMax = "1"))
+	UPROPERTY(EditAnywhere, Category = "Solver", meta = (NeverAsPin, ClampMin = "0.01", ClampMax = "1"))
 	float MaxArmReachRatio = 0.98f;
 
 	virtual void Initialize_AnyThread(const FAnimationInitializeContext& Context) override;
@@ -116,12 +129,50 @@ private:
 			Contact.Reset();
 			PreIKPalmWorld.Reset();
 			PalmTargetWorld.Reset();
+			ContactSurfaceToWorld = FTransform::Identity;
+			ResetPositionSmoothing();
+			ResetRecovery();
+		}
+
+		void ResetRecovery()
+		{
+			bHasIKCorrection = bHadContact = bDetaching = false;
+			DetachElapsedTime = 0.f;
+			LastDetachUpdateCounter = MAX_uint64;
+			LastShoulderCorrection = LastElbowCorrection = LastWristCorrection = FQuat::Identity;
+			DetachShoulderCorrection = DetachElbowCorrection = DetachWristCorrection = FQuat::Identity;
+		}
+
+		void ResetPositionSmoothing()
+		{
+			AttachStartLocal.Reset();
+			SmoothedTargetLocal = FVector::ZeroVector;
+			AttachElapsedTime = 0.f;
+			LastPositionUpdateCounter = MAX_uint64;
 		}
 
 		FIMGTraversalHandContact Contact;
 		TOptional<FVector> PalmOffsetLocal;
 		TOptional<FVector> PreIKPalmWorld;
 		TOptional<FVector> PalmTargetWorld;
+		// Value snapshot from the actual contacted surface; evaluation never reads the component.
+		FTransform ContactSurfaceToWorld = FTransform::Identity;
+		TOptional<FVector> AttachStartLocal;
+		FVector SmoothedTargetLocal = FVector::ZeroVector;
+		float AttachElapsedTime = 0.f;
+		uint64 LastPositionUpdateCounter = MAX_uint64;
+		// Unweighted local rotation deltas preserve current animation and bone lengths during recovery.
+		FQuat LastShoulderCorrection = FQuat::Identity;
+		FQuat LastElbowCorrection = FQuat::Identity;
+		FQuat LastWristCorrection = FQuat::Identity;
+		FQuat DetachShoulderCorrection = FQuat::Identity;
+		FQuat DetachElbowCorrection = FQuat::Identity;
+		FQuat DetachWristCorrection = FQuat::Identity;
+		float DetachElapsedTime = 0.f;
+		uint64 LastDetachUpdateCounter = MAX_uint64;
+		bool bHasIKCorrection = false;
+		bool bHadContact = false;
+		bool bDetaching = false;
 		FName HandBone = NAME_None;
 		FName PalmSocket = NAME_None;
 		EAnimAlphaInputType AlphaInputType = EAnimAlphaInputType::Float;
@@ -134,6 +185,7 @@ private:
 	void Reset();
 	float EvaluateHandAlpha(const FComponentSpacePoseContext& Output, FHandState& Hand, EAnimAlphaInputType InputType,
 	    float InputAlpha, FName CurveName, const FInputScaleBias& ScaleBias, FInputScaleBiasClamp& ScaleBiasClamp);
+	FVector InterpolatePalmTarget(FHandState& Hand, const FVector& PalmWorld);
 	void EvaluateHandIK(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms,
 	    FHandState& Hand, const FBoneReference& Bone, float HandAlpha);
 
@@ -148,6 +200,6 @@ private:
 	FName ReferenceName = NAME_None;
 	int32 MontageInstanceId = INDEX_NONE;
 	double LastPreUpdateTime = -1.0;
-	uint64 AlphaUpdateCounter = 0;
+	uint64 AnimationUpdateCounter = 0;
 	float UpdateDeltaTime = 0.f;
 };

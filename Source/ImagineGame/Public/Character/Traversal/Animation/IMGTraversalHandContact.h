@@ -13,11 +13,14 @@ class IMAGINEGAME_API FIMGTraversalHandContact
 public:
 	void Reset();
 
+	/** Game-thread access for copying the accepted contact's surface transform. */
+	const UPrimitiveComponent* GetContactSurface() const;
+
 	bool UpdateContact(const UWorld& World, const FCollisionQueryParams& QueryParams, ECollisionChannel Channel,
 	    TConstArrayView<TObjectPtr<UPrimitiveComponent>> Surfaces, const FTransform& FrontEdge, const FVector& Palm,
 	    float MinNormalZ, float InVerticalTraceHalfHeight, float InVerticalTraceRadius, float InFrontEdgeTraceDistance,
 	    float InFrontEdgeTraceRadius, float InMaxHandCorrectionDistance, float InContactBreakDistance,
-	    bool bRefineFrontEdge, FVector& OutTarget);
+	    bool bRefineFrontEdge, FVector& OutTarget, bool& bOutNewContact);
 
 private:
 	TWeakObjectPtr<UPrimitiveComponent> ContactSurface;

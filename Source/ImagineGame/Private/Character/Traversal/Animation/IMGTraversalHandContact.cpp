@@ -20,13 +20,20 @@ void FIMGTraversalHandContact::Reset()
 	*this = FIMGTraversalHandContact();
 }
 
+const UPrimitiveComponent* FIMGTraversalHandContact::GetContactSurface() const
+{
+	check(IsInGameThread());
+	return ContactSurface.Get();
+}
+
 bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisionQueryParams& QueryParams,
     ECollisionChannel Channel, TConstArrayView<TObjectPtr<UPrimitiveComponent>> Surfaces,
     const FTransform& FrontEdge, const FVector& Palm, float MinNormalZ, float InVerticalTraceHalfHeight,
     float InVerticalTraceRadius, float InFrontEdgeTraceDistance, float InFrontEdgeTraceRadius, float InMaxHandCorrectionDistance,
-    float InContactBreakDistance, bool bRefineFrontEdge, FVector& OutTarget)
+    float InContactBreakDistance, bool bRefineFrontEdge, FVector& OutTarget, bool& bOutNewContact)
 {
 	OutTarget = FVector::ZeroVector;
+	bOutNewContact = false;
 	if (!IsInGameThread())
 	{
 		return false;
@@ -136,6 +143,7 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 				}
 				LastValidHitTime = Now;
 				OutTarget = Candidate;
+				bOutNewContact = !bSameSurface;
 				return true;
 			}
 		}
