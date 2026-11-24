@@ -31,6 +31,7 @@ public class ImagineGame : ModuleRules
 			"DeveloperSettings",
 			"ApplicationCore",
 			"Engine",
+			"AnimGraphRuntime",
 			"PhysicsCore",
 			"GameplayTags",
 			"GameplayTasks",
@@ -55,6 +56,7 @@ public class ImagineGame : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"AnimationCore",
 			"InputCore",
 			"Slate",
 			"SlateCore",

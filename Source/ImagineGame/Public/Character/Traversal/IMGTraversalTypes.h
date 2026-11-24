@@ -96,8 +96,9 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
 	float ManualMovementDirectionDot = 0.3f;
 
+	/** Minimum movement-to-ledge dot; 0.65 allows about 49.5 degrees, including diagonal input. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
-	float AutomaticMovementDirectionDot = 0.8f;
+	float AutomaticMovementDirectionDot = 0.65f;
 
 	/** Falling requests still require movement intent and valid geometry/animation coverage. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -193,8 +194,9 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MinFacingDot = 0.3f;
 
+	/** Automatic-facing threshold; 0.65 allows about 49.5 degrees from the surface approach direction. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
-	float AutomaticMinFacingDot = 0.8f;
+	float AutomaticMinFacingDot = 0.65f;
 
 	/** Default height is relative to capsule feet; enabled uses valid CMC support, falling back to feet. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height")
@@ -588,11 +590,11 @@ struct FIMGTraversalLandingSettings
  * Warp window times and Modifier parameters remain configured in animation Notifies; prediction and the server validate using the same rules.
  */
 USTRUCT(BlueprintType)
-struct IMAGINEGAME_API FIMGTraversalAnimationSettings
+struct IMAGINEGAME_API FIMGTraversalExecutionSettings
 {
 	GENERATED_BODY()
 
-	FIMGTraversalAnimationSettings();
+	FIMGTraversalExecutionSettings();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FIMGTraversalWarpBinding> WarpBindings;
@@ -628,7 +630,7 @@ struct FIMGTraversalActionSettings
 	EIMGTraversalAction Action = EIMGTraversalAction::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FIMGTraversalAnimationSettings Settings;
+	FIMGTraversalExecutionSettings Settings;
 };
 
 /**
@@ -654,7 +656,7 @@ struct FIMGTraversalMontageSettings
 	 * For example, Hurdle enables DistanceCurve by default, whereas a new struct defaults Landing.Mode to None.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FIMGTraversalAnimationSettings Settings;
+	FIMGTraversalExecutionSettings Settings;
 };
 
 /** Resolved authority targets are shared with the owning prediction and simulated proxies. */

@@ -8,7 +8,7 @@
 #include "Engine/World.h"
 #include "Math/RotationMatrix.h"
 
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 using IMGTraversalDebug::EStage;

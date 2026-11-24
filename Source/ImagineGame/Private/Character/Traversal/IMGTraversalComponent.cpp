@@ -2,7 +2,6 @@
 
 #include "AbilitySystem/IMGAbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
-#include "AnimNotifyState_MotionWarping.h"
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
 #include "Character/IMGHealthComponent.h"
@@ -17,9 +16,10 @@
 #include "Net/UnrealNetwork.h"
 #include "RootMotionModifier.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
+#include "Character/Traversal/Execution/IMGTraversalWarpWindows.h"
 #include "IMGLogChannels.h"
 
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTraversalComponent)
 
@@ -192,11 +192,11 @@ bool UIMGTraversalComponent::CanInitiate(
 	return bAllowed;
 }
 
-const FIMGTraversalAnimationSettings* UIMGTraversalComponent::FindAnimationSettings(
+const FIMGTraversalExecutionSettings* UIMGTraversalComponent::FindExecutionSettings(
     EIMGTraversalAction Action, const UAnimMontage* Montage) const
 {
 	if (!ReplicatedMontages.IsEmpty() && !IsListedReplicatedMontage(Montage)) { return nullptr; }
-	const FIMGTraversalAnimationSettings* Result = nullptr;
+	const FIMGTraversalExecutionSettings* Result = nullptr;
 	for (const FIMGTraversalMontageSettings& Entry : MontageSettings)
 	{
 		if (Entry.Montage == Montage && Entry.Action == Action)
@@ -226,96 +226,34 @@ const FIMGTraversalAnimationSettings* UIMGTraversalComponent::FindAnimationSetti
 	return Result;
 }
 
-void UIMGTraversalComponent::GetWarpWindows(
-    const UAnimMontage* Montage, TArray<FIMGTraversalWarpWindow>& OutWindows) const
+const FIMGTraversalWarpTarget* UIMGTraversalComponent::FindWarpTarget(EIMGTraversalAnchor Anchor, FName TargetName) const
 {
-	OutWindows.Reset();
-	if (!Montage)
+	if (!IsTraversalAvailable() || bReplayingTraversalMove || !ActiveState.bActive) { return nullptr; }
+	if (!TargetName.IsNone())
 	{
-		return;
+		return ActiveState.WarpTargets.FindByPredicate(
+		    [TargetName](const FIMGTraversalWarpTarget& Target) { return Target.Name == TargetName; });
 	}
-	TArray<FVector2D> ModifierRanges;
-	auto Collect = [&OutWindows, &ModifierRanges](
-	                   const UAnimSequenceBase* Animation, float Offset, float RangeStart, float RangeEnd)
-	{
-		if (!Animation)
-		{
-			return;
-		}
-		for (const FAnimNotifyEvent& Event : Animation->Notifies)
-		{
-			const UAnimNotifyState_MotionWarping* Notify = Cast<UAnimNotifyState_MotionWarping>(Event.NotifyStateClass);
-			if (!Notify || !Notify->RootMotionModifier)
-			{
-				continue;
-			}
-			const float Start = FMath::Clamp(Event.GetTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset;
-			const float End = FMath::Clamp(Event.GetEndTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset;
-			if (End <= RangeStart || Start >= RangeEnd)
-			{
-				continue;
-			}
-			// UE deduplicates modifiers by animation and time range, irrespective of target name.
-			const FVector2D Range(Start, End);
-			if (ModifierRanges.Contains(Range))
-			{
-				continue;
-			}
-			ModifierRanges.Add(Range);
-			const URootMotionModifier_Warp* Modifier = Cast<URootMotionModifier_Warp>(Notify->RootMotionModifier);
-			FIMGTraversalWarpWindow& Window = OutWindows.AddDefaulted_GetRef();
-			Window.Modifier = Modifier;
-			Window.StartTime = Start;
-			Window.EndTime = End;
-		}
-	};
-	Collect(Montage, 0.f, 0.f, Montage->GetPlayLength());
-	if (const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
-	    Warping && Warping->bSearchForWindowsInAnimsWithinMontages)
-	{
-		for (const FSlotAnimationTrack& Slot : Montage->SlotAnimTracks)
-		{
-			for (const FAnimSegment& Segment : Slot.AnimTrack.AnimSegments)
-			{
-				// Match the runtime MotionWarping component's segment-time conversion.
-				Collect(Segment.GetAnimReference(), Segment.StartPos - Segment.AnimStartTime, Segment.StartPos,
-				    Segment.GetEndPos());
-			}
-		}
-	}
-	OutWindows.StableSort(
-	    [](const FIMGTraversalWarpWindow& A, const FIMGTraversalWarpWindow& B) { return A.StartTime < B.StartTime; });
-}
-
-const FIMGTraversalWarpWindow* UIMGTraversalComponent::FindTranslationWindow(
-    TConstArrayView<FIMGTraversalWarpWindow> Windows, FName TargetName, int32 WindowIndex, float MinEndTime,
-    float MaxEndTime)
-{
-	if (TargetName.IsNone() || WindowIndex < -1)
+	const FIMGTraversalExecutionSettings* Settings = FindExecutionSettings(ActiveState.Action, ActiveState.Montage);
+	if (!Settings)
 	{
 		return nullptr;
 	}
-	const FIMGTraversalWarpWindow* Result = nullptr;
-	int32 Ordinal = 0;
-	for (const FIMGTraversalWarpWindow& Window : Windows)
+	const FIMGTraversalWarpTarget* Result = nullptr;
+	for (const FIMGTraversalWarpTarget& Target : ActiveState.WarpTargets)
 	{
-		if (Window.Modifier && Window.Modifier->WarpTargetName == TargetName && Window.Modifier->bWarpTranslation &&
-		    Window.EndTime > Window.StartTime)
+		if (Settings->WarpBindings.ContainsByPredicate([&Target, Anchor](const FIMGTraversalWarpBinding& Binding) {
+			    return Binding.Anchor == Anchor && Binding.TargetName == Target.Name;
+		    }))
 		{
-			const bool bEligible = Window.EndTime > MinEndTime && Window.EndTime <= MaxEndTime;
-			// An explicit authored ordinal must not shift when PoseSearch skips an earlier window.
-			if (WindowIndex == Ordinal)
+			if (Result)
 			{
-				return bEligible ? &Window : nullptr;
+				return nullptr;
 			}
-			if (bEligible)
-			{
-				Result = &Window;
-			}
-			++Ordinal;
+			Result = &Target;
 		}
 	}
-	return WindowIndex == -1 ? Result : nullptr;
+	return Result;
 }
 
 void UIMGTraversalComponent::BeginPlay()
@@ -357,12 +295,18 @@ void UIMGTraversalComponent::OnRep_IsActive()
 
 void UIMGTraversalComponent::InitializeBindings()
 {
-	if (bReleasingBindings || !IsRegistered() || !IsActive() || IsBeingDestroyed() || !GetOwner() || GetOwner()->IsActorBeingDestroyed()) { return; }
+	if (!IsTraversalAvailable() || !GetOwner() || GetOwner()->IsActorBeingDestroyed()) { return; }
 	if (UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
 	{
 		if (BoundMotionWarpingComponent.IsValid() && BoundMotionWarpingComponent != Warping)
 		{
-			BoundMotionWarpingComponent->OnPreUpdate.RemoveDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
+			const TWeakObjectPtr<UMotionWarpingComponent> PreviousWarping = BoundMotionWarpingComponent;
+			InvalidateTraversal();
+			if (PreviousWarping.IsValid())
+			{
+				PreviousWarping->OnPreUpdate.RemoveDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
+			}
+			if (!IsTraversalAvailable() || !IsValid(Warping) || GetMotionWarpingComponent() != Warping) { return; }
 		}
 		BoundMotionWarpingComponent = Warping;
 		Warping->OnPreUpdate.AddUniqueDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
@@ -375,8 +319,15 @@ void UIMGTraversalComponent::InitializeBindings()
 			{
 				if (BoundMovement.IsValid())
 				{
-					BoundMovement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
-					BoundMovement->RemoveTickPrerequisiteComponent(this);
+					const TWeakObjectPtr<UIMGCharacterMovementComponent> PreviousMovement = BoundMovement;
+					InvalidateTraversal();
+					if (PreviousMovement.IsValid())
+					{
+						PreviousMovement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
+						PreviousMovement->RemoveTickPrerequisiteComponent(this);
+					}
+					if (!IsTraversalAvailable() || !IsValid(Character) || !IsValid(Movement) ||
+					    Character->GetIMGMovementComponent() != Movement) { return; }
 				}
 				MovementReplayCaptureHandle = Movement->MovementReplayCapture.AddUObject(this, &ThisClass::CaptureMovementReplay);
 			}
@@ -387,7 +338,11 @@ void UIMGTraversalComponent::InitializeBindings()
 	}
 	if (UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
 	{
-		if (BoundPawnExtension == Extension) { return; }
+		if (BoundPawnExtension == Extension)
+		{
+			HandleAbilitySystemInitialized();
+			return;
+		}
 		if (BoundPawnExtension.IsValid()) { BoundPawnExtension->UnregisterAbilitySystemDelegates(this); }
 		BoundPawnExtension = Extension;
 		Extension->OnAbilitySystemUninitialized_Register(
@@ -439,19 +394,22 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 
 bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets,
-    FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey)
+    FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey, uint32& OutExecutionId)
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Execution);
 #endif
+	OutExecutionId = 0;
 	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
-	if (!IsTraversalAvailable() || bReplayingTraversalMove || ActiveState.bActive || !IsValid(Character) || Character->IsActorBeingDestroyed() ||
+	if (!IsTraversalReady() || bReplayingTraversalMove || ActiveState.bActive || !IsValid(Character) || Character->IsActorBeingDestroyed() ||
 	    Character->GetLocalRole() == ROLE_SimulatedProxy || !Movement || Movement != Character->GetIMGMovementComponent())
 	{
 		return false;
 	}
 	if (!Movement->IsRegistered() || !Movement->IsActive()) { return false; }
+	if (++ExecutionId == 0) { ++ExecutionId; }
+	OutExecutionId = ExecutionId;
 	ActiveState = FIMGTraversalRepState();
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
 	ActiveState.AbilitySpec = AbilitySpec;
@@ -485,16 +443,17 @@ bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 #endif
 	Movement->SetMovementMode(MOVE_Flying);
 	// Movement-mode callbacks may synchronously cancel the ability or release this component.
-	return IsTraversalAvailable() && ActiveState.bActive && IsValid(Character) &&
+	return IsTraversalReady() && OwnsExecution(OutExecutionId) && IsValid(Character) &&
 	    BoundMovement.Get() == Movement && IsValid(Movement) && Movement->IsFlying();
 }
 
-bool UIMGTraversalComponent::PublishTraversalState(uint8 MontagePlayInstanceId)
+bool UIMGTraversalComponent::PublishTraversalState(uint32 ExpectedExecutionId, uint8 MontagePlayInstanceId)
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Replication);
 #endif
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !ActiveState.bActive || !IsValid(ActiveState.Montage))
+	if (!IsTraversalReady() || !OwnsExecution(ExpectedExecutionId) ||
+	    !GetOwner()->HasAuthority() || !IsValid(ActiveState.Montage))
 	{
 		return false;
 	}
@@ -507,7 +466,34 @@ bool UIMGTraversalComponent::PublishTraversalState(uint8 MontagePlayInstanceId)
 	return true;
 }
 
-void UIMGTraversalComponent::EndTraversal()
+bool UIMGTraversalComponent::IsTraversalReady() const
+{
+	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	const UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	const UMotionWarpingComponent* Warping = BoundMotionWarpingComponent.Get();
+	return IsTraversalAvailable() && IsValid(Character) && !Character->IsActorBeingDestroyed() &&
+	    Movement && Movement == Character->GetIMGMovementComponent() &&
+	    Movement->IsRegistered() && Movement->IsActive() && Warping && Warping == GetMotionWarpingComponent() &&
+	    Warping->IsRegistered() &&
+	    (Character->GetLocalRole() != ROLE_SimulatedProxy || HasReplicatedMontageBinding());
+}
+
+void UIMGTraversalComponent::EndTraversal(uint32 ExpectedExecutionId)
+{
+	if (OwnsExecution(ExpectedExecutionId)) { ReleaseExecution(); }
+}
+
+void UIMGTraversalComponent::InvalidateTraversal()
+{
+	if (bInvalidatingTraversal) { return; }
+	TGuardValue<bool> Invalidating(bInvalidatingTraversal, true);
+	if (ReplaySessionValid) { *ReplaySessionValid = false; }
+	OnTraversalUnavailable.Broadcast();
+	// Unavailable or destroyed owners may no longer be able to run the GA's end path.
+	ReleaseExecution();
+}
+
+void UIMGTraversalComponent::ReleaseExecution()
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Lifecycle);
@@ -558,7 +544,8 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 	IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Replication);
 	IMGTraversalDebug::State(GetOwner(), TEXT("SnapshotReceived"), ReplicatedState);
 #endif
-	if (bReleasingBindings || !HasBegunPlay() || !IsRegistered() || !IsActive()) { return; }
+	if (!HasBegunPlay() || !IsTraversalAvailable() ||
+	    (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy && !HasReplicatedMontageBinding())) { return; }
 	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
 	{
 		ReconcilePredictedTargets();
@@ -768,47 +755,55 @@ void UIMGTraversalComponent::HandleMotionWarpingPreUpdate(UMotionWarpingComponen
 
 void UIMGTraversalComponent::HandleAbilitySystemInitialized()
 {
-	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
-	HandleAbilitySystemUninitialized();
-	if (!GetOwner() || GetOwner()->GetLocalRole() != ROLE_SimulatedProxy)
-	{
-		return;
-	}
-	const UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(GetOwner());
+	if (!IsTraversalAvailable() || !GetOwner() || GetOwner()->IsActorBeingDestroyed()) { return; }
+	const UIMGPawnExtensionComponent* Extension = BoundPawnExtension.Get();
 	UIMGAbilitySystemComponent* ASC = Extension ? Extension->GetIMGAbilitySystemComponent() : nullptr;
-	if (!ASC)
+	if (ASC && BoundAbilitySystemComponent == ASC)
 	{
+		if (GetOwner()->GetLocalRole() == ROLE_SimulatedProxy) { OnRep_TraversalState(); }
 		return;
 	}
-	MontagePrerequisiteHandle = ASC->RegisterReplicatedMontagePrerequisite(GetOwner(), TEXT("Traversal"),
-	    FIMGReplicatedMontagePrerequisite::CreateUObject(this, &ThisClass::CheckReplicatedMontagePrerequisite));
-	if (!MontagePrerequisiteHandle.IsValid())
-	{
-		UE_LOG(LogIMGAbilitySystem, Error, TEXT("Traversal failed to register montage prerequisites for [%s]."), *GetNameSafe(GetOwner()));
-		return;
-	}
+	// First attachment can follow an OnSpawn activation inside InitAbilityActorInfo.
+	// Only replacing an existing binding invalidates that binding's execution.
+	if (!BoundAbilitySystemComponent.IsExplicitlyNull()) { HandleAbilitySystemUninitialized(); }
+	if (!IsValid(ASC) || !IsValid(Extension) || BoundPawnExtension.Get() != Extension ||
+	    Extension->GetIMGAbilitySystemComponent() != ASC || !GetOwner() ||
+	    ASC->GetAvatarActor() != GetOwner() || !IsTraversalAvailable()) { return; }
 	BoundAbilitySystemComponent = ASC;
-	OnRep_TraversalState();
+	if (GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		MontagePrerequisiteHandle = ASC->RegisterReplicatedMontagePrerequisite(GetOwner(), TEXT("Traversal"),
+		    FIMGReplicatedMontagePrerequisite::CreateUObject(this, &ThisClass::CheckReplicatedMontagePrerequisite));
+		if (!MontagePrerequisiteHandle.IsValid())
+		{
+			BoundAbilitySystemComponent.Reset();
+			UE_LOG(LogIMGAbilitySystem, Error, TEXT("Traversal failed to register montage prerequisites for [%s]."), *GetNameSafe(GetOwner()));
+			return;
+		}
+		OnRep_TraversalState();
+	}
 }
 
 void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 {
-	if (ReplaySessionValid) { *ReplaySessionValid = false; }
+	InvalidateTraversal();
 	if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
 	{
 		ASC->UnregisterReplicatedMontagePrerequisite(MontagePrerequisiteHandle);
 	}
 	MontagePrerequisiteHandle.Reset();
 	BoundAbilitySystemComponent.Reset();
-	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		EndTraversal();
-	}
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::Event(
-		GetOwner(), TEXT("AbilitySystemDetached"), TEXT("Montage prerequisite and predicted replay retired"));
+		GetOwner(), TEXT("AbilitySystemDetached"), TEXT("Execution, montage prerequisite and predicted replay retired"));
 	IMGTraversalDebug::ReleaseActor(GetOwner());
 #endif
+}
+
+bool UIMGTraversalComponent::HasReplicatedMontageBinding() const
+{
+	const UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get();
+	return IsValid(GetOwner()) && ASC && ASC->GetAvatarActor() == GetOwner() && MontagePrerequisiteHandle.IsValid();
 }
 
 bool UIMGTraversalComponent::IsListedReplicatedMontage(const UAnimMontage* Montage) const
@@ -850,13 +845,15 @@ FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedM
 		{
 			return Result(EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalSnapshot"));
 		}
+
 		if (!ReplicatedMontages.IsEmpty()) { return {}; }
 		TArray<FIMGTraversalWarpWindow> Windows;
-		GetWarpWindows(Montage, Windows);
+		const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
+		IMGTraversalWarpWindows::Collect(Montage, Warping && Warping->bSearchForWindowsInAnimsWithinMontages, Windows);
 		for (const EIMGTraversalAction Action :
 		    {EIMGTraversalAction::Mantle, EIMGTraversalAction::Vault, EIMGTraversalAction::Hurdle})
 		{
-			const FIMGTraversalAnimationSettings* Settings = FindAnimationSettings(Action, Montage);
+			const FIMGTraversalExecutionSettings* Settings = FindExecutionSettings(Action, Montage);
 			if (!Settings)
 			{
 				continue;
@@ -979,10 +976,17 @@ void UIMGTraversalComponent::TickComponent(
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (bReleasingBindings || !IsRegistered() || !IsActive()) { return; }
-	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy && ActiveState.bActive &&
+	const bool bSimulated = GetOwner() && GetOwner()->GetLocalRole() == ROLE_SimulatedProxy;
+	// Proxy movement and traversal snapshots arrive independently; the montage prerequisite waits for movement.
+	if (ActiveState.bActive && (bSimulated ? !HasReplicatedMontageBinding() : !IsTraversalReady()))
+	{
+		InvalidateTraversal();
+		return;
+	}
+	if (bSimulated && ActiveState.bActive &&
 	    !ReplicatedState.bActive && !ShouldDeferSimulatedEnd())
 	{
-		EndTraversal();
+		ReleaseExecution();
 	}
 	if (ActiveState.bActive)
 	{
@@ -1028,9 +1032,8 @@ void UIMGTraversalComponent::ReleaseBindings()
 	MovementReplayCaptureHandle.Reset();
 	RecordWarpContext = nullptr;
 	bCaptureTraversalExit = false;
-	if (ReplaySessionValid) { *ReplaySessionValid = false; }
 	ReplaySessionValid.Reset();
-	EndTraversal();
+	ReleaseExecution();
 	BoundMovement.Reset();
 	BoundMotionWarpingComponent.Reset();
 #if IMG_TRAVERSAL_DEBUG_ENABLED

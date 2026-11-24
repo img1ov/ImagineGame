@@ -1,29 +1,25 @@
-#include "IMGTraversalPlacement.h"
+#include "Character/Traversal/Execution/IMGTraversalPlacement.h"
 
-#include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "AnimationWarpingLibrary.h"
-#include "BoneContainer.h"
 #include "Character/IMGCharacter.h"
 #include "Character/IMGCharacterMovementComponent.h"
-#include "Character/Traversal/IMGTraversalComponent.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
 #include "Character/Traversal/IMGTraversalTypes.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
-#include "HAL/IConsoleManager.h"
-#include "Math/RotationMatrix.h"
-#include "MotionWarpingComponent.h"
 #include "RootMotionModifier.h"
 #include "RootMotionModifier_SkewWarp.h"
 #include "UObject/UnrealType.h"
 
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
+#include "Character/Traversal/Execution/IMGTraversalPlaybackPath.h"
+#include "Character/Traversal/Execution/IMGTraversalWarpPrediction.h"
 
 bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
-    const FIMGTraversalAnimationSettings& Settings, const FIMGTraversalDetectorSettings& Geometry,
+    const FIMGTraversalExecutionSettings& Settings, const FIMGTraversalDetectorSettings& Geometry,
     TConstArrayView<FIMGTraversalWarpWindow> Windows, FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, TArray<FIMGTraversalWarpTarget>& OutTargets,
     bool bVerboseDiagnostics, TFunctionRef<void(const TCHAR*, const FString&, bool)> LogEvent)
@@ -73,128 +69,18 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		}
 		BindingNames.Add(Binding.TargetName);
 	}
-	const UAnimMontage& Montage = *Selection.Montage;
-	const float MontageLength = Montage.GetPlayLength();
-	const float PlaybackRate = Selection.PlayRate * Montage.RateScale;
-	if (!FMath::IsFinite(MontageLength) || !FMath::IsFinite(PlaybackRate) || PlaybackRate <= 0.f)
+	FIMGTraversalPlaybackPath Playback;
+	FString PlaybackFailure;
+	if (!Playback.Build(Selection, Windows, bVerboseDiagnostics, LogEvent, PlaybackFailure))
 	{
-		return Reject(TEXT("Montage length or effective play rate is invalid"));
+		return Reject(PlaybackFailure);
 	}
-	if (!Montage.bEnableAutoBlendOut || !FMath::IsFinite(Montage.BlendOutTriggerTime) ||
-	    !FMath::IsFinite(Montage.BlendOut.GetBlendTime()) || Montage.BlendOut.GetBlendTime() < 0.f)
-	{
-		return Reject(
-		    TEXT("Traversal needs automatic montage blend-out with finite timing to release movement"));
-	}
-	TArray<FVector2f> PlaybackRanges;
-	TArray<float> PlaybackOffsets;
-	TSet<int32> VisitedSections;
-	int32 SectionIndex = Montage.GetSectionIndexFromPosition(Selection.StartTime);
-	float PlaybackEnd = 0.f;
-	float TerminalSectionStart = 0.f;
-	while (Montage.IsValidSectionIndex(SectionIndex))
-	{
-		if (VisitedSections.Contains(SectionIndex))
-		{
-			return Reject(TEXT("Traversal needs a finite section path; the montage section chain loops"));
-		}
-		VisitedSections.Add(SectionIndex);
-		float SectionStart = 0.f;
-		float SectionEnd = 0.f;
-		Montage.GetSectionStartAndEndTime(SectionIndex, SectionStart, SectionEnd);
-		if (!FMath::IsFinite(SectionStart) || !FMath::IsFinite(SectionEnd) || SectionStart < 0.f ||
-		    SectionEnd <= SectionStart || SectionEnd > MontageLength)
-		{
-			return Reject(TEXT("Montage section has an invalid time range"));
-		}
-		TerminalSectionStart = PlaybackEnd;
-		// Adjacent sections form one extraction range. Jumps retain separate animation intervals.
-		if (!PlaybackRanges.IsEmpty() && PlaybackRanges.Last().Y == SectionStart)
-		{
-			PlaybackRanges.Last().Y = SectionEnd;
-		}
-		else
-		{
-			PlaybackRanges.Emplace(SectionStart, SectionEnd);
-			PlaybackOffsets.Add(PlaybackEnd);
-		}
-		if (bVerboseDiagnostics)
-		{
-			LogTraversalEvent(TEXT("PlaybackSection"),
-			    FString::Printf(TEXT("Section=%s Range=%.6f..%.6f PlaybackOffset=%.6f Next=%s"),
-			        *Montage.GetSectionName(SectionIndex).ToString(), SectionStart, SectionEnd, PlaybackEnd,
-			        *Montage.CompositeSections[SectionIndex].NextSectionName.ToString()));
-		}
-		PlaybackEnd += SectionEnd - SectionStart;
-		const FName NextSection = Montage.CompositeSections[SectionIndex].NextSectionName;
-		if (NextSection.IsNone())
-		{
-			break;
-		}
-		SectionIndex = Montage.GetSectionIndex(NextSection);
-		if (!Montage.IsValidSectionIndex(SectionIndex))
-		{
-			return Reject(TEXT("Montage section links to an unknown next section"));
-		}
-	}
-	if (PlaybackRanges.IsEmpty() || !FMath::IsFinite(PlaybackEnd))
-	{
-		return Reject(TEXT("Montage start time has no valid section path"));
-	}
-	const float PlaybackStart = Selection.StartTime - PlaybackRanges[0].X;
-	float PlacementTime = PlaybackEnd;
-	if (Selection.Montage->bEnableAutoBlendOut && Selection.Montage->BlendOutTriggerTime >= 0.f)
-	{
-		const float BlendStart = FMath::Max(FMath::Max(PlaybackStart, TerminalSectionStart),
-		    PlaybackEnd - Selection.Montage->BlendOutTriggerTime * PlaybackRate);
-		PlacementTime =
-		    FMath::Min(PlaybackEnd, BlendStart + Selection.Montage->BlendOut.GetBlendTime() * PlaybackRate);
-	}
-	if (bVerboseDiagnostics)
-	{
-		LogTraversalEvent(TEXT("PlaybackPath"),
-		    FString::Printf(TEXT("Montage=%s Length=%.6f StartTime=%.6f PlaybackStart=%.6f PlaybackEnd=%.6f "
-		                         "PlacementTime=%.6f Ranges=%d"),
-		        *GetNameSafe(Selection.Montage.Get()), MontageLength, Selection.StartTime, PlaybackStart,
-		        PlaybackEnd, PlacementTime, PlaybackRanges.Num()));
-	}
-	TMap<const FIMGTraversalWarpWindow*, FVector2f> WindowPlaybackTimes;
-	TArray<const FIMGTraversalWarpWindow*> ReachableWindows;
-	for (const FIMGTraversalWarpWindow& Window : Windows)
-	{
-		if (!FMath::IsFinite(Window.StartTime) || !FMath::IsFinite(Window.EndTime) ||
-		    Window.EndTime <= Window.StartTime || Window.StartTime < 0.f || Window.EndTime > MontageLength)
-		{
-			return Reject(TEXT("Warp window has an invalid time range"));
-		}
-		for (int32 RangeIndex = 0; RangeIndex < PlaybackRanges.Num(); ++RangeIndex)
-		{
-			const FVector2f& Range = PlaybackRanges[RangeIndex];
-			const float EntryTime = RangeIndex == 0 ? Selection.StartTime : Range.X;
-			if (Window.EndTime <= Range.X || Window.StartTime >= Range.Y)
-			{
-				continue;
-			}
-			if (Window.StartTime < Range.X || Window.EndTime > Range.Y)
-			{
-				if (Window.EndTime > EntryTime &&
-				    PlaybackOffsets[RangeIndex] + FMath::Max(Window.StartTime - Range.X, 0.f) < PlacementTime)
-				{
-					return Reject(TEXT("Warp window crosses a discontinuous section boundary"));
-				}
-				continue;
-			}
-			WindowPlaybackTimes.Add(&Window,
-			    FVector2f(PlaybackOffsets[RangeIndex] + (Window.StartTime - Range.X),
-			        PlaybackOffsets[RangeIndex] + (Window.EndTime - Range.X)));
-			ReachableWindows.Add(&Window);
-			break;
-		}
-	}
-	ReachableWindows.StableSort(
-	    [&WindowPlaybackTimes](const FIMGTraversalWarpWindow& A, const FIMGTraversalWarpWindow& B) {
-		    return WindowPlaybackTimes.FindChecked(&A).X < WindowPlaybackTimes.FindChecked(&B).X;
-	    });
+	const TArray<FVector2f>& PlaybackRanges = Playback.GetRanges();
+	const TArray<float>& PlaybackOffsets = Playback.GetOffsets();
+	const auto& WindowPlaybackTimes = Playback.GetWindowTimes();
+	const auto& ReachableWindows = Playback.GetReachableWindows();
+	const float PlaybackStart = Playback.GetStartTime();
+	const float PlacementTime = Playback.GetPlacementTime();
 	TSet<FName> UsedTargets;
 	TArray<const FIMGTraversalWarpWindow*, TInlineAllocator<4>> PlacementWindows;
 	const FIMGTraversalWarpWindow* FinalTranslationWindow = nullptr;
@@ -319,240 +205,17 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		return Settings.WarpBindings.FindByPredicate(
 		    [Name](const FIMGTraversalWarpBinding& Binding) { return Binding.TargetName == Name; });
 	};
-	auto SelectWindow = [&Windows, &WindowPlaybackTimes, MontageLength](FName Name, int32 Index, float MinEnd,
-	                        float MaxEnd) -> const FIMGTraversalWarpWindow* {
-		if (Index >= 0)
-		{
-			const FIMGTraversalWarpWindow* Window =
-			    UIMGTraversalComponent::FindTranslationWindow(Windows, Name, Index, -1.f, MontageLength);
-			const FVector2f* Times = WindowPlaybackTimes.Find(Window);
-			return Times && Times->Y > MinEnd && Times->Y <= MaxEnd ? Window : nullptr;
-		}
-		if (Name.IsNone() || Index != -1)
-		{
-			return nullptr;
-		}
-		const FIMGTraversalWarpWindow* Result = nullptr;
-		float LastEnd = MinEnd;
-		for (const FIMGTraversalWarpWindow& Window : Windows)
-		{
-			const FVector2f* Times = WindowPlaybackTimes.Find(&Window);
-			if (Times && Window.Modifier && Window.Modifier->bWarpTranslation &&
-			    Window.Modifier->WarpTargetName == Name && Times->Y > MinEnd && Times->Y <= MaxEnd &&
-			    Times->Y >= LastEnd)
-			{
-				Result = &Window;
-				LastEnd = Times->Y;
-			}
-		}
-		return Result;
+	auto SelectWindow = [&Playback, Windows](FName Name, int32 Index, float MinEnd, float MaxEnd) {
+		return Playback.SelectTranslationWindow(Windows, Name, Index, MinEnd, MaxEnd);
 	};
 	auto AlignmentTime = [&Selection](const FIMGTraversalWarpWindow& Window) {
 		return Window.Modifier->bSubtractRemainingRootMotion ? Selection.Montage->GetPlayLength()
 		                                                     : Window.EndTime;
 	};
 	const FTransform InitialPose = Character->GetActorTransform();
-	const USkeletalMeshComponent* Mesh = Character->GetMesh();
-	const FQuat BaseRotation = Character->GetBaseRotationOffset();
-	const FVector MeshScale = Mesh ? Mesh->GetComponentScale() : FVector::OneVector;
-	const FTransform MeshRelative(BaseRotation, Character->GetBaseTranslationOffset(),
-	    Mesh ? Mesh->GetRelativeScale3D() : FVector::OneVector);
-	auto ExtractMotion = [&](float From, float To) {
-		return UMotionWarpingUtilities::ExtractRootMotionFromAnimation(Selection.Montage, From, To);
-	};
-	auto AdvanceRootMotion = [&](float From, float To, FTransform& Pose) {
-		for (int32 RangeIndex = 0; RangeIndex < PlaybackRanges.Num(); ++RangeIndex)
-		{
-			const FVector2f& Range = PlaybackRanges[RangeIndex];
-			const float Offset = PlaybackOffsets[RangeIndex];
-			const float Start = FMath::Max(From, Offset);
-			const float End = FMath::Min(To, Offset + Range.Y - Range.X);
-			if (End <= Start)
-			{
-				continue;
-			}
-			const FTransform MeshWorld = MeshRelative * Pose;
-			Pose = Pose.GetRelativeTransform(MeshWorld) *
-			    (ExtractMotion(FMath::Clamp(Range.X + Start - Offset, Range.X, Range.Y),
-			         FMath::Clamp(Range.X + End - Offset, Range.X, Range.Y)) *
-			        MeshWorld);
-		}
-	};
-	TMap<const FIMGTraversalWarpWindow*, FTransform> RootOffsets;
-	TMap<const FIMGTraversalWarpWindow*, FTransform> NativeTails;
-	auto ResolveWindowPose = [&](const FIMGTraversalWarpWindow& Window, const FTransform& WarpTarget,
-	                             const FTransform& EntryPose, FTransform& EndPose) {
-		const URootMotionModifier_Warp* Modifier = Window.Modifier;
-		const FTransform* CachedRootOffset = RootOffsets.Find(&Window);
-		if (!CachedRootOffset)
-		{
-			FTransform RootOffset = FTransform::Identity;
-			if (Modifier->WarpPointAnimProvider == EWarpPointAnimProvider::Bone)
-			{
-				if (!Mesh || !Mesh->GetAnimInstance() ||
-				    !Mesh->GetAnimInstance()->GetRequiredBones().IsValid() ||
-				    Mesh->GetAnimInstance()->GetRequiredBones().GetPoseBoneIndexForBoneName(
-				        Modifier->WarpPointAnimBoneName) == INDEX_NONE)
-				{
-					PredictionUnavailableReason =
-					    FString::Printf(TEXT("Warp-point bone %s has no available pose"),
-					        *Modifier->WarpPointAnimBoneName.ToString());
-					return false;
-				}
-				RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
-				    *Character, Selection.Montage, Window.EndTime, Modifier->WarpPointAnimBoneName);
-			}
-			else if (Modifier->WarpPointAnimProvider == EWarpPointAnimProvider::Static)
-			{
-				RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
-				    *Character, Selection.Montage, Window.EndTime, Modifier->WarpPointAnimTransform);
-			}
-			else if (Modifier->WarpPointAnimProvider != EWarpPointAnimProvider::None)
-			{
-				PredictionUnavailableReason = TEXT("Unsupported warp-point provider");
-				return false;
-			}
-			static const IConsoleVariable* UseMeshScale =
-			    IConsoleManager::Get().FindConsoleVariable(TEXT("a.MotionWarping.UseMeshScale"));
-			if (UseMeshScale && UseMeshScale->GetInt() != 0)
-			{
-				RootOffset.ScaleTranslation(MeshScale);
-			}
-			CachedRootOffset = &RootOffsets.Add(&Window, RootOffset);
-		}
-		// FMotionWarpingTarget publishes only location and rotation.
-		const FTransform RootTarget =
-		    *CachedRootOffset * FTransform(WarpTarget.GetRotation(), WarpTarget.GetLocation());
-		if (!RootTarget.IsValid())
-		{
-			PredictionUnavailableReason = TEXT("Warp-point root transform is invalid");
-			return false;
-		}
-		const FTransform* CachedNativeTail = NativeTails.Find(&Window);
-		if (!CachedNativeTail)
-		{
-			CachedNativeTail = &NativeTails.Add(&Window,
-			    Modifier->bSubtractRemainingRootMotion ? ExtractMotion(Window.EndTime, MontageLength)
-			                                           : FTransform::Identity);
-			if (bVerboseDiagnostics)
-			{
-				const FVector2f& Times = WindowPlaybackTimes.FindChecked(&Window);
-				const float EntryTime = Window.StartTime + FMath::Max(0.f, PlaybackStart - Times.X);
-				LogTraversalEvent(TEXT("PlacementWindow"),
-				    FString::Printf(
-				        TEXT("Target=%s SelectionStart=%.6f AssetWindow=%.6f..%.6f AssetEntry=%.6f "
-				             "RemainingTranslation=%s SubtractRemaining=%d NativeTail=%s "
-				             "WarpPoint=%s Bone=%s RootOffset=%s Translation=%d IgnoreZ=%d Feet=%d"),
-				        *Modifier->WarpTargetName.ToString(), Selection.StartTime, Window.StartTime,
-				        Window.EndTime, EntryTime,
-				        *ExtractMotion(EntryTime, Window.EndTime).GetTranslation().ToString(),
-				        Modifier->bSubtractRemainingRootMotion,
-				        *CachedNativeTail->GetTranslation().ToString(),
-				        *UEnum::GetValueAsString(Modifier->WarpPointAnimProvider),
-				        *Modifier->WarpPointAnimBoneName.ToString(), *CachedRootOffset->ToString(),
-				        Modifier->bWarpTranslation, Modifier->bIgnoreZAxis, Modifier->bWarpToFeetLocation));
-			}
-		}
-		const FTransform& NativeTail = *CachedNativeTail;
-		FQuat EndRotation = EndPose.GetRotation();
-		if (Modifier->bWarpRotation)
-		{
-			EndRotation = RootTarget.GetRotation();
-			if (Modifier->RotationType == EMotionWarpRotationType::Facing)
-			{
-				const FVector Facing = (RootTarget.GetLocation() - EntryPose.GetLocation()).GetSafeNormal2D();
-				EndRotation = FRotationMatrix::MakeFromXZ(Facing, FVector::UpVector).ToQuat();
-			}
-			EndRotation = Modifier->AdditionalRotationOffset.Quaternion() * EndRotation;
-			if (Modifier->bSubtractRemainingRootMotion)
-			{
-				EndRotation *= BaseRotation * NativeTail.GetRotation().Inverse() * BaseRotation.Inverse();
-			}
-			EndPose.SetRotation(EndRotation);
-		}
-		if (!EndRotation.GetUpVector().Equals(FVector::UpVector, UprightTolerance))
-		{
-			PredictionUnavailableReason = TEXT("Projected window rotation is not upright");
-			return false;
-		}
-		if (!Modifier->bWarpTranslation)
-		{
-			return EndPose.IsValid();
-		}
-
-		const bool bHasTranslation =
-		    !ExtractMotion(Window.StartTime, Window.EndTime).GetTranslation().IsNearlyZero(2e-4);
-		const FQuat MotionRotation = EndRotation * BaseRotation;
-		FVector Center = RootTarget.GetLocation();
-		if (bHasTranslation)
-		{
-			FVector VisualOffset = Character->GetBaseTranslationOffset();
-			if (!Modifier->bWarpToFeetLocation)
-			{
-				VisualOffset.Z = 0.0;
-			}
-			Center -= EndRotation.RotateVector(VisualOffset * InitialPose.GetScale3D());
-		}
-		else
-		{
-			// Skew Warp's no-translation interpolation starts at the visual root (capsule feet).
-			Center +=
-			    EndRotation.GetUpVector() * Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-		}
-
-		if (bHasTranslation)
-		{
-			Center -= MotionRotation.RotateVector(NativeTail.GetTranslation() * MeshScale);
-		}
-		if (Modifier->bIgnoreZAxis)
-		{
-			// Skew Warp aligns to the current height on an ignored Z axis.
-			Center.Z = EntryPose.GetLocation().Z;
-		}
-		EndPose.SetLocation(Center);
-		return EndPose.IsValid();
-	};
+	FIMGTraversalWarpPrediction Prediction(*Character, Selection, Playback, PlacementWindows, InitialPose,
+	    bProjectSequence, bVerboseDiagnostics, PredictionUnavailableReason, LogEvent);
 	TMap<FName, FTransform> WorldTargets;
-	auto ProjectPlacement = [&](const FIMGTraversalWarpWindow& ReferenceWindow, FVector& Center) {
-		FTransform Pose = InitialPose;
-		if (!bProjectSequence || !PlacementWindows.Contains(&ReferenceWindow))
-		{
-			return false;
-		}
-		float Cursor = PlaybackStart;
-		for (const FIMGTraversalWarpWindow* Window : PlacementWindows)
-		{
-			const FVector2f& Times = WindowPlaybackTimes.FindChecked(Window);
-			const float WindowStart = FMath::Max(Cursor, Times.X);
-			AdvanceRootMotion(Cursor, WindowStart, Pose);
-			const FTransform EntryPose = Pose;
-			AdvanceRootMotion(WindowStart, Times.Y, Pose);
-			const FTransform* Target = WorldTargets.Find(Window->Modifier->WarpTargetName);
-			if (!Target || !ResolveWindowPose(*Window, *Target, EntryPose, Pose))
-			{
-				if (PredictionUnavailableReason.IsEmpty())
-				{
-					PredictionUnavailableReason =
-					    FString::Printf(TEXT("Could not resolve placement window %s %.3f..%.3f"),
-					        *Window->Modifier->WarpTargetName.ToString(), Window->StartTime, Window->EndTime);
-				}
-				return false;
-			}
-			Cursor = Times.Y;
-			if (Window == &ReferenceWindow)
-			{
-				break;
-			}
-		}
-		Center = Pose.GetLocation();
-		const bool bValidPose =
-		    Pose.IsValid() && Pose.GetRotation().GetUpVector().Equals(FVector::UpVector, UprightTolerance);
-		if (!bValidPose)
-		{
-			PredictionUnavailableReason = TEXT("Final projected pose is invalid or not upright");
-		}
-		return bValidPose;
-	};
 	const FIMGTraversalLandingSettings& Landing = Settings.Landing;
 	if (Selection.Action != EIMGTraversalAction::Hurdle)
 	{
@@ -582,7 +245,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 	                               const FTransform& Anchor, const UPrimitiveComponent& Carrier) {
 		// Support belongs to the action's contact window; playback may continue with locomotion afterward.
 		FVector Center;
-		if (!ProjectPlacement(EvaluationWindow, Center))
+		if (!Prediction.Project(EvaluationWindow, WorldTargets, Center))
 		{
 			CompensationSkipReason = TEXT("Placement projection is unavailable");
 			return;
@@ -752,7 +415,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		{
 			// A named target can affect several windows, including ones before the height window.
 			FVector ReprojectedCenter;
-			if (!ProjectPlacement(EvaluationWindow, ReprojectedCenter) ||
+			if (!Prediction.Project(EvaluationWindow, WorldTargets, ReprojectedCenter) ||
 			    !ReprojectedCenter.Equals(SafeCenter, UE_KINDA_SMALL_NUMBER))
 			{
 				WarpTarget.SetLocation(OriginalLocation);
@@ -1010,7 +673,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		{
 			PlacementCenter = CompensatedPlacementCenter.GetValue();
 		}
-		else if (!ProjectPlacement(*LandingWindow, PlacementCenter))
+		else if (!Prediction.Project(*LandingWindow, WorldTargets, PlacementCenter))
 		{
 			return Reject(TEXT("Landing warp-point or root transform is invalid"));
 		}

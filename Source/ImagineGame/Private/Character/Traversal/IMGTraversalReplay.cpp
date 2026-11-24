@@ -7,7 +7,7 @@
 #include "Components/CapsuleComponent.h"
 #include "MotionWarpingComponent.h"
 #include "UObject/StrongObjectPtr.h"
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 
 void UIMGTraversalComponent::RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey)
 {
@@ -35,7 +35,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 	{
 		const ThisClass* Current = WeakThis.Get();
 		UIMGCharacterMovementComponent* Movement = WeakMovement.Get();
-		if (!Current || !Current->IsTraversalAvailable() || Current->BoundMovement != WeakMovement ||
+		if (!Current || !Current->IsTraversalReady() || Current->BoundMovement != WeakMovement ||
 		    !Movement || !Movement->IsFlying()) { return; }
 		const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Current->GetOwner());
 		if (Health && Health->IsDeadOrDying()) { return; }
@@ -144,7 +144,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		ThisClass* Self = WeakThis.Get();
 		UMotionWarpingComponent* Warping = WeakWarping.Get();
 		UCapsuleComponent* Capsule = WeakCapsule.Get();
-		if (!Self || !Self->IsTraversalAvailable() || !Warping || !Capsule ||
+		if (!Self || !Self->IsTraversalReady() || !Warping || !Capsule ||
 		    Self->BoundMovement != WeakMovement || Self->BoundMotionWarpingComponent != WeakWarping || Self->bReplayingTraversalMove)
 		{
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -187,7 +187,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		{
 			Movement->SetMovementMode(MOVE_Flying);
 		}
-		if (!Self->IsTraversalAvailable() || Self->BoundMovement != WeakMovement || Self->BoundMotionWarpingComponent != WeakWarping)
+		if (!Self->IsTraversalReady() || Self->BoundMovement != WeakMovement || Self->BoundMotionWarpingComponent != WeakWarping)
 		{
 			Self->bReplayingTraversalMove = false;
 			DiscardHistoricalMotion();
@@ -325,7 +325,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 			if (Current)
 			{
 				Current->bReplayingTraversalMove = false;
-				if (Current->ActiveState.bActive && Current->IsTraversalAvailable())
+				if (Current->ActiveState.bActive && Current->IsTraversalReady())
 				{
 					Current->RefreshWarpTargets();
 				}

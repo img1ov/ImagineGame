@@ -1,6 +1,6 @@
 # 动画曲线、FootPlacement 与 ControlRig
 
-相关主题：[镜头](camera.md) · [装备表现与握持](equipment-presentation.md) · [工程与编辑器](project.md)。
+相关主题：[镜头](camera.md) · [装备表现与握持](equipment-presentation.md) · [Traversal](traversal.md) · [工程与编辑器](project.md)。
 
 ## Montage 稀疏曲线与 Slot 求值
 
@@ -43,6 +43,26 @@
 - `DisableLegIK` 与 Contact 分责：ABP ControlRig Alpha 选 Curve，暴露引脚名为 `DisableLegIK`，`AlphaScaleBiasClamp` 的 Scale=-1、Bias=1，禁用曲线为1会抑制整体 Rig 修正；Contact 仅控制对应机制，不能代替整体权重。
 - `Update Floor Control` 消费原始 collision：先按 `GroundMovementWorldDelta` 更新世界历史，平滑 `SlopeWarpingAlpha` 向启用状态的0/1，再在世界空间平滑位置/旋转、转回 Rig 空间并混合到零平移/单位旋转，写 `smoothed_floor_*_ctrl` 并保存左右世界历史。`Floor Smoothing Time` 当前默认0.05秒；不是 Montage 结束事件触发更新。`DebugDrawGroundCollision` 两个深绿色长方框画的是这些 smoothed 控制器，不能作为原始射线是否命中、是否更新的直接证据。
 - Hierarchy：`floor_*_collision` 为无父级 Control；`animated_toe_target_*_null` 为无父级 Null，其 ctrl 是子级；`smoothed_floor_*_null` 挂在 root 下，smoothed ctrl 挂在对应 null 下；`ik_foot_l/r` 挂在 `ik_foot_root` 下，后者挂在 root 下。RootDamper 修改 root，动画目标缓存与 floor/腿部求解需按各自时序和空间区分；静态图和资产默认值不替代运行时 bHit、Contact、GroundNormal 或最终 Alpha。
+
+## Traversal 手部表现参考
+
+- 手部表现仅通过专用 `Traversal Hand IK` 接入。运行时和编辑器包装分别位于 ImagineGame/ImagineEditor 的 `Character/Traversal/Animation`；`FIMGTraversalHandContact` 同属 Traversal，Component 仅供只读执行数据，不持有表现历史。完整职责见 [Traversal 手部接触表现合同](traversal.md#手部接触表现合同)。
+- 输入接 Root Offset、脚部处理之后的 Pre-IK Component-Space Pose。左右默认 `hand_l/r`；每侧用独立 Alpha（Float 值或 0–1 动画曲线）控制 IK 执行权重，Curve 模式直接读当前输入姿势的曲线；可选掌点 Socket 必须直接挂到对应手骨。`Procedural_Hand` 的具体资产装配和与装备叠放由用户维护。
+- `EvaluateSkeletalControl_AnyThread` 在改骨前从同一份输入 Pose 采左右掌点。下一次游戏线程 `PreUpdate` 消费数值样本、解析执行参照并逐手查询；游戏线程代理入口等待前一次并行任务。节点求值只读取数值和当前输入姿势，不访问玩法 UObject 或发碰撞。采样与查询允许一个动画求值周期；缺参照/样本、超时、LOD 跳过、动作或载体变更会失效，专用服务器及 CMC Replay 不查询。
+- 每侧以当前姿势计算 `WristTarget = Wrist + (PalmTarget - Palm)`，先复核当帧掌点到目标不超出 `MaxHandCorrectionDistance`，再调用原生 `AnimationCore::SolveTwoBoneIK`，按该手 Alpha 在局部空间混合回输入姿势。完整求解保留输入手骨朝向、不拉伸，以动画肘部弯曲方向为参考；肩腕距离受 `MaxArmReachRatio` 限制，仅输出上臂、前臂、手骨。左右 Float Alpha 默认0，继承的整体 Alpha 默认1；无效侧透传，不共用左右有效开关。
+- Pre-IK 样本切断已求解手骨对下一探针的反馈，但不保证整段锁点，也不新增目标位置平滑。探测范围 `VerticalTraceHalfHeight/VerticalTraceRadius`、允许修正距离 `MaxHandCorrectionDistance`、断开距离 `ContactBreakDistance` 及前沿细化参数的默认值和消费边界集中在 [Traversal 参数表](traversal.md#手部接触表现合同)。动态 Alpha 来源变更、骨骼缓存重建与接触失效的清理同归该合同。
+- 调试球是游戏线程得到的 PalmTarget，修正线从上次 Pre-IK 掌点样本连向它，不代表本次改骨后的误差。最终贴点仍须结合可达性、曲线、后续姿势混合/PostProcess/Retarget 核对；当前节点仅支持 Character 主 Mesh。
+
+### 引擎与 GTA 求解参考
+
+- 本地 UE 5.8.4 `AnimNode_TwoBoneIK.cpp::EvaluateSkeletalControl_AnyThread` 将 Effector 转为组件空间。组件空间位置目标关闭 `Take Rotation from Effector Space` 和 `Maintain Effector Rel Rot` 时，底层 `AnimationCore/Private/TwoBoneIK.cpp` 保留输入手骨的组件空间旋转；开启 `Maintain Effector Rel Rot` 会随新前臂重建手骨，含义不同。若用手掌接触标记，须按本帧姿势把掌点误差换算为腕骨目标。
+- ControlRig 的原生 `Sphere Trace By Trace Channel` 在 `RigUnit_WorldCollision.cpp` 查询世界，公开输出命中、位置、法线，未公开命中组件。若手探针严格校验载体归属，须使用可取得 Hit Component 的查询路径；若移到 ABP 游戏线程的 Update 做查询，Mesh Socket 通常仍是最近一次完成的姿势，不能当作本帧 Slot 后的输入。表现分支需区分目标更新与姿势求值。
+- UE 5.8.4 线程边界：`FAnimInstanceProxy::PreUpdate` 收集游戏线程数据，`PreEvaluateAnimation` 对 Root Motion 场景会再缓存 Mesh/Actor Transform，因为 CMC 可在移动前触发 Update。`BlueprintThreadSafeUpdateAnimation` 属于 Update，取不到随后 Evaluate 的输入姿势。`WorldCollisionAsync.cpp::StartNewTrace` 明确要求游戏线程提交，结果按下一帧消费；原生 Rig Scene Query 是同步查询并实际在 Rig 求值时执行，不等于任意蓝图 Trace 或 UObject 读取具有线程安全合同。`SceneQuery.cpp::GetThreadQueryContext` 有动画任务读取 GT 碰撞快照的路径，场景锁及结果转化仍有同步成本。若用本地数值快照加纯函数，可将投影、过滤后的几何计算和骨骼求解放到动画求值侧；快照缺少真实碰撞信息时无法区分前后沿、孔洞或独立碰撞体。
+- UE 5.8.4 节点 Details 里的 `On Initial Update / On Become Relevant / On Update` 由 `FPoseLinkBase::Update`（根节点由 `FAnimInstanceProxy::UpdateAnimationNode_WithRoot`）按此顺序检查并调用，再执行该节点的 `Update_AnyThread`；前两个受初始化和相关性状态控制。蓝图签名为 `FAnimUpdateContext` 和 `FAnimNodeReference`，不提供当次输入姿势。独立的 `FAnimNode_CallFunction` 支持 `On Evaluate (Post Recursion)`，确实在 `Source.Evaluate` 之后调函数，但只传动画实例作为调用对象，没有向蓝图传 `FPoseContext`，同样不能直接取 Pre-IK 手骨。
+- `Use Cached Pose` 可以作为手部骨骼控制节点的 Pose 上游。`FAnimNode_UseCachedPose::Evaluate_AnyThread` 转发到 `Save Cached Pose`；后者在求值时以当前求值计数及线程缓存复用骨骼、曲线和属性。其 `On Update` 不能读取随后产生的 Pose，此缓存也不是跨次求值的手部数值快照。`FAnimNode_SkeletalControlBase::EvaluateComponentSpace_AnyThread` 先求值 Component Pose，再执行 `EvaluateSkeletalControl_AnyThread`，是读取同次 Pre-IK 掌腕以及写回骨骼的入口。
+- 已核对本地 GTA `src/dev_ng/rage/base/src/crbody/iksolver.cpp::crIKSolverArms::ArmGoal::Solve`：以 upperarm/forearm/hand 做解析双骨求解，肩关节位置沿用输入姿势，不在该求解中移动 clavicle、spine 或 pelvis。先从动画肘部提取弯曲方向，再按旧肩腕方向到目标方向的旋转搬运该方向；默认可达距离为上下臂长度和的95%，`USE_FULL_REACH` 时为98%，并非伸长骨骼。仅有 `USE_ORIENTATION` 时覆盖手骨朝向。游戏侧 `ArmIkSolver.cpp` 的 `m_ShoulderBoneIdx` 实际绑定 `UPPERARM`，不能因变量名推断锁骨参与求解。
+- `TaskVault.cpp::UpdateHandIK` 提交 `AIK_TARGET_WRT_IKHELPER` 和可选 `AIK_USE_FULL_REACH`，没有请求 `AIK_USE_ORIENTATION`。当前 IMG 节点仅修正腕骨位置并保留输入朝向，职责对应“动作生成接触目标，通用手臂求解器消费”。这是局部位置修正参考，不是要求全身 IK 的证据。
+- UE 5.8.4 的 AnimGraph `Two Bone IK` 调用 `AnimationCore::SolveTwoBoneIK`；ControlRig 当前非 Deprecated 的 `Basic IK` 为 `FRigUnit_TwoBoneIKSimplePerItem`，经 `FControlRigMathLibrary::SolveBasicTwoBoneIK` 调用同一 AnimationCore 双骨位置求解。二者的朝向、轴配置、骨长和混合包装不同，不保证最终姿势逐项相同。ControlRig 是组织求解与调试的容器，不能据容器名称推断更高接触精度。
 
 ## 动画曲线 Modifier 写入边界
 

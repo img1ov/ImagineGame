@@ -28,7 +28,7 @@
 | Experience、ASC、能力输入、Bot、UI/设置 | [Gameplay 框架](gameplay.md) | `GameModes`、`AbilitySystem`、`Player`、`UI`、`Settings` |
 | 角色输入、步态、CMC 预测 | [普通移动](locomotion.md) | `Character/IMGHero*`、`IMGCharacterMovementComponent` |
 | Ragdoll 跟随、恢复、GA 规划 | [Ragdoll](ragdoll.md) | `Character/Ragdoll`、CMC |
-| Traversal 检测、选片、放置、执行 | [Traversal](traversal.md) | `Character/Traversal` |
+| Traversal 检测、选片、放置、执行与手部表现 | [Traversal](traversal.md) | `Character/Traversal`（内部 `Execution`、`Animation`） |
 | Traversal 录制、Trace、Rewind、Details | [Traversal 调试](traversal-debugging.md) | `Source/ImagineEditor/*/Character/Traversal` |
 | 第三人称镜头、视点、构图、阻尼 | [镜头](camera.md) | `Camera/IMGCameraMode_ThirdPerson`、`IMGCameraComponent` |
 | 防穿墙、求解、近裁面 | [镜头碰撞](camera-collision.md) | `Camera/IMGCameraCollision`、`IMGCameraComponent` |

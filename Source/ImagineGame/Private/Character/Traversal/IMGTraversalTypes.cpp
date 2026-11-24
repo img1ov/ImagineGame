@@ -1,6 +1,6 @@
 #include "Character/Traversal/IMGTraversalTypes.h"
 
-FIMGTraversalAnimationSettings::FIMGTraversalAnimationSettings()
+FIMGTraversalExecutionSettings::FIMGTraversalExecutionSettings()
 {
 	FIMGTraversalWarpBinding& Front = WarpBindings.AddDefaulted_GetRef();
 	Front.TargetName = TEXT("FrontLedge");

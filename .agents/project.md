@@ -7,10 +7,11 @@
 - UE 5.8；Gameplay 核心用 C++，蓝图用于配置、装配、转发及明确保留的移动计算；暂不接脚本。
 - 命名按职责区分：项目专有类型用 `IMG`；通用概念遵循 UE 类型前缀及同目录风格，不因定义在本工程就机械添加 `IMG`，例如步态枚举用 `EGait`，不用 `EIMGGait`。不沿用参考项目的专有名称或前缀，不为统一前缀批量重命名既有类型。
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
+- `ImagineGame` 与 `ImagineEditor` 按文件类型统一目录：`.h` 放 `Public`，`.cpp` 放 `Private`，配对文件保留相同相对路径；include 从所属模块 `Public` 根写起，不依赖 Private 同目录搜索或写 `Private/...`。内部算法和调试头也遵守此布局，跨模块导出仍按实际调用需求设置。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
 - Lyra 参考：`D:/Application/UnrealProjects/LyraStarterGame`（已核对本地源码）。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
-- GTA 参考当前位于 `D:/Workspace/Learning/Sources/GTAV Source/src/dev_ng/game`，工程导航见 `D:/Workspace/Learning/Sources/GTAV Source/AGENTS.md`。该源码快照用于静态对照，发行版配置另行验证；本工程保留 UE/GAS/CMC 网络体系。
-- UE 源码当前位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- GTA 参考当前位于 `C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`；引擎侧 IK 在 `src/dev_ng/rage/base/src/crbody/iksolver.*`。该源码快照用于静态对照，发行版配置另行验证；本工程保留 UE/GAS/CMC 网络体系。
+- UE 源码当前位于 `D:/Application/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ## 编辑器资产搜索缓存诊断
 
@@ -20,7 +21,7 @@
 
 ## ImagineEditor 目录与接口
 
-- 用户明确要求ImagineEditor按文件类型分离：所有 `.h` 放 `Public`，所有 `.cpp` 放 `Private`，配对文件使用两侧相同的相对目录。不因内部辅助用途把头文件留在Private，也不为这次分离额外拆出System/Style/Feedback/Rewind/Export子目录；已有动画、验证和Traversal分类保留。文件搬到Public不代表自动增加跨模块DLL导出API。
+- ImagineEditor 遵循上面的文件类型布局，保留现有动画、验证、Traversal 等职责分类；不为头/源文件分离额外拆出 System/Style/Feedback/Rewind/Export 子目录。
 
 | 目录（相对Source/ImagineEditor） | 职责 |
 | --- | --- |
@@ -31,6 +32,7 @@
 | `Public/Commandlets`、`Private/Commandlets` | ContentValidationCommandlet。 |
 | `Private/Utilities` | 独立编辑器工具与控制台操作。 |
 | `{Public,Private}/Character/Traversal` | Rewind轨道/回看接合及事件分类。 |
+| `{Public,Private}/Character/Traversal/Animation` | Traversal 专用 AnimGraph 编辑器包装；运行时节点和接触算法在 ImagineGame 同路径。 |
 | `{Public,Private}/Character/Traversal/Trace` | Trace分析存储及文本导出。 |
 | `{Public,Private}/Character/Traversal/Widgets` | Details与Slate控件。 |
 

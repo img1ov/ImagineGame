@@ -16,9 +16,10 @@
 #include "Character/Traversal/IMGTraversalComponent.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
 #include "Character/Traversal/IMGTraversalTargetData.h"
-#include "IMGTraversalPlacement.h"
+#include "Character/Traversal/Execution/IMGTraversalPlacement.h"
+#include "Character/Traversal/Execution/IMGTraversalWarpWindows.h"
 
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_Traversal)
 
@@ -113,9 +114,8 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 	const UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(Character);
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
-	if (!Component || !Component->IsTraversalAvailable() || Component->IsTraversalActive() ||
-	    !IsValid(Component->GetMotionWarpingComponent()) || !Component->GetMotionWarpingComponent()->IsRegistered() ||
-	    !Movement || !Movement->IsRegistered() || !Movement->IsActive() || Character->GetStance() != EIMGStance::Stand ||
+	if (!Component || !Component->IsTraversalReady() || Component->IsTraversalActive() ||
+	    Character->GetStance() != EIMGStance::Stand ||
 	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
 	{
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -152,6 +152,7 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, IMGTraversalDebug::EPhase::Activation);
 #endif
 	TGuardValue<bool> ProcessingRequest(bProcessingTraversalRequest, true);
+	ActiveExecutionId = 0;
 	bLocalRequest = false;
 	bTraversalStarted = false;
 	bMontageCompleted = false;
@@ -182,12 +183,14 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	}
 	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
-	if (!ASC || !Component)
+	if (!ASC || !Component || !Component->IsTraversalReady())
 	{
-		LogTraversalEvent(TEXT("ActivationAborted"), TEXT("Missing ASC or traversal component"), true);
+		LogTraversalEvent(TEXT("ActivationAborted"), TEXT("ASC or traversal infrastructure is unavailable"), true);
 		CancelPendingTargetData();
 		return;
 	}
+	ActiveComponent = Component;
+	TraversalUnavailableHandle = Component->OnTraversalUnavailable.AddUObject(this, &ThisClass::OnTraversalUnavailable);
 	if (ActorInfo->IsNetAuthority())
 	{
 		TargetDataDelegateHandle =
@@ -431,6 +434,7 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	UIMGTraversalComponent* Component = UIMGTraversalComponent::Get(GetAvatarActorFromActorInfo());
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
+	if (!Component || ActiveComponent.Get() != Component) { return false; }
 	TArray<FIMGTraversalWarpTarget> WarpTargets;
 	if (!PrepareWarpTargets(Candidate, Selection, WarpTargets))
 	{
@@ -489,11 +493,10 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 		}
 	}
 	LocalCandidate = Candidate;
-	ActiveComponent = Component;
 	bTraversalStarted = true;
 	RegisterCorrectionFilter();
 	if (!Component->BeginTraversal(Candidate, Selection, WarpTargets, CurrentSpecHandle,
-	        CurrentActivationInfo.GetActivationPredictionKey().Current) || !IsTraversalExecutionValid() ||
+	        CurrentActivationInfo.GetActivationPredictionKey().Current, ActiveExecutionId) || !IsTraversalExecutionValid() ||
 	    CurrentActorInfo->AbilitySystemComponent.Get() != ASC)
 	{
 		LogTraversalEvent(TEXT("TraversalStartAborted"), TEXT("Ability/component invalidated or Flying was not retained"), true);
@@ -518,7 +521,7 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 		uint8 MontagePlayInstanceId = 0;
 		UIMGAbilitySystemComponent* IMGASC = Cast<UIMGAbilitySystemComponent>(ASC);
 		if (!IMGASC || !IMGASC->GetActiveReplicatedMontagePlayInstanceId(Selection.Montage, MontagePlayInstanceId) ||
-		    !Component->PublishTraversalState(MontagePlayInstanceId))
+		    !Component->PublishTraversalState(ActiveExecutionId, MontagePlayInstanceId))
 		{
 			LogTraversalEvent(TEXT("SnapshotPublishFailed"), TEXT("No active replicated montage instance or snapshot publication failed"), true);
 			return false;
@@ -545,13 +548,11 @@ bool UIMGGameplayAbility_Traversal::IsTraversalExecutionValid() const
 	const AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	const UAbilitySystemComponent* ASC = CurrentActorInfo ? CurrentActorInfo->AbilitySystemComponent.Get() : nullptr;
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
-	const UMotionWarpingComponent* Warping = Component ? Component->GetMotionWarpingComponent() : nullptr;
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
-	return IsActive() && !bIsAbilityEnding && bTraversalStarted && Component && Component->IsTraversalAvailable() &&
-	    Component->IsTraversalActive() && IsValid(Character) && !Character->IsActorBeingDestroyed() &&
+	return IsActive() && !bIsAbilityEnding && bTraversalStarted && Component && Component->IsTraversalReady() &&
+	    Component->OwnsExecution(ActiveExecutionId) && IsValid(Character) && !Character->IsActorBeingDestroyed() &&
 	    Component->GetOwner() == Character && IsValid(ASC) && ASC->GetAvatarActor() == Character &&
-	    IsValid(Movement) && Movement->IsRegistered() && Movement->IsActive() && Movement->IsFlying() &&
-	    IsValid(Warping) && Warping->IsRegistered() &&
+	    Movement->IsFlying() &&
 	    (!Health || !Health->IsDeadOrDying());
 }
 
@@ -619,9 +620,8 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 		    Selection.StartTime, Selection.PlayRate, *Reason), bRemoteRequest);
 		return false;
 	};
-	if (!Traversal || !Traversal->IsTraversalAvailable() || Traversal->IsTraversalActive() ||
-	    !IsValid(Traversal->GetMotionWarpingComponent()) || !Traversal->GetMotionWarpingComponent()->IsRegistered() ||
-	    !Movement || !Movement->IsRegistered() || !Movement->IsActive() || Character->GetStance() != EIMGStance::Stand ||
+	if (!Traversal || !Traversal->IsTraversalReady() || Traversal->IsTraversalActive() ||
+	    Character->GetStance() != EIMGStance::Stand ||
 	    !(Movement->IsMovingOnGround() || Movement->IsFalling()) || (Health && Health->IsDeadOrDying()))
 	{
 		return Reject(TEXT("Traversal/warping not ready, traversal already active, stance/movement disallowed or character dying"));
@@ -641,8 +641,8 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	    AllowedMontages.ContainsByPredicate([&Selection](const FIMGTraversalAllowedMontage& Allowed)
 	        { return Allowed.Action == Selection.Action && Allowed.Montage == Selection.Montage; });
 	const bool bAllowedRemoteSelection = !bRemoteRequest || AllowedMontages.IsEmpty() || bMatchesRemoteWhitelist;
-	const FIMGTraversalAnimationSettings* Settings =
-	    Traversal ? Traversal->FindAnimationSettings(Selection.Action, Selection.Montage) : nullptr;
+	const FIMGTraversalExecutionSettings* Settings =
+	    Traversal ? Traversal->FindExecutionSettings(Selection.Action, Selection.Montage) : nullptr;
 	if (!Settings)
 	{
 		return Reject(TEXT("No execution settings for the selected action/montage"));
@@ -700,8 +700,8 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	OutTargets.Reset();
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
 	const UIMGTraversalComponent* Traversal = UIMGTraversalComponent::Get(Character);
-	const FIMGTraversalAnimationSettings* Settings =
-	    Traversal ? Traversal->FindAnimationSettings(Selection.Action, Selection.Montage) : nullptr;
+	const FIMGTraversalExecutionSettings* Settings =
+	    Traversal ? Traversal->FindExecutionSettings(Selection.Action, Selection.Montage) : nullptr;
 	if (!Character || !Character->GetWorld() || !Character->GetCapsuleComponent() ||
 	    !Character->GetIMGMovementComponent() || !Settings)
 	{
@@ -709,7 +709,8 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 		return false;
 	}
 	TArray<FIMGTraversalWarpWindow> Windows;
-	Traversal->GetWarpWindows(Selection.Montage, Windows);
+	const UMotionWarpingComponent* Warping = Traversal->GetMotionWarpingComponent();
+	IMGTraversalWarpWindows::Collect(Selection.Montage, Warping && Warping->bSearchForWindowsInAnimsWithinMontages, Windows);
 	return IMGTraversalPlacement::PrepareTargets(*Character, *Settings, Traversal->GetDetectorSettings(), Windows,
 		Candidate, Selection, OutTargets,
 		UE_LOG_ACTIVE(LogIMGTraversal, Verbose)
@@ -719,6 +720,15 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 			,
 		[this](
 			const TCHAR* Event, const FString& Detail, bool bWarning) { LogTraversalEvent(Event, Detail, bWarning); });
+}
+
+void UIMGGameplayAbility_Traversal::OnTraversalUnavailable()
+{
+	if (IsActive() && !bIsAbilityEnding && CurrentActorInfo)
+	{
+		LogTraversalEvent(TEXT("TraversalUnavailable"), TEXT("Traversal infrastructure detached"));
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	}
 }
 
 void UIMGGameplayAbility_Traversal::OnTargetDataTimedOut()
@@ -838,9 +848,10 @@ void UIMGGameplayAbility_Traversal::OnRemoveAbility(const FGameplayAbilityActorI
 
 void UIMGGameplayAbility_Traversal::OnPawnAvatarSet()
 {
-	const AIMGCharacter* PreviousCharacter = ActiveComponent.IsValid()
+	const bool bOwnsPreviousExecution = ActiveComponent.IsValid() && ActiveComponent->OwnsExecution(ActiveExecutionId);
+	const AIMGCharacter* PreviousCharacter = bOwnsPreviousExecution
 	    ? Cast<AIMGCharacter>(ActiveComponent->GetOwner()) : nullptr;
-	const TWeakObjectPtr<UAnimMontage> PreviousMontage = ActiveComponent.IsValid()
+	const TWeakObjectPtr<UAnimMontage> PreviousMontage = bOwnsPreviousExecution
 	    ? ActiveComponent->GetActiveTraversalState().Montage.Get() : nullptr;
 	const TWeakObjectPtr<UAnimInstance> PreviousAnim = PreviousCharacter && PreviousCharacter->GetMesh()
 	    ? PreviousCharacter->GetMesh()->GetAnimInstance() : nullptr;
@@ -1027,6 +1038,11 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 	// Cleanup and Blueprint notifications can synchronously request another end.
 	{
 		TGuardValue<bool> EndingGuard(bIsAbilityEnding, true);
+		if (UIMGTraversalComponent* Component = ActiveComponent.Get())
+		{
+			Component->OnTraversalUnavailable.Remove(TraversalUnavailableHandle);
+		}
+		TraversalUnavailableHandle.Reset();
 		ClearCorrectionFilter();
 		DelayLocalRetry();
 		SendPendingTargetDataCancellation();
@@ -1060,11 +1076,12 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		{
 			if (UIMGTraversalComponent* Component = ActiveComponent.Get())
 			{
-				Component->EndTraversal();
+				Component->EndTraversal(ActiveExecutionId);
 			}
 		}
 		bMontageCompleted = false;
 		bLocalRequest = false;
+		ActiveExecutionId = 0;
 		ActiveComponent.Reset();
 		ActiveObstacleComponents.Reset();
 		PreviousObstacleTransforms.Reset();

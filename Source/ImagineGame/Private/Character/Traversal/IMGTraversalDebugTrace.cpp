@@ -1,5 +1,5 @@
-#include "IMGTraversalDebugTrace.h"
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebugTrace.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 #include "ObjectTraceDefines.h"
 #if IMG_TRAVERSAL_DEBUG_ENABLED && OBJECT_TRACE_ENABLED
 #include "Features/IModularFeatures.h"

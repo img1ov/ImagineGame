@@ -1,4 +1,4 @@
-#include "IMGTraversalDebug.h"
+#include "Character/Traversal/IMGTraversalDebug.h"
 DEFINE_LOG_CATEGORY(LogIMGTraversal);
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 #include "Animation/AnimInstance.h"
@@ -15,7 +15,7 @@ DEFINE_LOG_CATEGORY(LogIMGTraversal);
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/PlatformTime.h"
-#include "IMGTraversalDebugTrace.h"
+#include "Character/Traversal/IMGTraversalDebugTrace.h"
 #include "MotionWarpingComponent.h"
 
 namespace IMGTraversalDebug
@@ -390,6 +390,19 @@ bool IsEnabled()
 {
 	return CurrentScope && IsObserving(CurrentScope->GetActor());
 }
+void HandContact(const AActor* Actor, const FVector& ProbePalm, const FVector& PalmTarget, const FColor& Color)
+{
+	if (!IsObserving(Actor))
+	{
+		return;
+	}
+	FScope Scope(Actor, EPhase::Execution);
+	const UWorld* World = Actor->GetWorld();
+	Line(World, ProbePalm, PalmTarget, Color, 1.f, ELifetime::Live);
+	Sphere(World, PalmTarget, 2.5f, Color, ELifetime::Live);
+
+}
+
 FScope::FScope(const AActor* InActor, EPhase InPhase) : Actor(InActor), Previous(CurrentScope), Phase(InPhase)
 {
 	Attempt = Previous && Previous->GetActor() == InActor ? Previous->GetAttempt() : AttemptFor(InActor);

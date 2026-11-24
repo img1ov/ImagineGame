@@ -5,7 +5,7 @@
 
 class AIMGCharacter;
 struct FIMGTraversalAnimationSelection;
-struct FIMGTraversalAnimationSettings;
+struct FIMGTraversalExecutionSettings;
 struct FIMGTraversalCandidate;
 struct FIMGTraversalDetectorSettings;
 struct FIMGTraversalWarpTarget;
@@ -13,7 +13,7 @@ struct FIMGTraversalWarpWindow;
 
 namespace IMGTraversalPlacement
 {
-bool PrepareTargets(AIMGCharacter& Character, const FIMGTraversalAnimationSettings& Settings,
+bool PrepareTargets(AIMGCharacter& Character, const FIMGTraversalExecutionSettings& Settings,
     const FIMGTraversalDetectorSettings& Geometry, TConstArrayView<FIMGTraversalWarpWindow> Windows,
     FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
     TArray<FIMGTraversalWarpTarget>& OutTargets, bool bVerboseDiagnostics,

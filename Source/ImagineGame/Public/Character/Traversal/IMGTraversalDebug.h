@@ -98,6 +98,7 @@ private:
 
 bool IsEnabled();
 bool IsObserving(const AActor* Actor);
+void HandContact(const AActor* Actor, const FVector& ProbePalm, const FVector& PalmTarget, const FColor& Color);
 void Startup();
 void Shutdown();
 void ReleaseActor(const AActor* Actor);

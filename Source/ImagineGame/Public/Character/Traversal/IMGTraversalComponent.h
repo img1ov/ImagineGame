@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Components/PawnComponent.h"
-#include "RootMotionModifier.h"
 #include "Templates/Function.h"
 #include "Character/Traversal/IMGTraversalTypes.h"
 
@@ -14,6 +13,8 @@ class UIMGPawnExtensionComponent;
 class UIMGCharacterMovementComponent;
 struct FIMGReplicatedMontagePrerequisiteResult;
 class FSavedMove_Character;
+
+DECLARE_MULTICAST_DELEGATE(FIMGTraversalUnavailable);
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -39,32 +40,39 @@ public:
 	{
 		return DetectorSettings;
 	}
-	const FIMGTraversalAnimationSettings* FindAnimationSettings(
+	const FIMGTraversalExecutionSettings* FindExecutionSettings(
 	    EIMGTraversalAction Action, const UAnimMontage* Montage) const;
 	FVector GetMovementIntent(EIMGTraversalRequestSource Source) const;
 	bool CanInitiate(const FIMGTraversalCandidate& Candidate, const FVector& MovementIntent, bool bRemoteRequest = false) const;
-	void GetWarpWindows(const UAnimMontage* Montage, TArray<FIMGTraversalWarpWindow>& OutWindows) const;
-	static const FIMGTraversalWarpWindow* FindTranslationWindow(TConstArrayView<FIMGTraversalWarpWindow> Windows,
-	    FName TargetName, int32 WindowIndex, float MinEndTime, float MaxEndTime);
 	float GetTargetValidationInterval() const
 	{
 		return TargetValidationInterval;
 	}
 	/** Acquires targets/collision ignores and enters Flying; EndTraversal releases them before restoring movement. */
 	bool BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
-	    const TArray<FIMGTraversalWarpTarget>& WarpTargets, FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey);
-	bool PublishTraversalState(uint8 MontagePlayInstanceId);
-	void EndTraversal();
+	    const TArray<FIMGTraversalWarpTarget>& WarpTargets, FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey,
+	    uint32& OutExecutionId);
+	bool PublishTraversalState(uint32 ExpectedExecutionId, uint8 MontagePlayInstanceId);
+	void EndTraversal(uint32 ExpectedExecutionId);
+	bool OwnsExecution(uint32 ExpectedExecutionId) const
+	{
+		return ExpectedExecutionId != 0 && ExpectedExecutionId == ExecutionId && ActiveState.bActive;
+	}
+	bool IsTraversalReady() const;
+	/** Reports loss of infrastructure; the owning GA decides how its activation ends. */
+	FIMGTraversalUnavailable OnTraversalUnavailable;
 	void RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey);
 	bool IsTraversalActive() const
 	{
 		return ActiveState.bActive;
 	}
 	const FIMGTraversalRepState& GetActiveTraversalState() const { return ActiveState; }
+	/** Explicit names override anchor lookup; otherwise exactly one resolved anchor binding is required. */
+	const FIMGTraversalWarpTarget* FindWarpTarget(EIMGTraversalAnchor Anchor, FName TargetName = NAME_None) const;
 	uint32 GetTraversalTargetsRevision() const { return TraversalTargetsRevision; }
 	bool IsTraversalAvailable() const
 	{
-		return IsRegistered() && IsActive() && !bReleasingBindings && !IsBeingDestroyed();
+		return IsRegistered() && IsActive() && !bReleasingBindings && !bInvalidatingTraversal && !IsBeingDestroyed();
 	}
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -89,7 +97,7 @@ protected:
 	 * If no MontageSettings entry matches the selection, use the corresponding Action's entire Settings.
 	 */
 	UPROPERTY(
-	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Animation", meta = (TitleProperty = "Action"))
+	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (TitleProperty = "Action"))
 	TArray<FIMGTraversalActionSettings> ActionSettings;
 
 	/**
@@ -111,10 +119,13 @@ protected:
 	 * Do not configure duplicate Action/Montage pairs.
 	 */
 	UPROPERTY(
-	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Animation", meta = (TitleProperty = "Montage"))
+	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (TitleProperty = "Montage"))
 	TArray<FIMGTraversalMontageSettings> MontageSettings;
 
-	/** Nonempty: restrict selection and replication ownership to this list plus MontageSettings, without target-name inference. */
+	/**
+	 * Optional exact montage ownership list. Empty keeps selection driven by SelectTraversalAnimation and action defaults.
+	 * Nonempty restricts ownership to this list plus MontageSettings; empty uses warp-window contracts for proxy startup.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Networking")
 	TArray<TObjectPtr<UAnimMontage>> ReplicatedMontages;
 
@@ -138,6 +149,8 @@ private:
 	void CaptureMovementReplay(const FSavedMove_Character& Move, TArray<TFunction<TFunction<void()>()>>& OutSetups);
 	void InitializeBindings();
 	void ReleaseBindings();
+	void InvalidateTraversal();
+	void ReleaseExecution();
 	void RemoveWarpTargets();
 	void RefreshMovementIgnores();
 	void RestoreMovementIgnores();
@@ -146,6 +159,7 @@ private:
 	void SetTargetTickPrerequisites(bool bAdd);
 	void HandleAbilitySystemInitialized();
 	void HandleAbilitySystemUninitialized();
+	bool HasReplicatedMontageBinding() const;
 	bool IsListedReplicatedMontage(const UAnimMontage* Montage) const;
 	FIMGReplicatedMontagePrerequisiteResult CheckReplicatedMontagePrerequisite(
 	    const UAnimMontage* Montage, uint8 MontagePlayInstanceId) const;
@@ -170,9 +184,12 @@ private:
 	TSharedPtr<bool> ReplaySessionValid;
 	bool bReplayingTraversalMove = false;
 	bool bCaptureTraversalExit = false;
+	// Local resource ownership is independent of replicated sequence and target revisions.
+	uint32 ExecutionId = 0;
 	uint32 TraversalTargetsRevision = 0;
 	uint16 AppliedAuthoritySequence = 0;
 	bool bLocallyPredictedTraversal = false;
 	bool bAuthorityTargetsApplied = false;
 	bool bReleasingBindings = false;
+	bool bInvalidatingTraversal = false;
 };

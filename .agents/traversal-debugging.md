@@ -29,8 +29,8 @@
 | 源码入口 | 所有权/合同 |
 | --- | --- |
 | Public IMGTraversalDebugTypes | Frame/Event/Shape/Candidate只读、可反射/序列化，无UObject引用。 |
-| Private IMGTraversalDebug | 同步弱引用Scope、Actor/Attempt/帧采集；不取得玩法状态所有权。 |
-| Private IMGTraversalDebugTrace | 版本化Trace、FObjectTrace身份与录制时间换算、Runtime Extension。 |
+| Public `.h` / Private `.cpp`：IMGTraversalDebug | 同步弱引用Scope、Actor/Attempt/帧采集；不取得玩法状态所有权。 |
+| Public `.h` / Private `.cpp`：IMGTraversalDebugTrace | 版本化Trace、FObjectTrace身份与录制时间换算、Runtime Extension。 |
 | Private IMGTraversalDebugPresentation | DrawDebugLibrary几何/Graph，拥有本方LineBatch批次。 |
 | Editor Trace/IMGTraversalTraceProvider | Analyzer、AnalysisSession内不可变帧与查询。 |
 | Editor IMGTraversalRewindDebugger / RewindData | 轨道、时间轴、回看与统一事件分类。 |
@@ -74,6 +74,7 @@
 - Graph使用DrawDebugLibrary的空间World Drawer：运行时在OnWorldPostActorTick采样后直接绘制，Rewind在Extension.Update选定显示轨道后绘制；不再注册Canvas/DebugDrawService回调，也不使用CanvasString。运行时取本地PlayerCameraManager视点，回看优先取同World的当前LevelEditor视口，回退同World本地玩家镜头。图框位于视点前方，按FOV/宽高比布置，旋转后的Y/Z分别对应横纵轴，bDepthTest=false；轴、曲线、图例和字形线全部经WithOwnedBatch归入同一Traversal批次，隐藏/更新/清会话沿既有Clear回收，不另建文字残留或录制通道。一个样本即可显示轴与当前值，无样本显示等待提示；DebugDraw=0仍可独立显示Graph。
 - 用户提供的DebugDraw_MultiLineGraph蓝图导出使用MakeVisualLoggerDebugDrawer、旋转后Offset、DrawDebugGraphAxes/Line/Legend，属于空间图形；本工程采用其位置/旋转、轴/曲线/图例和关闭深度测试的用法，但用World Drawer直接绘制，不恢复旧VisualLogger文字通道。原Canvas后端也是库支持的接口；本轮已改用空间路径，旧后端未实际显示的具体运行时断点不能据源码差异断言。
 - Traversal业务CPP只通过IMGTraversalDebug提交观测，空间绘制集中于DebugPresentation；不保留直接DrawDebugHelpers、UE_VLOG、屏幕文字、GameplayDebugger入口或等级判断。执行Target不再逐帧生成重复文字事件，目标位置/朝向留在图元中；AddedIgnores数量仅在ExecutionAcquired/Releasing记录。Live图元去重与准备胶囊缓存有各自用途，保留当前帧去重和生命周期清理。旧Frame序列化字段即使当前表现不消费也不能随清理删除，须遵守版本合同。
+- 专用 `Traversal Hand IK` 调用 `IMGTraversalDebug::HandContact`，有效掌点以球和修正线提交到 Execution 的 Live 图元，左绿右紫。连线从上次完成的 Pre-IK 掌点样本指向本次游戏线程探测目标，不代表求解后的误差。沿用 `IMG.Traversal.DebugDraw 1` 和现有 Rewind 录制通道，无额外调试探针或表现用腕点兼容参数。
 - RewindDebuggerTrack.Update只更新当前节点，父轨道必须显式Child.Update，参照GameplayInsights/Private/MontagesTrack.cpp。子轨道Name稳定且独立；时间轴与Details共用事件分类，时间轴省略Detail/ExecutionState/ReplayCaptured/Restored/PlaybackSection/Path及PlacementWindow/PlacementEvaluation/LandingEvaluation等明细标记，子轨道Details仍保留。Session/Provider缺失时递归清时间轴/选帧/Details。
 - 参考入口：PoseSearch的RecordingStarted/Stopped、Trace Module/TrackCreator/Details；GameplayInsights/Private/SMontageView.cpp的资产链接。Visual Logging文本会被引擎画回视口，不再作本系统主通道。GTA的ClimbDebug、PedDebugVisualiser、DebugDrawStore负责空间绘制，debug/Debug.cpp::RenderProfiler独立调用GetRageProfileRenderer().Draw绘制EKG；仅借鉴职责，不依赖RAGE。
 - 验证边界：已核对源码接口和单向依赖；三端行为、远程会话、录制开销与全部UI交互仍须运行验收。具体录制只证明相应角色/时间段，编译或静态检查不替代表现验证。不主动调查或修改Content。

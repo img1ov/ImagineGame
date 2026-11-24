@@ -90,6 +90,7 @@ private:
 	    TArray<FIMGTraversalWarpTarget>& OutTargets) const;
 	void CheckActiveTarget();
 	void OnTargetDataTimedOut();
+	void OnTraversalUnavailable();
 	void FilterClientCorrection(const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection);
 	void RegisterCorrectionFilter();
 	void ClearCorrectionFilter();
@@ -111,6 +112,7 @@ private:
 	FDelegateHandle TargetDataDelegateHandle;
 	FDelegateHandle TargetDataCancelledDelegateHandle;
 	FDelegateHandle CorrectionFilterHandle;
+	FDelegateHandle TraversalUnavailableHandle;
 	FDelegateHandle NetworkTerminationHandle;
 	FTimerHandle TargetCheckTimer;
 	TWeakObjectPtr<UIMGCharacterMovementComponent> FilteredMovement;
@@ -124,6 +126,7 @@ private:
 	TArray<float> PreTraversalMoveTimeStamps;
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
+	uint32 ActiveExecutionId = 0;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
 	TArray<FTransform> PreviousObstacleTransforms;
 	float PreviousTargetCheckTime = 0.f;
