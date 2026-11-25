@@ -10,6 +10,13 @@
 - 栈首索引0是当前目标模式，`GetBlendInfo` 返回其 Tag/权重，供武器 ADS 散布消费；无栈、停用或未注册时返回空 Tag/0。模式缓存复用实例；抽象/过时类由 Component 回退 Default。Stack.ResetInterpolation递增StackRevision，保证退出回调中重置活跃模式时当前样本也会失效。采样或混合回调中发生停用、结构变化或显式重置时丢弃该次未完成样本，模式移出先提交数组变化再通知退出，避免回调重入破坏遍历。
 - 输出覆盖边界：这里的“混合后碰撞”指本工程 CameraModeStack。UE `PlayerCameraManager.cpp::UpdateViewTarget` 在 Component 返回后应用原生 CameraModifier，`DoUpdateCamera` 随后还可混合不同 ViewTarget Actor；任意原生 Modifier/跨 Actor 转场的最终路径不在本求解范围。需要防穿墙的本工程位移/旋转/FOV效果须在 Component.ResolveCollision 前完成；Shake 已集中到 Component，当前职责见 [Shake 调度与旋转阻尼职责](camera-shake.md)。不能将当前实现描述为所有原生相机输出的统一末端约束。
 
+## 编辑器相机预览
+
+- UE 5.8 的关卡视口在 `LevelEditorViewport.cpp::FindViewComponentForActor` 用零 DeltaTime 调用活跃组件的 `GetEditorPreviewInfo`。`CameraComponent.cpp::GetEditorPreviewInfo` 再虚调用 `GetCameraView`。Sequencer 的 `MovieSceneCameraCutViewportPreviewer.cpp::FCameraCutViewportPreviewerTarget::Get` 和 `ThumbnailCaptureUtils_CameraCuts.cpp::CaptureThumbnail` 直接调用 `GetCameraView`。
+- `IMGCameraComponent.cpp::OnRegister` 在编辑器世界也可创建并激活模式栈。`GetCameraView` 对空 World 或 `!IsGameWorld()` 在处理任何 gameplay 相机状态前直接返回原生组件视图。关卡选中预览、Sequencer 切镜混合预览和缩略图采样在这些世界走同一分支。UE 的 `IsGameWorld()` 包含 PIE，游戏世界仍按组件注册、激活、目标及生命周期检查使用原有模式栈。
+- `IMGCameraMode.cpp::GetCameraModeInstance` 将模式 Outer 设为相机组件，`UIMGCameraMode::GetWorld` 从该组件取 World。UE `ActorComponent.h::GetWorld` 优先取注册时的 `WorldPrivate`，无缓存时按 `ActorComponent.cpp::GetWorld_Uncached` 查 Owner 的 World，再尝试直接 Outer。IMG 的第三人称模式生成碰撞请求，由 `IMGCameraComponent.cpp::ResolveCollision` 检查 World 非空且 Target、Anchor 同世界后才扫掠、读取调试时间及扫描近裁面。`GetCameraView` 内的构图调试有 World 检查。由 PlayerCameraManager 调用的 `DrawDebug` 也在读取 World 时间前判空。
+- 本地 Lyra 对照中，`LyraCameraMode_ThirdPerson.cpp::PreventCameraPenetration` 在扫掠后直接读取 World 时间。UE `WorldCollision.cpp::SweepSingleByChannel` 可将 `this` 传入 `GeomSweepSingle`，`SceneQuery.cpp::TSceneCastCommon` 对空 World 提前返回。该路径可解释报告中的故障顺序，崩溃实例的组件缓存、Owner 和绑定状态仍需现场证据。
+
 ## 轨道构图与 GTA 对照
 
 - 已验证：Lyra `LyraCameraMode_ThirdPerson.cpp::UpdateView` 为 Pivot＋Rotation×PitchCurveXYZ，View.Rotation直接取PivotRotation；本工程原轨道沿用该式，换阻尼/碰撞 helper 不等于换了轨道模型。GTA `ThirdPersonCamera.cpp::Update` 则分别维护 BasePivot、OrbitPivot、OrbitDistance、BaseFront/OrbitFront，先 `UpdatePivotPosition` 再 `cameraPosition=Pivot-OrbitFront*Distance`，碰撞后 `UpdateLookAt/UpdateRoll`。`UpdatePivotPosition` 仍用完整轨道矩阵旋转 camera-relative 的肩位/高度，因此“GTA只转Yaw”不成立；固定枢轴/距离/偏移且无附加策略时，拆式与原整向量旋转可代数等价，不能只改变量名就宣称改善。

@@ -3,6 +3,7 @@
 
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/IMGCameraMode.h"
@@ -169,6 +170,15 @@ void UIMGCameraComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UIMGCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(IMGCameraView);
+
+	// Viewport and Sequencer previews share the runtime view entry point.
+	const UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld())
+	{
+		Super::GetCameraView(DeltaTime, DesiredView);
+		return;
+	}
+
 	const TWeakObjectPtr<AActor> Target = GetTargetActor();
 	if (bEndingPlay || bUnregistering || !IsRegistered() || !IsActive() || !CameraModeStack || !Target.IsValid()
 		|| Target->IsActorBeingDestroyed() || IsXRHeadTrackedCamera())
@@ -549,7 +559,10 @@ void UIMGCameraComponent::DrawDebug(UCanvas* Canvas) const
 		{
 			if (Component.IsValid()) { DisplayDebugManager.DrawString(FString::Printf(TEXT("      Hit: %s"), *Component->GetPathName())); }
 		}
-		LastCollisionDebugTime = GetWorld()->GetTimeSeconds();
+		if (const UWorld* World = GetWorld())
+		{
+			LastCollisionDebugTime = World->GetTimeSeconds();
+		}
 	}
 
 	if (CameraModeStack) { CameraModeStack->DrawDebug(Canvas); }
