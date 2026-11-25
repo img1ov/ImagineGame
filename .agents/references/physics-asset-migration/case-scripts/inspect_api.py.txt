@@ -1,0 +1,19 @@
+import unreal, json
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+source='GameAnimationSanple' in unreal.Paths.project_dir()
+label='source' if source else 'target'
+pa=unreal.load_asset('/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin' if source else '/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC')
+task=unreal.AssetExportTask()
+task.set_editor_properties(dict(object=pa,filename=str(root/(label+'_pa.t3d')),automated=True,prompt=False,replace_identical=True,exporter=unreal.ObjectExporterT3D()))
+print('Export',unreal.Exporter.run_asset_export_task(task))
+out={}
+for n in ['SkeletalBodySetups','ConstraintSetup','PreviewSkeletalMesh','preview_mesh']:
+    try: out[n]=str(pa.get_editor_property(n))
+    except Exception as e: out[n]=str(e)
+for obj,names in [(pa,['get_constraints','get_constraint_by_name']),(unreal.EditorLoadingAndSavingUtils,['reload_packages']),(unreal.AssetToolsHelpers.get_asset_tools(),['duplicate_asset']),(unreal.Skeleton,[]),(unreal.SkeletalMesh,[])]:
+    for n in names:out[n]=getattr(obj,n).__doc__
+out['module_methods']=[n for n in dir(unreal) if any(k in n.lower() for k in ['object_iterator','editorengine','physicsasset','skeletalmeshlibrary','previewmesh'])]
+out['system_property_methods']={n:getattr(unreal.SystemLibrary,n).__doc__ for n in dir(unreal.SystemLibrary) if 'property_by_name' in n}
+out['anim_pose_methods']={n:getattr(unreal.AnimPoseExtensions,n).__doc__ for n in dir(unreal.AnimPoseExtensions) if 'reference' in n or 'bone_pose' in n}
+(root/(label+'_api.json')).write_text(json.dumps(out,indent=2),encoding='utf-8')

@@ -1,0 +1,25 @@
+import unreal, json, re
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+assert 'GameAnimationSanple/' in unreal.Paths.project_dir()
+assets=unreal.EditorAssetLibrary.list_assets('/Game/Characters/UEFN_Mannequin',recursive=True,include_folder=False)
+meshes=[unreal.load_asset(p) for p in assets if p.rsplit('/',1)[-1].startswith(('SKM_','SK_'))]
+meshes=[m for m in meshes if isinstance(m,unreal.SkeletalMesh)]
+out={'meshes':[m.get_path_name() for m in meshes]}
+mesh=next((m for m in meshes if m.get_editor_property('physics_asset')==unreal.load_asset('/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin')),None)
+if mesh is None: raise RuntimeError('No source preview mesh')
+skeleton=mesh.get_editor_property('skeleton')
+pose=unreal.AnimPoseExtensions.get_reference_pose(skeleton)
+bones=re.findall(r'BoneName="([^"]+)"',(root/'source_pa.t3d').read_text(encoding='utf-8'))
+out['mesh']=mesh.get_path_name()
+out['skeleton']=skeleton.get_path_name()
+out['bone_pose']={name:unreal.AnimPoseExtensions.get_bone_pose(pose,name,unreal.AnimPoseSpaces.LOCAL).export_text() for name in bones}
+out['bone_pose_world']={name:unreal.AnimPoseExtensions.get_bone_pose(pose,name,unreal.AnimPoseSpaces.WORLD).export_text() for name in bones}
+pm=unreal.load_asset('/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin')
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(pm.get_class()))
+out['material']=json.loads(unreal.ToolsetLibrary.get_object_properties(pm,list(schema)))
+out['dirty_packages']=[p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+options=unreal.get_default_object(unreal.load_class(None,'/Script/UnrealEd.PhysicsAssetEditorOptions'))
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(options.get_class()))
+out['editor_options']=json.loads(unreal.ToolsetLibrary.get_object_properties(options,list(schema)))
+(root/'source_prepared.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')

@@ -1,0 +1,47 @@
+import unreal, json
+from pathlib import Path
+root = Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+source = 'GameAnimationSanple' in unreal.Paths.project_dir()
+pa_path = '/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin' if source else '/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC'
+pca_path = '/Game/Characters/UEFN_Mannequin/Rigs/PCA_SandboxCharacter' if source else '/Game/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin'
+def value(v):
+    if isinstance(v, unreal.Object): return {'path':v.get_path_name(),'class':v.get_class().get_name()}
+    if hasattr(v,'export_text'): return v.export_text()
+    if isinstance(v,(str,int,float,bool)) or v is None: return v
+    try: return [value(x) for x in v]
+    except Exception: return str(v)
+def props(obj,names):
+    result={}
+    for name in names:
+        try: result[name]=value(obj.get_editor_property(name))
+        except Exception as e: result[name]={'error':str(e)}
+    return result
+pa=unreal.load_asset(pa_path)
+pca=unreal.load_asset(pca_path)
+out={'project':unreal.Paths.project_dir(),'pa':props(pa,['preview_skeletal_mesh','skeletal_body_setups','constraint_setup','solver_settings','solver_iterations','solver_type','physical_animation_profiles','constraint_profiles']),'pca_class':str(pca.get_class()) if pca else None}
+out['dirty_packages']=[p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+out['bodies']=[]
+subobjects=unreal.get_objects_with_outer(pa,True) if hasattr(unreal,'get_objects_with_outer') else []
+out['subobjects']=[value(x) for x in subobjects]
+for b in [x for x in subobjects if x.get_class().get_name()=='SkeletalBodySetup']:
+    row=props(b,['bone_name','agg_geom','phys_material','default_instance','physics_type','collision_trace_flag','physical_animation_data'])
+    pm=b.get_editor_property('phys_material')
+    if pm: row['material']=props(pm,['friction','static_friction','friction_combine_mode','override_friction_combine_mode','restitution','restitution_combine_mode','override_restitution_combine_mode','density','raise_mass_to_power','sleep_linear_velocity_threshold','sleep_angular_velocity_threshold','sleep_counter_threshold'])
+    out['bodies'].append(row)
+out['constraints']=[props(c,['default_instance','profile_handles','default_profile']) for c in subobjects if c.get_class().get_name()=='PhysicsConstraintTemplate']
+out['pca_schema']=json.loads(unreal.ToolsetLibrary.list_struct_properties(pca.get_class())) if pca else {}
+out['pca'] = json.loads(unreal.ToolsetLibrary.get_object_properties(pca,list(out['pca_schema']))) if pca else {}
+settings=unreal.get_default_object(unreal.PhysicsSettings)
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(settings.get_class()))
+out['physics_settings']=json.loads(unreal.ToolsetLibrary.get_object_properties(settings,list(schema)))
+try: mesh=pa.get_editor_property('preview_skeletal_mesh')
+except Exception: mesh=None
+out['mesh']=value(mesh)
+out['api']={n:getattr(unreal,n).__doc__ for n in ['ObjectExporterT3D','EditorLoadingAndSavingUtils','PhysicsAsset','Skeleton','SkeletalMesh','PhysicsControlAsset'] if hasattr(unreal,n)}
+out['mesh_methods']=[n for n in dir(mesh) if any(k in n for k in ['bone','skeleton','ref_pose'])]
+out['physics_asset_methods']=dir(pa)
+out['package_methods']=[n for n in dir(pa.get_outermost()) if 'dirty' in n]
+out['unreal_methods']=[n for n in dir(unreal) if any(k in n.lower() for k in ['outer','export','subobject','reload','duplicate'])]
+label='source' if source else 'target'
+(root/(label+'_before.json')).write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+print('PHYSICS_SNAPSHOT_OK',label,len(out['bodies']),len(out['constraints']))

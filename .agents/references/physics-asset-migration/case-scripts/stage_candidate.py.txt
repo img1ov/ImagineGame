@@ -1,0 +1,43 @@
+import unreal, json, shutil, re, hashlib
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+project=Path('D:/Application/UnrealProjects/ImagineGame')
+source_project=Path('D:/Application/UnrealProjects/GameAnimationSanple')
+assert 'ImagineGame/' in unreal.Paths.project_dir()
+staged=[]
+for filename in ['PA_UEFN_Mannequin.uasset','PM_UEFN_Mannequin.uasset']:
+    relative=Path('Content/Characters/UEFN_Mannequin/Rigs')/filename
+    src=source_project/relative
+    dst=project/relative
+    if dst.exists():
+        assert hashlib.sha256(src.read_bytes()).digest()==hashlib.sha256(dst.read_bytes()).digest(),str(dst)
+    else:
+        dst.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(src,dst)
+    staged.append(str(dst))
+unreal.AssetRegistryHelpers.get_asset_registry().scan_files_synchronous(staged,True)
+candidate_path='/Game/__CodexPhysicsParity/PA_Mannequin_PC'
+candidate=unreal.load_asset(candidate_path) if unreal.EditorAssetLibrary.does_asset_exist(candidate_path) else unreal.EditorAssetLibrary.duplicate_asset('/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin',candidate_path)
+assert candidate
+out={}
+try:
+    unreal.get_default_object(unreal.SystemLibrary).call_method('SetSoftObjectPropertyByName',args=(candidate,unreal.Name('PreviewSkeletalMesh'),unreal.load_asset('/Game/Characters/Heroes/Mannequin/Meshes/SKM_Manny')))
+    out['preview_set']='ok'
+except Exception as e: out['preview_set']=str(e)
+names=set(re.findall(r'Begin Object Class=/Script/Engine\.(SkeletalBodySetup|PhysicsConstraintTemplate) Name="([^"]+)"',(root/'source_pa.t3d').read_text(encoding='utf-8')))
+out['objects']=[]
+for cls,name in sorted(names):
+    obj=unreal.load_object(None,candidate.get_path_name()+':'+name)
+    row={'name':name,'class':cls}
+    for prop in (['BoneName','AggGeom','DefaultInstance'] if cls=='SkeletalBodySetup' else ['DefaultInstance']):
+        try:
+            v=obj.get_editor_property(prop)
+            row[prop]=v.export_text() if hasattr(v,'export_text') else str(v)
+        except Exception as e:row[prop]={'error':str(e)}
+    out['objects'].append(row)
+task=unreal.AssetExportTask()
+task.set_editor_properties(dict(object=candidate,filename=str(root/'candidate_probe.t3d'),automated=True,prompt=False,replace_identical=True,exporter=unreal.ObjectExporterT3D()))
+assert unreal.Exporter.run_asset_export_task(task)
+out['quat_methods']=[n for n in dir(unreal.Quat) if not n.startswith('_')]
+(root/'candidate_probe.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+print('CANDIDATE_PROBE_OK',out['preview_set'])

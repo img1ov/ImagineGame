@@ -1,0 +1,64 @@
+import unreal, json, re, math
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+candidate=unreal.load_asset('/Game/__CodexPhysicsParity/PA_Mannequin_PC')
+assert candidate
+src=json.loads((root/'source_prepared.json').read_text(encoding='utf-8'))
+dst=json.loads((root/'target_prepared.json').read_text(encoding='utf-8'))
+probe=json.loads((root/'candidate_probe.json').read_text(encoding='utf-8'))
+def fields(text,key,names):
+    match=re.search(r'\b'+key+r'=\(([^)]*)\)',text)
+    return tuple(float(re.search(r'\b'+n+r'=([-+0-9.eE]+)',match.group(1)).group(1)) for n in names)
+def vec(v): return (v.x,v.y,v.z)
+def uv(v): return unreal.Vector(*v)
+def add(a,b): return tuple(x+y for x,y in zip(a,b))
+def sub(a,b): return tuple(x-y for x,y in zip(a,b))
+def mul(a,b):
+    x,y,z,w=a; X,Y,Z,W=b
+    return (w*X+x*W+y*Z-z*Y,w*Y-x*Z+y*W+z*X,w*Z+x*Y-y*X+z*W,w*W-x*X-y*Y-z*Z)
+def inv(q):
+    l=sum(x*x for x in q)
+    return (-q[0]/l,-q[1]/l,-q[2]/l,q[3]/l)
+def rotate(q,v): return mul(mul(q,(*v,0)),inv(q))[:3]
+def pose(data,name):
+    text=data['bone_pose_world'][name]
+    return fields(text,'Rotation',['X','Y','Z','W']),fields(text,'Translation',['X','Y','Z'])
+pm_path='/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC'
+pm=unreal.load_asset(pm_path) if unreal.EditorAssetLibrary.does_asset_exist(pm_path) else unreal.EditorAssetLibrary.duplicate_asset('/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin',pm_path)
+assert pm
+report={'constraints':[],'bodies':[]}
+with unreal.ScopedEditorTransaction('Adapt UEFN physics asset to Manny reference skeleton'):
+    candidate.modify()
+    for row in probe['objects']:
+        obj=unreal.load_object(None,candidate.get_path_name()+':'+row['name'])
+        obj.modify()
+        if row['class']=='SkeletalBodySetup':
+            obj.set_editor_property('PhysMaterial',pm)
+            report['bodies'].append(str(obj.get_editor_property('BoneName')))
+            continue
+        ci=obj.get_editor_property('DefaultInstance')
+        ci.import_text(row['DefaultInstance'])
+        child=str(ci.get_editor_property('ConstraintBone1'))
+        parent=str(ci.get_editor_property('ConstraintBone2'))
+        sq1,sp1=pose(src,child);sq2,sp2=pose(src,parent)
+        tq1,tp1=pose(dst,child);tq2,tp2=pose(dst,parent)
+        p1=vec(ci.get_editor_property('Pos1'))
+        oldp2=vec(ci.get_editor_property('Pos2'))
+        anchor=add(rotate(tq1,p1),tp1)
+        p2=rotate(inv(tq2),sub(anchor,tp2))
+        delta=mul(mul(mul(inv(tq2),tq1),inv(sq1)),sq2)
+        for name in ['PriAxis2','SecAxis2']:
+            ci.set_editor_property(name,uv(rotate(delta,vec(ci.get_editor_property(name)))))
+        ci.set_editor_property('Pos2',uv(p2))
+        obj.set_editor_property('DefaultInstance',ci)
+        before_error=math.sqrt(sum(x*x for x in sub(add(rotate(tq2,oldp2),tp2),anchor)))
+        after_error=math.sqrt(sum(x*x for x in sub(add(rotate(tq2,p2),tp2),anchor)))
+        report['constraints'].append(dict(name=row['name'],child=child,parent=parent,unadapted_anchor_error_cm=before_error,adapted_anchor_error_cm=after_error))
+    assert len(report['bodies'])==23 and len(report['constraints'])==22
+    assert unreal.EditorAssetLibrary.save_loaded_asset(candidate,False)
+    assert unreal.EditorAssetLibrary.save_loaded_asset(pm,False)
+task=unreal.AssetExportTask()
+task.set_editor_properties(dict(object=candidate,filename=str(root/'candidate_adapted.t3d'),automated=True,prompt=False,replace_identical=True,exporter=unreal.ObjectExporterT3D()))
+assert unreal.Exporter.run_asset_export_task(task)
+(root/'adaptation_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+print('CANDIDATE_ADAPTED',len(report['bodies']),len(report['constraints']),max(r['unadapted_anchor_error_cm'] for r in report['constraints']))

@@ -1,0 +1,52 @@
+import unreal, json, re, math
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+candidate_path='/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC' if (root/'committed.json').exists() else '/Game/__CodexPhysicsParity/PA_Mannequin_PC'
+candidate=unreal.load_asset(candidate_path)
+probe=json.loads((root/'candidate_probe.json').read_text(encoding='utf-8'))
+source_bodies={m.group(1):m.group(2) for m in re.finditer(r'Begin Object Name="(SkeletalBodySetup_[^"]+)"(.*?)End Object',(root/'source_pa.t3d').read_text(encoding='utf-8'),re.S)}
+report={'path':candidate.get_path_name(),'bodies':[],'constraints':[]}
+for row in probe['objects']:
+    obj=unreal.load_object(None,candidate.get_path_name()+':'+row['name'])
+    assert obj,row['name']
+    if row['class']=='SkeletalBodySetup':
+        assert obj.get_editor_property('DefaultInstance').export_text()==row['DefaultInstance'],row['name']+' body settings changed'
+        assert obj.get_editor_property('AggGeom').export_text()==row['AggGeom'],row['name']+' geometry changed'
+        material=obj.get_editor_property('PhysMaterial')
+        material_path=material.get_path_name() if material else None
+        expected_material='/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC' if 'PhysMaterial=' in source_bodies[row['name']] else None
+        assert material_path==expected_material,row['name']+' material mismatch'
+        report['bodies'].append({'bone':str(obj.get_editor_property('BoneName')),'material':material_path,'default_instance':obj.get_editor_property('DefaultInstance').export_text()})
+    else:
+        ci=obj.get_editor_property('DefaultInstance')
+        original=ci.copy()
+        original.import_text(row['DefaultInstance'])
+        assert ci.get_editor_property('ProfileInstance').export_text()==original.get_editor_property('ProfileInstance').export_text(),row['name']+' constraint settings changed'
+        report['constraints'].append({'child':str(ci.get_editor_property('ConstraintBone1')),'parent':str(ci.get_editor_property('ConstraintBone2')),'default_instance':ci.export_text()})
+pm=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC')
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(pm.get_class()))
+report['material']=json.loads(unreal.ToolsetLibrary.get_object_properties(pm,list(schema)))
+assert report['material']==json.loads((root/'source_prepared.json').read_text(encoding='utf-8'))['material']
+report['solver_settings']=candidate.get_editor_property('solver_settings').export_text()
+options=unreal.get_default_object(unreal.load_class(None,'/Script/UnrealEd.PhysicsAssetEditorOptions'))
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(options.get_class()))
+report['editor_options']=json.loads(unreal.ToolsetLibrary.get_object_properties(options,list(schema)))
+assert report['solver_settings']==json.loads((root/'source_before.json').read_text(encoding='utf-8'))['pa']['solver_settings']
+pca=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin')
+report['pca_compilation_needed']=pca.call_method('IsCompilationNeeded')
+assert not report['pca_compilation_needed'],'PCA compiled data is stale'
+schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(pca.get_class()))
+report['pca']=json.loads(unreal.ToolsetLibrary.get_object_properties(pca,list(schema)))
+if (root/'committed.json').exists():
+    srcpca=json.loads((root/'source_before.json').read_text(encoding='utf-8'))['pca']
+    expected=dict(srcpca,physicsAsset={'refPath':candidate.get_path_name()})
+    assert report['pca']==expected,'PCA mismatch'
+    settings=unreal.get_default_object(unreal.PhysicsSettings)
+    schema=json.loads(unreal.ToolsetLibrary.list_struct_properties(settings.get_class()))
+    report['physics_settings']=json.loads(unreal.ToolsetLibrary.get_object_properties(settings,list(schema)))
+    assert report['physics_settings']==json.loads((root/'source_before.json').read_text(encoding='utf-8'))['physics_settings'],'Physics settings mismatch'
+task=unreal.AssetExportTask()
+task.set_editor_properties(dict(object=candidate,filename=str(root/'target_after.t3d'),automated=True,prompt=False,replace_identical=True,exporter=unreal.ObjectExporterT3D()))
+assert unreal.Exporter.run_asset_export_task(task)
+(root/'verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+print('VERIFIED',len(report['bodies']),len(report['constraints']))

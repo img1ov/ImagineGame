@@ -1,0 +1,183 @@
+{
+  "constraints": [
+    {
+      "name": "PhysicsConstraintTemplate_0",
+      "child": "neck_02",
+      "parent": "neck_01",
+      "unadapted_anchor_error_cm": 0.5475812807029928,
+      "adapted_anchor_error_cm": 5.551115123125783e-17
+    },
+    {
+      "name": "PhysicsConstraintTemplate_1",
+      "child": "head",
+      "parent": "neck_02",
+      "unadapted_anchor_error_cm": 0.47841167176885474,
+      "adapted_anchor_error_cm": 8.95090418262362e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_34",
+      "child": "spine_01",
+      "parent": "pelvis",
+      "unadapted_anchor_error_cm": 3.138015634116587,
+      "adapted_anchor_error_cm": 0.0
+    },
+    {
+      "name": "PhysicsConstraintTemplate_35",
+      "child": "spine_02",
+      "parent": "spine_01",
+      "unadapted_anchor_error_cm": 0.45803955099935756,
+      "adapted_anchor_error_cm": 0.0
+    },
+    {
+      "name": "PhysicsConstraintTemplate_36",
+      "child": "spine_03",
+      "parent": "spine_02",
+      "unadapted_anchor_error_cm": 1.2277988704111058,
+      "adapted_anchor_error_cm": 0.0
+    },
+    {
+      "name": "PhysicsConstraintTemplate_37",
+      "child": "spine_04",
+      "parent": "spine_03",
+      "unadapted_anchor_error_cm": 0.4215345645473552,
+      "adapted_anchor_error_cm": 0.0
+    },
+    {
+      "name": "PhysicsConstraintTemplate_38",
+      "child": "spine_05",
+      "parent": "spine_04",
+      "unadapted_anchor_error_cm": 9.425183398460787,
+      "adapted_anchor_error_cm": 1.807312143953211e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_39",
+      "child": "clavicle_l",
+      "parent": "spine_05",
+      "unadapted_anchor_error_cm": 1.8728357669546547,
+      "adapted_anchor_error_cm": 6.280369834735101e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_40",
+      "child": "upperarm_l",
+      "parent": "clavicle_l",
+      "unadapted_anchor_error_cm": 2.2984287943369126,
+      "adapted_anchor_error_cm": 3.552713678800501e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_41",
+      "child": "lowerarm_l",
+      "parent": "upperarm_l",
+      "unadapted_anchor_error_cm": 1.1197814855310753,
+      "adapted_anchor_error_cm": 2.220446049250313e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_42",
+      "child": "hand_l",
+      "parent": "lowerarm_l",
+      "unadapted_anchor_error_cm": 4.901927967681545,
+      "adapted_anchor_error_cm": 7.32410687763558e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_43",
+      "child": "clavicle_r",
+      "parent": "spine_05",
+      "unadapted_anchor_error_cm": 1.8728050232257514,
+      "adapted_anchor_error_cm": 7.021666937153402e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_44",
+      "child": "upperarm_r",
+      "parent": "clavicle_r",
+      "unadapted_anchor_error_cm": 2.2985429610180863,
+      "adapted_anchor_error_cm": 1.0658141036401503e-14
+    },
+    {
+      "name": "PhysicsConstraintTemplate_45",
+      "child": "lowerarm_r",
+      "parent": "upperarm_r",
+      "unadapted_anchor_error_cm": 1.119243365761221,
+      "adapted_anchor_error_cm": 2.220446049250313e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_46",
+      "child": "hand_r",
+      "parent": "lowerarm_r",
+      "unadapted_anchor_error_cm": 4.9017679942233086,
+      "adapted_anchor_error_cm": 8.881784197001252e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_47",
+      "child": "neck_01",
+      "parent": "spine_05",
+      "unadapted_anchor_error_cm": 0.5939517575757901,
+      "adapted_anchor_error_cm": 4.440892098500626e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_49",
+      "child": "thigh_l",
+      "parent": "pelvis",
+      "unadapted_anchor_error_cm": 2.2317337661217564,
+      "adapted_anchor_error_cm": 1.7763568394002505e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_50",
+      "child": "calf_l",
+      "parent": "thigh_l",
+      "unadapted_anchor_error_cm": 4.2928688265020005,
+      "adapted_anchor_error_cm": 7.95651227888113e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_51",
+      "child": "foot_l",
+      "parent": "calf_l",
+      "unadapted_anchor_error_cm": 0.5599442374465093,
+      "adapted_anchor_error_cm": 2.220446049250313e-16
+    },
+    {
+      "name": "PhysicsConstraintTemplate_52",
+      "child": "thigh_r",
+      "parent": "pelvis",
+      "unadapted_anchor_error_cm": 2.2321415741940855,
+      "adapted_anchor_error_cm": 1.7763568394002505e-15
+    },
+    {
+      "name": "PhysicsConstraintTemplate_53",
+      "child": "calf_r",
+      "parent": "thigh_r",
+      "unadapted_anchor_error_cm": 4.292606784418742,
+      "adapted_anchor_error_cm": 1.2809491335957507e-14
+    },
+    {
+      "name": "PhysicsConstraintTemplate_54",
+      "child": "foot_r",
+      "parent": "calf_r",
+      "unadapted_anchor_error_cm": 0.5600154296907937,
+      "adapted_anchor_error_cm": 1.1918232534497656e-14
+    }
+  ],
+  "bodies": [
+    "neck_02",
+    "pelvis",
+    "spine_01",
+    "spine_02",
+    "spine_03",
+    "spine_04",
+    "spine_05",
+    "clavicle_l",
+    "upperarm_l",
+    "lowerarm_l",
+    "hand_l",
+    "clavicle_r",
+    "upperarm_r",
+    "lowerarm_r",
+    "hand_r",
+    "neck_01",
+    "head",
+    "thigh_l",
+    "calf_l",
+    "foot_l",
+    "thigh_r",
+    "calf_r",
+    "foot_r"
+  ]
+}

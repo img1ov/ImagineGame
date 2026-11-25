@@ -1,0 +1,1109 @@
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_0" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_0'"
+   AggGeom=(SphylElems=((Center=(X=0.396602,Y=-0.278884,Z=-0.000921),Rotation=(Pitch=0.262796,Yaw=-90.000000,Roll=0.305944),Radius=13.638189,Length=7.049167)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="pelvis"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_13" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_13'"
+   AggGeom=(SphylElems=((Center=(X=-20.875151,Y=0.438365,Z=0.418552),Rotation=(Pitch=90.000000,Yaw=0.000000,Roll=0.000000),Radius=9.316829,Length=25.427933)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="thigh_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_17" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_17'"
+   AggGeom=(SphylElems=((Radius=11.045483,Length=8.186070,Name="spine_02_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="spine_02"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_25" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_25'"
+   AggGeom=(SphylElems=((Center=(X=20.875151,Y=-0.438365,Z=-0.418552),Rotation=(Pitch=90.000000,Yaw=0.000000,Roll=180.000000),Radius=9.316829,Length=25.427933)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="thigh_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_14" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_14'"
+   AggGeom=(SphylElems=((Center=(X=-19.507193,Y=-2.293658,Z=-0.897455),Rotation=(Pitch=0.000000,Yaw=-89.981621,Roll=-89.535797),Radius=8.021123,Length=26.905218)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="calf_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_26" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_26'"
+   AggGeom=(SphylElems=((Center=(X=19.507193,Y=2.293658,Z=0.897455),Rotation=(Pitch=0.000004,Yaw=-89.981613,Roll=90.464195),Radius=8.021123,Length=26.905218)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="calf_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_1" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_1'"
+   AggGeom=(SphylElems=((Radius=11.220830,Length=6.189425)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="spine_03"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_2" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_2'"
+   AggGeom=(SphylElems=((Radius=11.980914,Length=5.479151)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="spine_04"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_3" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_3'"
+   AggGeom=(SphylElems=((Center=(X=-6.466331,Y=-0.662438,Z=0.000000),Radius=14.752758,Length=9.998190)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="spine_05"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_18" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_18'"
+   AggGeom=(SphylElems=((Rotation=(Pitch=90.000000,Yaw=0.000000,Roll=0.000000),Radius=7.411851,Length=1.268051,Name="neck_01_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="neck_01"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_22" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_22'"
+   AggGeom=(SphylElems=((Center=(X=-9.612118,Y=0.000000,Z=0.000000),Rotation=(Pitch=74.179787,Yaw=0.000001,Roll=0.000001),Radius=8.535752,Length=5.345653,Name="clavicle_r_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="clavicle_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_23" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_23'"
+   AggGeom=(SphylElems=((Center=(X=9.612118,Y=-0.000000,Z=-0.000000),Rotation=(Pitch=74.179787,Yaw=0.000001,Roll=-180.000000),Radius=8.535752,Length=5.345653,Name="clavicle_r_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="clavicle_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_4" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_4'"
+   AggGeom=(SphylElems=((Center=(X=11.264991,Y=-0.444090,Z=0.035191),Rotation=(Pitch=-0.000000,Yaw=-89.687981,Roll=-83.141777),Radius=7.100347,Length=20.598555)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="upperarm_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_5" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_5'"
+   AggGeom=(SphylElems=((Center=(X=12.174366,Y=-0.582821,Z=-0.033211),Rotation=(Pitch=-0.000000,Yaw=88.036804,Roll=-88.172134),Radius=5.295462,Length=14.870253)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="lowerarm_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_6" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_6'"
+   AggGeom=(BoxElems=((Center=(X=8.000000,Y=-1.150000,Z=0.000000),Rotation=(Pitch=1.963287,Yaw=-4.899150,Roll=0.283084),X=16.000000,Y=5.000000,Z=10.000000,Name="hand_l_box")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="hand_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_24" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_24'"
+   AggGeom=(SphylElems=((Center=(X=-11.264991,Y=0.444090,Z=-0.035191),Rotation=(Pitch=-0.000001,Yaw=-89.687973,Roll=96.858231),Radius=7.100347,Length=20.598555)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="upperarm_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_8" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_8'"
+   AggGeom=(SphylElems=((Center=(X=-12.174431,Y=0.582792,Z=0.032926),Rotation=(Pitch=0.000000,Yaw=88.036804,Roll=-88.172142),Radius=5.295466,Length=14.870253)))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="lowerarm_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_9" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_9'"
+   AggGeom=(BoxElems=((Center=(X=-8.000000,Y=1.150000,Z=0.000000),Rotation=(Pitch=0.000000,Yaw=-10.000000,Roll=0.000000),X=16.000000,Y=5.000000,Z=10.000000,Name="hand_r_box")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="hand_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_19" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_19'"
+   AggGeom=(SphylElems=((Center=(X=-0.000000,Y=0.764896,Z=0.000000),Rotation=(Pitch=90.000000,Yaw=0.000000,Roll=0.000000),Radius=7.411851,Length=1.820833,Name="neck_02_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="neck_02"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_20" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_20'"
+   AggGeom=(SphylElems=((Center=(X=4.779209,Y=2.468690,Z=0.000690),Rotation=(Pitch=90.000000,Yaw=176.592300,Roll=-171.250534),Radius=10.595651,Length=6.071242,Name="head_capsule")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="head"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_15" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_15'"
+   AggGeom=(BoxElems=((Center=(X=-4.400000,Y=8.750000,Z=-0.300000),X=6.500000,Y=25.000000,Z=10.500000,Name="foot_l_box")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="foot_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_12" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_12'"
+   AggGeom=(BoxElems=((Center=(X=4.400000,Y=-8.750000,Z=0.300000),X=6.500000,Y=25.000000,Z=10.500000,Name="foot_r_box")))
+   DefaultInstance=(LinearDamping=0.000000,AngularDamping=0.010000)
+   BoneName="foot_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_12" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_12'"
+   DefaultInstance=(JointName="thigh_l",ConstraintBone1="thigh_l",ConstraintBone2="pelvis",PriAxis1=(X=-0.988133,Y=0.005796,Z=-0.153490),SecAxis1=(X=-0.014387,Y=-0.998387,Z=0.054924),Pos2=(X=-2.365711,Y=0.110044,Z=-9.969203),PriAxis2=(X=-0.770085,Y=0.570171,Z=-0.286136),SecAxis2=(X=-0.599722,Y=-0.799959,Z=0.020000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=55.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_16" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_16'"
+   DefaultInstance=(JointName="spine_02",ConstraintBone1="spine_02",ConstraintBone2="pelvis",Pos2=(X=10.256937,Y=1.696446,Z=0.000000),PriAxis2=(X=0.981651,Y=0.190687,Z=-0.000000),SecAxis2=(X=-0.190687,Y=0.981651,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_24" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_24'"
+   DefaultInstance=(JointName="thigh_r",ConstraintBone1="thigh_r",ConstraintBone2="pelvis",PriAxis1=(X=0.999878,Y=-0.011601,Z=0.010480),SecAxis1=(X=0.011660,Y=0.999916,Z=-0.005589),Pos2=(X=-2.365726,Y=0.119488,Z=9.969091),PriAxis2=(X=-0.565132,Y=0.824933,Z=0.010588),SecAxis2=(X=-0.824909,Y=-0.565214,Z=0.007664),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=55.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_6" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_6'"
+   DefaultInstance=(JointName="UserConstraint",ConstraintBone1="calf_l",ConstraintBone2="pelvis",Pos1=(X=-0.000370,Y=-22.242037,Z=0.000041),PriAxis1=(X=-0.976262,Y=0.216414,Z=0.008786),SecAxis1=(X=-0.216491,Y=-0.976243,Z=-0.009030),Pos2=(X=-42.439999,Y=-24.350000,Z=-9.000000),PriAxis2=(X=-0.698518,Y=-0.713303,Z=0.057199),SecAxis2=(X=0.713486,Y=-0.688105,Z=0.132091),ProfileInstance=(LinearLimit=(XMotion=LCM_Free,YMotion=LCM_Free,ZMotion=LCM_Free),ConeLimit=(Swing1LimitDegrees=90.000000,Swing2LimitDegrees=90.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=0.100000,Damping=1.000000),bEnableProjection=False))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_9" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_9'"
+   DefaultInstance=(JointName="UserConstraint_0",ConstraintBone1="calf_r",ConstraintBone2="pelvis",Pos1=(X=0.060183,Y=22.246414,Z=0.000000),PriAxis1=(X=0.984807,Y=-0.173653,Z=-0.000000),SecAxis1=(X=0.173653,Y=0.984807,Z=0.000000),Pos2=(X=-42.500000,Y=-24.000000,Z=9.000000),PriAxis2=(X=-0.785638,Y=-0.617450,Z=-0.039098),SecAxis2=(X=0.615480,Y=-0.773577,Z=-0.150877),ProfileInstance=(LinearLimit=(XMotion=LCM_Free,YMotion=LCM_Free,ZMotion=LCM_Free),ConeLimit=(Swing1LimitDegrees=90.000000,Swing2LimitDegrees=90.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=0.100000,Damping=1.000000),bEnableProjection=False))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_0" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_0'"
+   DefaultInstance=(JointName="spine_03",ConstraintBone1="spine_03",ConstraintBone2="spine_02",Pos2=(X=7.238228,Y=0.000000,Z=0.000000),PriAxis2=(X=0.981806,Y=-0.189885,Z=-0.000000),SecAxis2=(X=0.189885,Y=0.981806,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_1" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_1'"
+   DefaultInstance=(JointName="spine_04",ConstraintBone1="spine_04",ConstraintBone2="spine_03",Pos2=(X=8.523893,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.994762,Y=-0.102219,Z=0.000000),SecAxis2=(X=0.102219,Y=0.994762,Z=-0.000008),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_2" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_2'"
+   DefaultInstance=(JointName="spine_05",ConstraintBone1="spine_05",ConstraintBone2="spine_04",Pos2=(X=19.439800,Y=0.000000,Z=0.000000),PriAxis2=(X=0.999929,Y=-0.011892,Z=-0.000000),SecAxis2=(X=0.011892,Y=0.999929,Z=0.000008),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_17" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_17'"
+   DefaultInstance=(JointName="neck_01",ConstraintBone1="neck_01",ConstraintBone2="spine_05",Pos2=(X=11.887770,Y=0.000000,Z=0.000000),PriAxis2=(X=0.914053,Y=0.405595,Z=0.000000),SecAxis2=(X=-0.405595,Y=0.914053,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_21" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_21'"
+   DefaultInstance=(JointName="clavicle_r",ConstraintBone1="clavicle_r",ConstraintBone2="spine_05",Pos1=(X=-0.000000,Y=-0.000000,Z=-0.000000),PriAxis1=(X=-1.000000,Y=-0.000000,Z=-0.000009),SecAxis1=(X=-0.000000,Y=1.000000,Z=0.000000),Pos2=(X=5.516220,Y=-1.314811,Z=1.427873),PriAxis2=(X=-0.142124,Y=-0.072030,Z=0.987225),SecAxis2=(X=0.179322,Y=-0.982720,Z=-0.045886),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_22" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_22'"
+   DefaultInstance=(JointName="clavicle_l",ConstraintBone1="clavicle_l",ConstraintBone2="spine_05",Pos2=(X=5.516269,Y=-1.314766,Z=-1.427904),PriAxis2=(X=-0.142133,Y=-0.072032,Z=-0.987223),SecAxis2=(X=-0.179322,Y=0.982720,Z=-0.045886),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_3" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_3'"
+   DefaultInstance=(JointName="upperarm_l",ConstraintBone1="upperarm_l",ConstraintBone2="clavicle_l",Pos1=(X=-0.000000,Y=-0.000000,Z=-0.000000),PriAxis1=(X=0.998223,Y=-0.059395,Z=0.004881),SecAxis1=(X=-0.059394,Y=-0.984806,Z=0.163184),Pos2=(X=17.809521,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.897229,Y=0.042442,Z=-0.439521),SecAxis2=(X=0.097769,Y=-0.989759,Z=0.104008),ProfileInstance=(ConeLimit=(Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=35.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_4" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_4'"
+   DefaultInstance=(JointName="lowerarm_l",ConstraintBone1="lowerarm_l",ConstraintBone2="upperarm_l",PriAxis1=(X=0.190570,Y=-0.214555,Z=0.957940),SecAxis1=(X=0.924033,Y=0.368661,Z=-0.101254),Pos2=(X=27.771139,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.283107,Y=-0.046916,Z=0.957940),SecAxis2=(X=0.007960,Y=0.998883,Z=0.046569),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_5" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_5'"
+   DefaultInstance=(JointName="hand_l",ConstraintBone1="hand_l",ConstraintBone2="lowerarm_l",PriAxis1=(X=-0.000000,Y=-0.000024,Z=-1.000000),SecAxis1=(X=1.000000,Y=0.000023,Z=-0.000000),Pos2=(X=27.251070,Y=0.000000,Z=-0.000000),PriAxis2=(X=0.020142,Y=0.925501,Z=-0.378210),SecAxis2=(X=0.999150,Y=-0.032244,Z=-0.025693),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=60.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_23" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_23'"
+   DefaultInstance=(JointName="upperarm_r",ConstraintBone1="upperarm_r",ConstraintBone2="clavicle_r",PriAxis1=(X=-1.000000,Y=0.000000,Z=0.000015),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000000),Pos2=(X=-17.809629,Y=-0.000003,Z=0.000438),PriAxis2=(X=-0.897226,Y=-0.042444,Z=0.439528),SecAxis2=(X=-0.021507,Y=0.998389,Z=0.052508),ProfileInstance=(ConeLimit=(Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=35.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_7" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_7'"
+   DefaultInstance=(JointName="lowerarm_r",ConstraintBone1="lowerarm_r",ConstraintBone2="upperarm_r",Pos1=(X=0.000000,Y=0.000000,Z=-0.000000),PriAxis1=(X=0.000019,Y=-0.000012,Z=-1.000000),SecAxis1=(X=-1.000000,Y=-0.000012,Z=-0.000019),Pos2=(X=-27.770691,Y=0.000000,Z=0.000000),PriAxis2=(X=0.000023,Y=0.000003,Z=-1.000000),SecAxis2=(X=-0.358699,Y=-0.933453,Z=-0.000011),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_8" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_8'"
+   DefaultInstance=(JointName="hand_r",ConstraintBone1="hand_r",ConstraintBone2="lowerarm_r",PriAxis1=(X=0.000000,Y=0.000005,Z=1.000000),SecAxis1=(X=-1.000000,Y=-0.000007,Z=0.000000),Pos2=(X=-27.251011,Y=-0.000000,Z=0.000000),PriAxis2=(X=-0.020143,Y=-0.925508,Z=0.378193),SecAxis2=(X=-0.999149,Y=0.032251,Z=0.025707),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=60.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_18" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_18'"
+   DefaultInstance=(JointName="neck_02",ConstraintBone1="neck_02",ConstraintBone2="neck_01",Pos2=(X=5.110260,Y=0.000000,Z=-0.000000),PriAxis2=(X=0.999442,Y=-0.033391,Z=-0.000000),SecAxis2=(X=0.033391,Y=0.999442,Z=0.000002),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_19" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_19'"
+   DefaultInstance=(JointName="head",ConstraintBone1="head",ConstraintBone2="neck_02",Pos2=(X=4.912971,Y=0.000000,Z=0.000000),PriAxis2=(X=0.978580,Y=-0.205866,Z=0.000000),SecAxis2=(X=0.205866,Y=0.978580,Z=-0.000002),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=15.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=30.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_13" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_13'"
+   DefaultInstance=(JointName="calf_l",ConstraintBone1="calf_l",ConstraintBone2="thigh_l",Pos1=(X=0.000000,Y=-0.000000,Z=-0.000000),PriAxis1=(X=-0.000008,Y=-0.000001,Z=1.000000),SecAxis1=(X=-0.500018,Y=-0.866015,Z=-0.000005),Pos2=(X=-43.341309,Y=-0.000000,Z=-0.000000),PriAxis2=(X=-0.000006,Y=0.000001,Z=1.000000),SecAxis2=(X=0.422634,Y=-0.906300,Z=0.000003),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_14" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_14'"
+   DefaultInstance=(JointName="foot_l",ConstraintBone1="foot_l",ConstraintBone2="calf_l",Pos1=(X=-0.000000,Y=0.000000,Z=-0.000000),PriAxis1=(X=0.000005,Y=0.000000,Z=1.000000),SecAxis1=(X=0.000005,Y=1.000000,Z=-0.000000),Pos2=(X=-42.217911,Y=-0.000000,Z=0.000000),PriAxis2=(X=0.053694,Y=-0.002580,Z=0.998554),SecAxis2=(X=-0.458474,Y=0.888299,Z=0.026948),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=35.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_25" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_25'"
+   DefaultInstance=(JointName="calf_r",ConstraintBone1="calf_r",ConstraintBone2="thigh_r",Pos1=(X=0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=0.067525,Y=0.135738,Z=0.988441),SecAxis1=(X=0.459044,Y=0.875388,Z=-0.151573),Pos2=(X=43.341259,Y=0.000000,Z=0.000000),PriAxis2=(X=0.053699,Y=-0.002585,Z=0.998554),SecAxis2=(X=-0.458460,Y=0.888306,Z=0.026955),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1000.000000,Damping=100.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),bDisableCollision=True,AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_11" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_11'"
+   DefaultInstance=(JointName="foot_r",ConstraintBone1="foot_r",ConstraintBone2="calf_r",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=-0.000008,Y=0.000017,Z=1.000000),SecAxis1=(X=-0.000000,Y=-1.000000,Z=0.000017),Pos2=(X=42.217949,Y=-0.000000,Z=0.000000),PriAxis2=(X=0.053682,Y=-0.002562,Z=0.998555),SecAxis2=(X=0.458480,Y=-0.888297,Z=-0.026927),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),TwistLimit=(TwistLimitDegrees=35.000000,TwistMotion=ACM_Limited,Stiffness=500.000000,Damping=50.000000),AngularDrive=(TwistDrive=(Damping=50.000000),SwingDrive=(Damping=50.000000),SlerpDrive=(Damping=50.000000,bEnableVelocityDrive=True))))
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_0" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_0'"
+   BoneNameA="pelvis"
+   BoneNameB="thigh_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_1" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_1'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_2" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_2'"
+   BoneNameA="pelvis"
+   BoneNameB="thigh_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_3" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_3'"
+   BoneNameA="pelvis"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_4" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_4'"
+   BoneNameA="pelvis"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_5" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_5'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_6" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_6'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_7" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_7'"
+   BoneNameA="pelvis"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_8" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_8'"
+   BoneNameA="pelvis"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_9" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_9'"
+   BoneNameA="pelvis"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_10" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_10'"
+   BoneNameA="pelvis"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_11" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_11'"
+   BoneNameA="pelvis"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_12" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_12'"
+   BoneNameA="pelvis"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_13" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_13'"
+   BoneNameA="pelvis"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_14" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_14'"
+   BoneNameA="pelvis"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_15" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_15'"
+   BoneNameA="pelvis"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_16" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_16'"
+   BoneNameA="pelvis"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_17" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_17'"
+   BoneNameA="pelvis"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_18" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_18'"
+   BoneNameA="pelvis"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_19" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_19'"
+   BoneNameA="pelvis"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_20" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_20'"
+   BoneNameA="thigh_l"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_21" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_21'"
+   BoneNameA="thigh_l"
+   BoneNameB="thigh_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_22" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_22'"
+   BoneNameA="thigh_l"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_23" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_23'"
+   BoneNameA="thigh_l"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_24" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_24'"
+   BoneNameA="thigh_l"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_25" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_25'"
+   BoneNameA="thigh_l"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_26" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_26'"
+   BoneNameA="thigh_l"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_27" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_27'"
+   BoneNameA="thigh_l"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_28" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_28'"
+   BoneNameA="thigh_l"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_29" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_29'"
+   BoneNameA="thigh_l"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_30" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_30'"
+   BoneNameA="thigh_l"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_31" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_31'"
+   BoneNameA="thigh_l"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_32" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_32'"
+   BoneNameA="thigh_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_33" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_33'"
+   BoneNameA="thigh_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_34" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_34'"
+   BoneNameA="thigh_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_35" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_35'"
+   BoneNameA="thigh_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_36" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_36'"
+   BoneNameA="thigh_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_37" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_37'"
+   BoneNameA="thigh_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_38" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_38'"
+   BoneNameA="thigh_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_39" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_39'"
+   BoneNameA="thigh_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_40" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_40'"
+   BoneNameA="spine_02"
+   BoneNameB="thigh_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_41" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_41'"
+   BoneNameA="spine_02"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_42" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_42'"
+   BoneNameA="spine_02"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_43" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_43'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_44" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_44'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_45" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_45'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_46" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_46'"
+   BoneNameA="spine_02"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_47" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_47'"
+   BoneNameA="spine_02"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_48" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_48'"
+   BoneNameA="spine_02"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_49" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_49'"
+   BoneNameA="spine_02"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_50" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_50'"
+   BoneNameA="spine_02"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_51" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_51'"
+   BoneNameA="spine_02"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_52" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_52'"
+   BoneNameA="spine_02"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_53" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_53'"
+   BoneNameA="spine_02"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_54" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_54'"
+   BoneNameA="spine_02"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_55" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_55'"
+   BoneNameA="spine_02"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_56" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_56'"
+   BoneNameA="spine_02"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_57" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_57'"
+   BoneNameA="spine_02"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_58" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_58'"
+   BoneNameA="spine_02"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_59" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_59'"
+   BoneNameA="thigh_r"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_60" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_60'"
+   BoneNameA="thigh_r"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_61" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_61'"
+   BoneNameA="thigh_r"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_62" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_62'"
+   BoneNameA="thigh_r"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_63" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_63'"
+   BoneNameA="thigh_r"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_64" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_64'"
+   BoneNameA="thigh_r"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_65" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_65'"
+   BoneNameA="thigh_r"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_66" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_66'"
+   BoneNameA="thigh_r"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_67" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_67'"
+   BoneNameA="thigh_r"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_68" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_68'"
+   BoneNameA="thigh_r"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_69" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_69'"
+   BoneNameA="thigh_r"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_70" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_70'"
+   BoneNameA="thigh_r"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_71" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_71'"
+   BoneNameA="thigh_r"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_72" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_72'"
+   BoneNameA="thigh_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_73" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_73'"
+   BoneNameA="thigh_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_74" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_74'"
+   BoneNameA="thigh_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_75" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_75'"
+   BoneNameA="thigh_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_76" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_76'"
+   BoneNameA="calf_l"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_77" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_77'"
+   BoneNameA="calf_l"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_78" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_78'"
+   BoneNameA="calf_l"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_79" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_79'"
+   BoneNameA="calf_l"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_80" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_80'"
+   BoneNameA="calf_l"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_81" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_81'"
+   BoneNameA="calf_l"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_82" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_82'"
+   BoneNameA="calf_l"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_83" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_83'"
+   BoneNameA="calf_l"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_84" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_84'"
+   BoneNameA="calf_l"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_85" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_85'"
+   BoneNameA="calf_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_86" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_86'"
+   BoneNameA="calf_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_87" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_87'"
+   BoneNameA="calf_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_88" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_88'"
+   BoneNameA="calf_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_89" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_89'"
+   BoneNameA="calf_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_90" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_90'"
+   BoneNameA="calf_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_91" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_91'"
+   BoneNameA="calf_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_92" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_92'"
+   BoneNameA="calf_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_93" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_93'"
+   BoneNameA="calf_r"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_94" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_94'"
+   BoneNameA="calf_r"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_95" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_95'"
+   BoneNameA="calf_r"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_96" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_96'"
+   BoneNameA="calf_r"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_97" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_97'"
+   BoneNameA="calf_r"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_98" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_98'"
+   BoneNameA="calf_r"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_99" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_99'"
+   BoneNameA="calf_r"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_100" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_100'"
+   BoneNameA="calf_r"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_101" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_101'"
+   BoneNameA="calf_r"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_102" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_102'"
+   BoneNameA="calf_r"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_103" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_103'"
+   BoneNameA="calf_r"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_104" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_104'"
+   BoneNameA="calf_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_105" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_105'"
+   BoneNameA="calf_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_106" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_106'"
+   BoneNameA="calf_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_107" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_107'"
+   BoneNameA="calf_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_108" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_108'"
+   BoneNameA="calf_r"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_109" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_109'"
+   BoneNameA="spine_03"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_110" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_110'"
+   BoneNameA="spine_03"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_111" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_111'"
+   BoneNameA="spine_03"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_112" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_112'"
+   BoneNameA="spine_03"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_113" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_113'"
+   BoneNameA="spine_03"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_114" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_114'"
+   BoneNameA="spine_03"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_115" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_115'"
+   BoneNameA="spine_03"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_116" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_116'"
+   BoneNameA="spine_03"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_117" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_117'"
+   BoneNameA="spine_03"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_118" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_118'"
+   BoneNameA="spine_03"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_119" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_119'"
+   BoneNameA="spine_03"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_120" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_120'"
+   BoneNameA="spine_03"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_121" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_121'"
+   BoneNameA="spine_03"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_122" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_122'"
+   BoneNameA="spine_03"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_123" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_123'"
+   BoneNameA="spine_03"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_124" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_124'"
+   BoneNameA="spine_04"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_125" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_125'"
+   BoneNameA="spine_04"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_126" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_126'"
+   BoneNameA="spine_04"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_127" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_127'"
+   BoneNameA="spine_04"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_128" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_128'"
+   BoneNameA="spine_04"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_129" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_129'"
+   BoneNameA="spine_04"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_130" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_130'"
+   BoneNameA="spine_04"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_131" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_131'"
+   BoneNameA="spine_04"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_132" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_132'"
+   BoneNameA="spine_04"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_133" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_133'"
+   BoneNameA="spine_04"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_134" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_134'"
+   BoneNameA="spine_04"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_135" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_135'"
+   BoneNameA="spine_04"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_136" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_136'"
+   BoneNameA="spine_04"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_137" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_137'"
+   BoneNameA="spine_04"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_138" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_138'"
+   BoneNameA="spine_05"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_139" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_139'"
+   BoneNameA="spine_05"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_140" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_140'"
+   BoneNameA="spine_05"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_141" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_141'"
+   BoneNameA="spine_05"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_142" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_142'"
+   BoneNameA="spine_05"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_143" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_143'"
+   BoneNameA="spine_05"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_144" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_144'"
+   BoneNameA="spine_05"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_145" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_145'"
+   BoneNameA="spine_05"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_146" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_146'"
+   BoneNameA="spine_05"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_147" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_147'"
+   BoneNameA="spine_05"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_148" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_148'"
+   BoneNameA="spine_05"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_149" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_149'"
+   BoneNameA="spine_05"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_150" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_150'"
+   BoneNameA="neck_01"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_151" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_151'"
+   BoneNameA="neck_01"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_152" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_152'"
+   BoneNameA="neck_01"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_153" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_153'"
+   BoneNameA="neck_01"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_154" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_154'"
+   BoneNameA="neck_01"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_155" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_155'"
+   BoneNameA="neck_01"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_156" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_156'"
+   BoneNameA="neck_01"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_157" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_157'"
+   BoneNameA="neck_01"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_158" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_158'"
+   BoneNameA="neck_01"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_159" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_159'"
+   BoneNameA="neck_01"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_160" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_160'"
+   BoneNameA="neck_01"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_161" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_161'"
+   BoneNameA="neck_01"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_162" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_162'"
+   BoneNameA="clavicle_r"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_163" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_163'"
+   BoneNameA="clavicle_r"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_164" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_164'"
+   BoneNameA="clavicle_r"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_165" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_165'"
+   BoneNameA="clavicle_r"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_166" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_166'"
+   BoneNameA="clavicle_r"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_167" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_167'"
+   BoneNameA="clavicle_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_168" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_168'"
+   BoneNameA="clavicle_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_169" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_169'"
+   BoneNameA="clavicle_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_170" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_170'"
+   BoneNameA="clavicle_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_171" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_171'"
+   BoneNameA="clavicle_r"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_172" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_172'"
+   BoneNameA="clavicle_l"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_173" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_173'"
+   BoneNameA="clavicle_l"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_174" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_174'"
+   BoneNameA="clavicle_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_175" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_175'"
+   BoneNameA="clavicle_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_176" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_176'"
+   BoneNameA="clavicle_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_177" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_177'"
+   BoneNameA="clavicle_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_178" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_178'"
+   BoneNameA="clavicle_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_179" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_179'"
+   BoneNameA="clavicle_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_180" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_180'"
+   BoneNameA="clavicle_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_181" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_181'"
+   BoneNameA="clavicle_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_182" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_182'"
+   BoneNameA="upperarm_l"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_183" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_183'"
+   BoneNameA="upperarm_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_184" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_184'"
+   BoneNameA="upperarm_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_185" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_185'"
+   BoneNameA="upperarm_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_186" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_186'"
+   BoneNameA="upperarm_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_187" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_187'"
+   BoneNameA="upperarm_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_188" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_188'"
+   BoneNameA="upperarm_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_189" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_189'"
+   BoneNameA="upperarm_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_190" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_190'"
+   BoneNameA="upperarm_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_191" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_191'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_192" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_192'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_193" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_193'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_194" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_194'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_195" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_195'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_196" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_196'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_197" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_197'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_198" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_198'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_199" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_199'"
+   BoneNameA="hand_l"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_200" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_200'"
+   BoneNameA="hand_l"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_201" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_201'"
+   BoneNameA="hand_l"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_202" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_202'"
+   BoneNameA="hand_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_203" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_203'"
+   BoneNameA="hand_l"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_204" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_204'"
+   BoneNameA="hand_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_205" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_205'"
+   BoneNameA="hand_l"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_206" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_206'"
+   BoneNameA="upperarm_r"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_207" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_207'"
+   BoneNameA="upperarm_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_208" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_208'"
+   BoneNameA="upperarm_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_209" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_209'"
+   BoneNameA="upperarm_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_210" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_210'"
+   BoneNameA="upperarm_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_211" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_211'"
+   BoneNameA="upperarm_r"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_212" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_212'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_213" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_213'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_214" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_214'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_215" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_215'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_216" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_216'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_217" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_217'"
+   BoneNameA="hand_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_218" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_218'"
+   BoneNameA="hand_r"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_219" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_219'"
+   BoneNameA="hand_r"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_220" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_220'"
+   BoneNameA="hand_r"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_221" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_221'"
+   BoneNameA="neck_02"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_222" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_222'"
+   BoneNameA="neck_02"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_223" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_223'"
+   BoneNameA="neck_02"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_224" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_224'"
+   BoneNameA="head"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_225" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_225'"
+   BoneNameA="head"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_226" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_226'"
+   BoneNameA="foot_l"
+   BoneNameB="foot_r"
+End Object

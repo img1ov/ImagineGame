@@ -1,0 +1,20 @@
+import unreal, toolset_registry
+from pathlib import Path
+
+@unreal.uclass()
+class CodexPhysicsParityTools(unreal.ToolsetDefinition):
+    """Temporary tools limited to the current PA migration and verification."""
+    @toolset_registry.tool_call
+    @staticmethod
+    def run_stage(stage: str) -> str:
+        """Run one named stage of this physics asset migration."""
+        allowed = {'inspect_live','inspect_api','prepare_source','prepare_target','apply_target','verify_target','cleanup_source'}
+        if stage not in allowed: raise ValueError('Unknown stage')
+        path=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')/(stage+'.py')
+        scope={'__file__':str(path),'__name__':'__main__'}
+        exec(compile(path.read_text(encoding='utf-8'),str(path),'exec'),scope)
+        return 'Completed '+stage+' in '+unreal.Paths.project_dir()
+
+unreal.ToolsetRegistry.register_toolset_class(CodexPhysicsParityTools)
+unreal.SystemLibrary.execute_console_command(None,'ModelContextProtocol.RefreshTools')
+print('PHYSICS_PARITY_TOOLS_REGISTERED')

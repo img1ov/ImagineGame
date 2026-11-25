@@ -1,0 +1,456 @@
+Begin Object Class=/Script/Engine.PhysicsAsset Name="PA_Mannequin_PC" ExportPath="/Script/Engine.PhysicsAsset'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC'"
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_56" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_56'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_55" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_55'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_54" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_54'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_53" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_53'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_52" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_52'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_51" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_51'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_50" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_50'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_49" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_49'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_48" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_48'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_47" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_47'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_46" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_46'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_45" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_45'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_44" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_44'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_43" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_43'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_42" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_42'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_41" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_41'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_40" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_40'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_39" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_39'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_21" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_21'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_20" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_20'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_19" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_19'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_18" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_18'"
+   End Object
+   Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_0" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_0'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_54" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_54'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_53" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_53'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_52" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_52'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_51" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_51'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_50" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_50'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_49" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_49'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_47" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_47'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_46" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_46'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_45" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_45'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_44" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_44'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_43" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_43'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_42" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_42'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_41" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_41'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_40" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_40'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_39" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_39'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_38" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_38'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_37" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_37'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_36" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_36'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_35" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_35'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_34" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_34'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_1" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_1'"
+   End Object
+   Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_0" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_0'"
+   End Object
+   Begin Object Name="SkeletalBodySetup_56" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_56'"
+      AggGeom=(BoxElems=((Center=(X=5.037523,Y=-6.590595,Z=0.004447),Rotation=(Pitch=0.000000,Yaw=0.000000,Roll=-180.000000),X=7.000000,Y=21.000000,Z=10.000000,Name="foot_l_box")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=1.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="foot_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_55" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_55'"
+      AggGeom=(SphylElems=((Center=(X=20.701659,Y=-0.000069,Z=0.500000),Rotation=(Pitch=-90.000000,Yaw=179.999945,Roll=-0.000136),Radius=6.250000,Length=29.500000,Name="calf_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=3.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="calf_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_54" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_54'"
+      AggGeom=(SphylElems=((Center=(X=19.467789,Y=-0.000084,Z=1.000000),Rotation=(Pitch=-87.248239,Yaw=-179.999731,Roll=-0.000891),Radius=7.750000,Length=30.750000,Name="thigh_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=6.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="thigh_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_53" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_53'"
+      AggGeom=(BoxElems=((Center=(X=-5.037523,Y=6.590595,Z=-0.004447),X=7.000000,Y=21.000000,Z=10.000000,Name="foot_l_box")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=1.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="foot_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_52" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_52'"
+      AggGeom=(SphylElems=((Center=(X=-20.701659,Y=0.000069,Z=-0.500000),Rotation=(Pitch=-90.000000,Yaw=179.999945,Roll=179.999864),Radius=6.250000,Length=29.500000,Name="calf_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=3.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="calf_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_51" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_51'"
+      AggGeom=(SphylElems=((Center=(X=-19.467789,Y=0.000084,Z=-1.000000),Rotation=(Pitch=-87.248238,Yaw=-179.998239,Roll=179.996543),Radius=7.750000,Length=30.750000,Name="thigh_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=6.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="thigh_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_50" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_50'"
+      AggGeom=(SphylElems=((Center=(X=3.499701,Y=1.948775,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=-165.963757,Roll=153.709419),Radius=7.500000,Length=5.000000,Name="head_capsule")))
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=2.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="head"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_49" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_49'"
+      AggGeom=(SphylElems=((Center=(X=2.262991,Y=-0.000008,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=-0.000192,Roll=0.000000),Radius=4.500000,Length=2.000000,Name="neck_01_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=2.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="neck_01"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_48" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_48'"
+      AggGeom=(BoxElems=((Center=(X=-7.376474,Y=0.000000,Z=-0.000000),Rotation=(Pitch=3.156055,Yaw=-0.197090,Roll=172.928549),X=14.500000,Y=5.500000,Z=9.500000,Name="hand_l_box")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=0.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="hand_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_47" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_47'"
+      AggGeom=(SphylElems=((Center=(X=-10.527511,Y=-0.000028,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=179.240418,Roll=0.759737),Radius=4.750000,Length=18.250000,Name="lowerarm_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=1.200000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="lowerarm_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_46" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_46'"
+      AggGeom=(SphylElems=((Center=(X=-11.711105,Y=-0.000028,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=172.447647,Roll=7.552488),Radius=5.750000,Length=22.250000,Name="upperarm_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=1.800000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="upperarm_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_45" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_45'"
+      AggGeom=(SphylElems=((Center=(X=-8.442270,Y=0.000060,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=172.447566,Roll=7.552025),Radius=6.750000,Length=9.750000,Name="clavicle_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=2.250000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="clavicle_r"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_44" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_44'"
+      AggGeom=(BoxElems=((Center=(X=7.376474,Y=-0.000000,Z=0.000000),X=14.500000,Y=5.500000,Z=9.500000,Name="hand_l_box")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=0.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="hand_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_43" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_43'"
+      AggGeom=(SphylElems=((Center=(X=10.527511,Y=0.000028,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=174.948869,Roll=-174.948714),Radius=4.750000,Length=18.250000,Name="lowerarm_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=1.200000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="lowerarm_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_42" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_42'"
+      AggGeom=(SphylElems=((Center=(X=11.711105,Y=0.000028,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=160.528736,Roll=-160.528601),Radius=5.750000,Length=22.250000,Name="upperarm_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=1.800000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="upperarm_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_41" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_41'"
+      AggGeom=(SphylElems=((Center=(X=8.442270,Y=-0.000060,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=160.528809,Roll=-160.529218),Radius=6.750000,Length=9.750000,Name="clavicle_l_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=2.250000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="clavicle_l"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_40" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_40'"
+      AggGeom=(SphylElems=((Center=(X=-2.971616,Y=0.000000,Z=-0.000000),Radius=12.750000,Length=9.250000,Name="spine_05_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="spine_05"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_39" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_39'"
+      AggGeom=(SphylElems=((Center=(X=-0.000000,Y=0.818655,Z=-0.000000),Radius=14.000000,Length=4.750000,Name="spine_04_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="spine_04"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_21" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_21'"
+      AggGeom=(SphylElems=((Center=(X=0.000000,Y=1.182968,Z=-0.000000),Radius=12.250000,Length=3.500000,Name="spine_03_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="spine_03"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_20" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_20'"
+      AggGeom=(SphylElems=((Radius=11.750000,Length=3.500000,Name="spine_02_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="spine_02"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_19" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_19'"
+      AggGeom=(SphylElems=((Radius=12.000000,Length=3.750000,Name="spine_01_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="spine_01"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_18" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_18'"
+      AggGeom=(SphylElems=((Radius=13.000000,Length=5.000000,Name="pelvis_capsule")))
+      PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC.PM_Mannequin_PC'"
+      DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+      BoneName="pelvis"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="SkeletalBodySetup_0" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:SkeletalBodySetup_0'"
+      AggGeom=(SphylElems=((Center=(X=0.214567,Y=0.334526,Z=0.000000),Rotation=(Pitch=-0.000006,Yaw=-90.000138,Roll=-90.000009),Radius=4.447881,Length=1.285229,Name="neck_02_capsule")))
+      DefaultInstance=(bUseCCD=True)
+      BoneName="neck_02"
+      CollisionTraceFlag=CTF_UseSimpleAsComplex
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_54" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_54'"
+      DefaultInstance=(JointName="foot_r",ConstraintBone1="foot_r",ConstraintBone2="calf_r",PriAxis1=(X=0.000000,Y=0.000001,Z=1.000000),SecAxis1=(X=-0.000006,Y=-1.000000,Z=0.000001),Pos2=(X=42.217950,Y=-0.000008,Z=-0.000000),PriAxis2=(X=0.053690,Y=-0.002578,Z=0.998554),SecAxis2=(X=0.127422,Y=-0.991804,Z=-0.009412),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_53" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_53'"
+      DefaultInstance=(JointName="calf_r",ConstraintBone1="calf_r",ConstraintBone2="thigh_r",PriAxis1=(X=-0.000000,Y=0.000001,Z=1.000000),SecAxis1=(X=1.000000,Y=-0.000004,Z=0.000000),Pos2=(X=43.341263,Y=-0.000023,Z=-0.000015),PriAxis2=(X=0.000001,Y=0.000003,Z=1.000000),SecAxis2=(X=0.422550,Y=0.906340,Z=-0.000003),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_52" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_52'"
+      DefaultInstance=(JointName="thigh_r",ConstraintBone1="thigh_r",ConstraintBone2="pelvis",PriAxis1=(X=1.000000,Y=0.000002,Z=0.000000),SecAxis1=(X=0.000002,Y=-1.000000,Z=0.000000),Pos2=(X=-2.365726,Y=0.119487,Z=9.969091),PriAxis2=(X=-0.797797,Y=0.587474,Z=0.135624),SecAxis2=(X=0.599634,Y=0.796580,Z=0.076803),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=80.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_51" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_51'"
+      DefaultInstance=(JointName="UserConstraint_13",ConstraintBone1="foot_l",ConstraintBone2="calf_l",PriAxis1=(X=-0.000000,Y=0.000004,Z=-1.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000004),Pos2=(X=-42.217915,Y=0.000008,Z=0.000001),PriAxis2=(X=-0.053691,Y=0.002583,Z=-0.998554),SecAxis2=(X=-0.127422,Y=0.991804,Z=0.009417),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_50" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_50'"
+      DefaultInstance=(JointName="UserConstraint_12",ConstraintBone1="calf_l",ConstraintBone2="thigh_l",PriAxis1=(X=-0.000000,Y=0.000004,Z=-1.000000),SecAxis1=(X=-1.000000,Y=0.000004,Z=0.000000),Pos2=(X=-43.341308,Y=0.000023,Z=0.000015),PriAxis2=(X=-0.000001,Y=0.000001,Z=-1.000000),SecAxis2=(X=-0.422553,Y=-0.906338,Z=-0.000001),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_49" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_49'"
+      DefaultInstance=(JointName="UserConstraint_11",ConstraintBone1="thigh_l",ConstraintBone2="pelvis",PriAxis1=(X=-1.000000,Y=-0.000002,Z=0.000000),SecAxis1=(X=-0.000002,Y=1.000000,Z=0.000000),Pos2=(X=-2.365712,Y=0.110043,Z=-9.969203),PriAxis2=(X=-0.797789,Y=0.587486,Z=-0.135625),SecAxis2=(X=0.599646,Y=0.796571,Z=-0.076801),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=80.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_47" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_47'"
+      DefaultInstance=(JointName="UserConstraint_9",ConstraintBone1="neck_01",ConstraintBone2="spine_05",Pos2=(X=11.887765,Y=-0.000014,Z=0.000000),PriAxis2=(X=0.929895,Y=0.367825,Z=-0.000000),SecAxis2=(X=-0.367825,Y=0.929895,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=30.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_46" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_46'"
+      DefaultInstance=(JointName="hand_r",ConstraintBone1="hand_r",ConstraintBone2="lowerarm_r",PriAxis1=(X=0.000005,Y=-0.000003,Z=1.000000),SecAxis1=(X=-1.000000,Y=0.000003,Z=0.000005),Pos2=(X=-27.251011,Y=0.000017,Z=-0.000007),PriAxis2=(X=-0.020129,Y=-0.925511,Z=0.378184),SecAxis2=(X=-0.926581,Y=0.159356,Z=0.340665),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=50.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=100.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_45" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_45'"
+      DefaultInstance=(JointName="lowerarm_r",ConstraintBone1="lowerarm_r",ConstraintBone2="upperarm_r",PriAxis1=(X=0.000002,Y=0.000004,Z=-1.000000),SecAxis1=(X=-1.000000,Y=-0.000008,Z=-0.000002),Pos2=(X=-27.770694,Y=0.000020,Z=0.000002),PriAxis2=(X=-0.000000,Y=0.000006,Z=-1.000000),SecAxis2=(X=-0.358704,Y=-0.933452,Z=-0.000006),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_44" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_44'"
+      DefaultInstance=(JointName="upperarm_r",ConstraintBone1="upperarm_r",ConstraintBone2="clavicle_r",PriAxis1=(X=-1.000000,Y=-0.000002,Z=-0.000000),SecAxis1=(X=0.000002,Y=-1.000000,Z=0.000002),Pos2=(X=-17.809625,Y=-0.000016,Z=0.000427),PriAxis2=(X=-0.588777,Y=-0.544893,Z=0.597021),SecAxis2=(X=0.364769,Y=-0.838246,Z=-0.405324),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=100.000000,Swing2LimitDegrees=100.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_43" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_43'"
+      DefaultInstance=(JointName="clavicle_r",ConstraintBone1="clavicle_r",ConstraintBone2="spine_05",PriAxis1=(X=-1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=-1.000000,Z=0.000002),Pos2=(X=5.516218,Y=-1.314818,Z=1.427873),PriAxis2=(X=0.029068,Y=-0.041330,Z=0.998722),SecAxis2=(X=-0.179321,Y=0.982719,Z=0.045887),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_42" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_42'"
+      DefaultInstance=(JointName="UserConstraint_8",ConstraintBone1="hand_l",ConstraintBone2="lowerarm_l",PriAxis1=(X=-0.000007,Y=-0.000000,Z=-1.000000),SecAxis1=(X=1.000000,Y=-0.000002,Z=-0.000007),Pos2=(X=27.251074,Y=-0.000017,Z=0.000006),PriAxis2=(X=0.020133,Y=0.925511,Z=-0.378187),SecAxis2=(X=0.926581,Y=-0.159360,Z=-0.340664),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=50.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=100.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_41" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_41'"
+      DefaultInstance=(JointName="UserConstraint_7",ConstraintBone1="lowerarm_l",ConstraintBone2="upperarm_l",PriAxis1=(X=0.000001,Y=-0.000002,Z=1.000000),SecAxis1=(X=1.000000,Y=0.000001,Z=-0.000001),Pos2=(X=27.771139,Y=-0.000020,Z=-0.000002),PriAxis2=(X=0.000001,Y=-0.000003,Z=1.000000),SecAxis2=(X=0.358710,Y=0.933449,Z=0.000003),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_40" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_40'"
+      DefaultInstance=(JointName="UserConstraint_6",ConstraintBone1="upperarm_l",ConstraintBone2="clavicle_l",Pos2=(X=17.809523,Y=0.000014,Z=0.000011),PriAxis2=(X=0.588778,Y=0.544892,Z=-0.597020),SecAxis2=(X=-0.364768,Y=0.838247,Z=0.405325),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=100.000000,Swing2LimitDegrees=100.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_39" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_39'"
+      DefaultInstance=(JointName="UserConstraint_5",ConstraintBone1="clavicle_l",ConstraintBone2="spine_05",Pos2=(X=5.516267,Y=-1.314773,Z=-1.427904),PriAxis2=(X=0.029067,Y=-0.041331,Z=-0.998722),SecAxis2=(X=-0.179320,Y=0.982720,Z=-0.045887),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_38" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_38'"
+      DefaultInstance=(JointName="UserConstraint_4",ConstraintBone1="spine_05",ConstraintBone2="spine_04",Pos2=(X=19.439800,Y=-0.000009,Z=-0.000014),PriAxis2=(X=0.999930,Y=-0.011893,Z=-0.000001),SecAxis2=(X=0.011893,Y=0.999930,Z=0.000008),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_37" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_37'"
+      DefaultInstance=(JointName="UserConstraint_3",ConstraintBone1="spine_04",ConstraintBone2="spine_03",Pos2=(X=8.523894,Y=-0.000012,Z=0.000000),PriAxis2=(X=0.994762,Y=-0.102220,Z=0.000001),SecAxis2=(X=0.102220,Y=0.994762,Z=-0.000008),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_36" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_36'"
+      DefaultInstance=(JointName="UserConstraint_2",ConstraintBone1="spine_03",ConstraintBone2="spine_02",Pos2=(X=7.238228,Y=0.000008,Z=0.000000),PriAxis2=(X=0.995543,Y=-0.094317,Z=-0.000000),SecAxis2=(X=0.094317,Y=0.995543,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_35" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_35'"
+      DefaultInstance=(JointName="UserConstraint_1",ConstraintBone1="spine_02",ConstraintBone2="spine_01",Pos2=(X=6.795057,Y=0.000008,Z=0.000000),PriAxis2=(X=0.998665,Y=0.051669,Z=-0.000000),SecAxis2=(X=-0.051669,Y=0.998665,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_34" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_34'"
+      DefaultInstance=(JointName="UserConstraint_0",ConstraintBone1="spine_01",ConstraintBone2="pelvis",PriAxis1=(X=1.000000,Y=-0.000005,Z=-0.000000),SecAxis1=(X=0.000005,Y=1.000000,Z=0.000000),Pos2=(X=3.677054,Y=0.000001,Z=0.000000),PriAxis2=(X=0.952769,Y=0.303697,Z=-0.000000),SecAxis2=(X=-0.303697,Y=0.952769,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_1" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_1'"
+      DefaultInstance=(JointName="UserConstraint_10",ConstraintBone1="head",ConstraintBone2="neck_02",Pos2=(X=4.912971,Y=-0.000002,Z=-0.000001),PriAxis2=(X=0.978580,Y=-0.205866,Z=0.000000),SecAxis2=(X=0.205866,Y=0.978580,Z=-0.000001),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="Expanded")
+   End Object
+   Begin Object Name="PhysicsConstraintTemplate_0" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.PA_Mannequin_PC:PhysicsConstraintTemplate_0'"
+      DefaultInstance=(JointName="UserConstraint",ConstraintBone1="neck_02",ConstraintBone2="neck_01",Pos2=(X=5.110259,Y=-0.000001,Z=0.000000),PriAxis2=(X=0.999443,Y=-0.033391,Z=0.000000),SecAxis2=(X=0.033391,Y=0.999443,Z=0.000001),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True),LimitViolationResponse=WidenLimits)))
+      ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="NoLimit")
+      ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=25.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="Expanded")
+   End Object
+   PreviewSkeletalMesh="/Game/Characters/Heroes/Mannequin/Meshes/SKM_Manny.SKM_Manny"
+   ConstraintProfiles(0)="NoLimit"
+   ConstraintProfiles(1)="Expanded"
+   EditorBodyFlags(0)=0
+   EditorBodyFlags(1)=0
+   EditorBodyFlags(2)=0
+   EditorBodyFlags(3)=0
+   EditorBodyFlags(4)=0
+   EditorBodyFlags(5)=0
+   EditorBodyFlags(6)=0
+   EditorBodyFlags(7)=0
+   EditorBodyFlags(8)=0
+   EditorBodyFlags(9)=0
+   EditorBodyFlags(10)=0
+   EditorBodyFlags(11)=0
+   EditorBodyFlags(12)=0
+   EditorBodyFlags(13)=0
+   EditorBodyFlags(14)=0
+   EditorBodyFlags(15)=0
+   EditorBodyFlags(16)=0
+   EditorBodyFlags(17)=0
+   EditorBodyFlags(18)=0
+   EditorBodyFlags(19)=0
+   EditorBodyFlags(20)=0
+   EditorBodyFlags(21)=0
+   EditorBodyFlags(22)=0
+   BoundsBodies(0)=0
+   BoundsBodies(1)=1
+   BoundsBodies(2)=2
+   BoundsBodies(3)=3
+   BoundsBodies(4)=4
+   BoundsBodies(5)=5
+   BoundsBodies(6)=6
+   BoundsBodies(7)=7
+   BoundsBodies(8)=8
+   BoundsBodies(9)=9
+   BoundsBodies(10)=10
+   BoundsBodies(11)=11
+   BoundsBodies(12)=12
+   BoundsBodies(13)=13
+   BoundsBodies(14)=14
+   BoundsBodies(15)=15
+   BoundsBodies(16)=16
+   BoundsBodies(17)=17
+   BoundsBodies(18)=18
+   BoundsBodies(19)=19
+   BoundsBodies(20)=20
+   BoundsBodies(21)=21
+   BoundsBodies(22)=22
+   SkeletalBodySetups(0)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_18'"
+   SkeletalBodySetups(1)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_19'"
+   SkeletalBodySetups(2)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_20'"
+   SkeletalBodySetups(3)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_21'"
+   SkeletalBodySetups(4)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_39'"
+   SkeletalBodySetups(5)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_40'"
+   SkeletalBodySetups(6)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_41'"
+   SkeletalBodySetups(7)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_42'"
+   SkeletalBodySetups(8)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_43'"
+   SkeletalBodySetups(9)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_44'"
+   SkeletalBodySetups(10)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_45'"
+   SkeletalBodySetups(11)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_46'"
+   SkeletalBodySetups(12)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_47'"
+   SkeletalBodySetups(13)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_48'"
+   SkeletalBodySetups(14)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_49'"
+   SkeletalBodySetups(15)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_50'"
+   SkeletalBodySetups(16)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_51'"
+   SkeletalBodySetups(17)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_52'"
+   SkeletalBodySetups(18)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_53'"
+   SkeletalBodySetups(19)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_54'"
+   SkeletalBodySetups(20)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_55'"
+   SkeletalBodySetups(21)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_56'"
+   SkeletalBodySetups(22)="/Script/Engine.SkeletalBodySetup'SkeletalBodySetup_0'"
+   ConstraintSetup(0)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_34'"
+   ConstraintSetup(1)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_35'"
+   ConstraintSetup(2)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_36'"
+   ConstraintSetup(3)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_37'"
+   ConstraintSetup(4)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_38'"
+   ConstraintSetup(5)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_39'"
+   ConstraintSetup(6)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_40'"
+   ConstraintSetup(7)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_41'"
+   ConstraintSetup(8)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_42'"
+   ConstraintSetup(9)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_43'"
+   ConstraintSetup(10)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_44'"
+   ConstraintSetup(11)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_45'"
+   ConstraintSetup(12)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_46'"
+   ConstraintSetup(13)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_47'"
+   ConstraintSetup(14)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_49'"
+   ConstraintSetup(15)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_50'"
+   ConstraintSetup(16)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_51'"
+   ConstraintSetup(17)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_52'"
+   ConstraintSetup(18)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_53'"
+   ConstraintSetup(19)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_54'"
+   ConstraintSetup(20)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_0'"
+   ConstraintSetup(21)="/Script/Engine.PhysicsConstraintTemplate'PhysicsConstraintTemplate_1'"
+   SolverSettings=(bUseManifolds=False)
+End Object

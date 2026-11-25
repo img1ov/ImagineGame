@@ -1,0 +1,31 @@
+import unreal, json, re
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+assert 'ImagineGame/' in unreal.Paths.project_dir()
+final=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC')
+pm=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC')
+for match in re.finditer(r'Begin Object Name="(SkeletalBodySetup_[^"]+)"(.*?)End Object',(root/'source_pa.t3d').read_text(encoding='utf-8'),re.S):
+    body=unreal.load_object(None,final.get_path_name()+':'+match.group(1))
+    expected=pm if 'PhysMaterial=' in match.group(2) else None
+    if body.get_editor_property('PhysMaterial')!=expected:
+        body.modify()
+        final.modify()
+        body.set_editor_property('PhysMaterial',expected)
+assert unreal.EditorAssetLibrary.save_loaded_asset(final,False)
+registry=unreal.AssetRegistryHelpers.get_asset_registry()
+deps=list(registry.get_dependencies(unreal.Name('/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC'),unreal.AssetRegistryDependencyOptions()))
+assert not any('__CodexPhysicsParity' in str(d) or '/UEFN_Mannequin/' in str(d) for d in deps),str(deps)
+removed=[]
+for path in ['/Game/__CodexPhysicsParity/PA_Mannequin_PC','/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin','/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin']:
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        refs=list(unreal.EditorAssetLibrary.find_package_referencers_for_asset(path,True))
+        assert not refs,(path,refs)
+        assert unreal.EditorAssetLibrary.delete_asset(path),path
+        removed.append(path)
+pca=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin')
+task=unreal.AssetExportTask()
+task.set_editor_properties(dict(object=pca,filename=str(root/'target_pca_after.t3d'),automated=True,prompt=False,replace_identical=True,exporter=unreal.ObjectExporterT3D()))
+assert unreal.Exporter.run_asset_export_task(task)
+out={'removed':removed,'dependencies':[str(d) for d in deps],'dirty_packages':[p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]}
+(root/'cleanup.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+print('CLEANUP_COMPLETE',out)

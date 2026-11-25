@@ -1,0 +1,26 @@
+import unreal, json, shutil, re
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+project=Path('D:/Application/UnrealProjects/ImagineGame')
+assert 'ImagineGame/' in unreal.Paths.project_dir()
+backup=root/'backup'
+backup.mkdir(exist_ok=True)
+for relative in ['Content/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.uasset','Content/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin.uasset','Config/DefaultEngine.ini']:
+    file=project/relative
+    dest=backup/file.name
+    if not dest.exists(): shutil.copy2(file,dest)
+pa=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC')
+out={'referencers':list(unreal.EditorAssetLibrary.find_package_referencers_for_asset(pa.get_path_name(),True)),'call_method':pa.call_method.__doc__}
+mesh=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Meshes/SKM_Manny')
+skeleton=mesh.get_editor_property('skeleton')
+pose=unreal.AnimPoseExtensions.get_reference_pose(skeleton)
+source_text=(root/'source_pa.t3d').read_text(encoding='utf-8')
+bones=re.findall(r'BoneName="([^"]+)"',source_text)
+out['skeleton']=skeleton.get_path_name()
+out['bone_pose']={name:unreal.AnimPoseExtensions.get_bone_pose(pose,name,unreal.AnimPoseSpaces.LOCAL).export_text() for name in bones}
+out['bone_pose_world']={name:unreal.AnimPoseExtensions.get_bone_pose(pose,name,unreal.AnimPoseSpaces.WORLD).export_text() for name in bones}
+out['system_class_path']=unreal.SystemLibrary.static_class().get_path_name()
+out['dirty_packages']=[p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+out['component_methods']=[n for n in dir(unreal.SkeletalMeshComponent) if any(k in n for k in ['bone_transform','ref_pose','reference_pose','socket_transform'])]
+(root/'target_prepared.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+print('TARGET_BACKED_UP',out['referencers'])

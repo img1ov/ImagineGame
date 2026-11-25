@@ -1,0 +1,541 @@
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_18" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_18'"
+   AggGeom=(SphylElems=((Radius=13.000000,Length=5.000000,Name="pelvis_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="pelvis"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_19" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_19'"
+   AggGeom=(SphylElems=((Radius=12.000000,Length=3.750000,Name="spine_01_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="spine_01"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_51" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_51'"
+   AggGeom=(SphylElems=((Center=(X=-19.467789,Y=0.000084,Z=-1.000000),Rotation=(Pitch=-87.248238,Yaw=-179.998239,Roll=179.996543),Radius=7.750000,Length=30.750000,Name="thigh_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=6.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="thigh_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_54" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_54'"
+   AggGeom=(SphylElems=((Center=(X=19.467789,Y=-0.000084,Z=1.000000),Rotation=(Pitch=-87.248239,Yaw=-179.999731,Roll=-0.000891),Radius=7.750000,Length=30.750000,Name="thigh_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=6.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="thigh_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_20" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_20'"
+   AggGeom=(SphylElems=((Radius=11.750000,Length=3.500000,Name="spine_02_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="spine_02"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_21" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_21'"
+   AggGeom=(SphylElems=((Center=(X=0.000000,Y=1.182968,Z=-0.000000),Radius=12.250000,Length=3.500000,Name="spine_03_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="spine_03"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_39" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_39'"
+   AggGeom=(SphylElems=((Center=(X=-0.000000,Y=0.818655,Z=-0.000000),Radius=14.000000,Length=4.750000,Name="spine_04_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="spine_04"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_40" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_40'"
+   AggGeom=(SphylElems=((Center=(X=-2.971616,Y=0.000000,Z=-0.000000),Radius=12.750000,Length=9.250000,Name="spine_05_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=5.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="spine_05"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_41" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_41'"
+   AggGeom=(SphylElems=((Center=(X=8.442270,Y=-0.000060,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=160.528809,Roll=-160.529218),Radius=6.750000,Length=9.750000,Name="clavicle_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=2.250000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="clavicle_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_45" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_45'"
+   AggGeom=(SphylElems=((Center=(X=-8.442270,Y=0.000060,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=172.447566,Roll=7.552025),Radius=6.750000,Length=9.750000,Name="clavicle_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=2.250000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="clavicle_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_49" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_49'"
+   AggGeom=(SphylElems=((Center=(X=2.262991,Y=-0.000008,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=-0.000192,Roll=0.000000),Radius=4.500000,Length=2.000000,Name="neck_01_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=2.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="neck_01"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_42" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_42'"
+   AggGeom=(SphylElems=((Center=(X=11.711105,Y=0.000028,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=160.528736,Roll=-160.528601),Radius=5.750000,Length=22.250000,Name="upperarm_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=1.800000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="upperarm_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_43" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_43'"
+   AggGeom=(SphylElems=((Center=(X=10.527511,Y=0.000028,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=174.948869,Roll=-174.948714),Radius=4.750000,Length=18.250000,Name="lowerarm_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=1.200000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="lowerarm_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_44" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_44'"
+   AggGeom=(BoxElems=((Center=(X=7.376474,Y=-0.000000,Z=0.000000),X=14.500000,Y=5.500000,Z=9.500000,Name="hand_l_box")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=0.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="hand_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_46" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_46'"
+   AggGeom=(SphylElems=((Center=(X=-11.711105,Y=-0.000028,Z=0.000000),Rotation=(Pitch=-90.000000,Yaw=172.447647,Roll=7.552488),Radius=5.750000,Length=22.250000,Name="upperarm_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=1.800000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="upperarm_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_47" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_47'"
+   AggGeom=(SphylElems=((Center=(X=-10.527511,Y=-0.000028,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=179.240418,Roll=0.759737),Radius=4.750000,Length=18.250000,Name="lowerarm_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=1.200000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="lowerarm_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_48" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_48'"
+   AggGeom=(BoxElems=((Center=(X=-7.376474,Y=0.000000,Z=-0.000000),Rotation=(Pitch=3.156055,Yaw=-0.197090,Roll=172.928549),X=14.500000,Y=5.500000,Z=9.500000,Name="hand_l_box")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=0.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="hand_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_0" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_0'"
+   AggGeom=(SphylElems=((Center=(X=0.214567,Y=0.334526,Z=0.000000),Rotation=(Pitch=-0.000006,Yaw=-90.000138,Roll=-90.000009),Radius=4.447881,Length=1.285229,Name="neck_02_capsule")))
+   DefaultInstance=(bUseCCD=True)
+   BoneName="neck_02"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_50" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_50'"
+   AggGeom=(SphylElems=((Center=(X=3.499701,Y=1.948775,Z=-0.000000),Rotation=(Pitch=-90.000000,Yaw=-165.963757,Roll=153.709419),Radius=7.500000,Length=5.000000,Name="head_capsule")))
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=2.500000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="head"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_52" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_52'"
+   AggGeom=(SphylElems=((Center=(X=-20.701659,Y=0.000069,Z=-0.500000),Rotation=(Pitch=-90.000000,Yaw=179.999945,Roll=179.999864),Radius=6.250000,Length=29.500000,Name="calf_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=3.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="calf_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_53" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_53'"
+   AggGeom=(BoxElems=((Center=(X=-5.037523,Y=6.590595,Z=-0.004447),X=7.000000,Y=21.000000,Z=10.000000,Name="foot_l_box")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=1.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="foot_l"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_55" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_55'"
+   AggGeom=(SphylElems=((Center=(X=20.701659,Y=-0.000069,Z=0.500000),Rotation=(Pitch=-90.000000,Yaw=179.999945,Roll=-0.000136),Radius=6.250000,Length=29.500000,Name="calf_l_capsule")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,bNotifyRigidBodyCollision=True,MassInKgOverride=3.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="calf_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.SkeletalBodySetup Name="SkeletalBodySetup_56" ExportPath="/Script/Engine.SkeletalBodySetup'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:SkeletalBodySetup_56'"
+   AggGeom=(BoxElems=((Center=(X=5.037523,Y=-6.590595,Z=0.004447),Rotation=(Pitch=0.000000,Yaw=0.000000,Roll=-180.000000),X=7.000000,Y=21.000000,Z=10.000000,Name="foot_l_box")))
+   PhysMaterial="/Script/PhysicsCore.PhysicalMaterial'/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin.PM_UEFN_Mannequin'"
+   DefaultInstance=(bUseCCD=True,MassInKgOverride=1.000000,LinearDamping=0.000000,AngularDamping=5.000000,bOverrideMass=True)
+   BoneName="foot_r"
+   CollisionTraceFlag=CTF_UseSimpleAsComplex
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_34" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_34'"
+   DefaultInstance=(JointName="UserConstraint_0",ConstraintBone1="spine_01",ConstraintBone2="pelvis",PriAxis1=(X=1.000000,Y=-0.000005,Z=-0.000000),SecAxis1=(X=0.000005,Y=1.000000,Z=0.000000),Pos2=(X=6.749367,Y=-0.638774,Z=-0.000000),PriAxis2=(X=0.999930,Y=-0.011840,Z=-0.000000),SecAxis2=(X=0.011840,Y=0.999930,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_49" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_49'"
+   DefaultInstance=(JointName="UserConstraint_11",ConstraintBone1="thigh_l",ConstraintBone2="pelvis",Pos1=(X=0.000000,Y=0.000000,Z=0.000000),PriAxis1=(X=-1.000000,Y=-0.000002,Z=0.000000),SecAxis1=(X=-0.000002,Y=1.000000,Z=0.000000),Pos2=(X=-2.569328,Y=-0.010871,Z=-7.750069),PriAxis2=(X=-0.740726,Y=0.666032,Z=-0.087903),SecAxis2=(X=0.662050,Y=0.745911,Z=0.072844),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=80.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_52" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_52'"
+   DefaultInstance=(JointName="thigh_r",ConstraintBone1="thigh_r",ConstraintBone2="pelvis",PriAxis1=(X=1.000000,Y=0.000002,Z=0.000000),SecAxis1=(X=0.000002,Y=-1.000000,Z=0.000000),Pos2=(X=-2.569138,Y=-0.010875,Z=7.750063),PriAxis2=(X=-0.740735,Y=0.666021,Z=0.087904),SecAxis2=(X=0.662039,Y=0.745921,Z=-0.072843),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=30.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=80.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_35" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_35'"
+   DefaultInstance=(JointName="UserConstraint_1",ConstraintBone1="spine_02",ConstraintBone2="spine_01",Pos1=(X=0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000000),Pos2=(X=7.251758,Y=-0.034981,Z=-0.000000),PriAxis2=(X=0.997912,Y=0.064596,Z=-0.000000),SecAxis2=(X=-0.064596,Y=0.997912,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_36" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_36'"
+   DefaultInstance=(JointName="UserConstraint_2",ConstraintBone1="spine_03",ConstraintBone2="spine_02",Pos1=(X=0.000000,Y=0.000000,Z=0.000000),PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000000),Pos2=(X=6.010429,Y=-0.000000,Z=0.000000),PriAxis2=(X=0.997768,Y=0.066781,Z=-0.000000),SecAxis2=(X=-0.066781,Y=0.997768,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=15.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_37" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_37'"
+   DefaultInstance=(JointName="UserConstraint_3",ConstraintBone1="spine_04",ConstraintBone2="spine_03",Pos1=(X=0.000000,Y=0.000000,Z=-0.000000),PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=-0.000000),Pos2=(X=8.102359,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.999654,Y=0.026313,Z=-0.000000),SecAxis2=(X=-0.026313,Y=0.999654,Z=0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=20.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_38" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_38'"
+   DefaultInstance=(JointName="UserConstraint_4",ConstraintBone1="spine_05",ConstraintBone2="spine_04",Pos1=(X=0.000000,Y=-0.000000,Z=-0.000000),PriAxis1=(X=1.000000,Y=-0.000000,Z=0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=-0.000000),Pos2=(X=10.014617,Y=0.000000,Z=0.000000),PriAxis2=(X=0.999996,Y=0.002988,Z=-0.000000),SecAxis2=(X=-0.002988,Y=0.999996,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_39" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_39'"
+   DefaultInstance=(JointName="UserConstraint_5",ConstraintBone1="clavicle_l",ConstraintBone2="spine_05",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),Pos2=(X=4.357458,Y=-0.146572,Z=-2.322321),PriAxis2=(X=0.110859,Y=-0.041334,Z=-0.992976),SecAxis2=(X=-0.080032,Y=0.995519,Z=-0.050375),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_43" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_43'"
+   DefaultInstance=(JointName="clavicle_r",ConstraintBone1="clavicle_r",ConstraintBone2="spine_05",PriAxis1=(X=-1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=-1.000000,Z=0.000002),Pos2=(X=4.357547,Y=-0.146559,Z=2.322328),PriAxis2=(X=0.110860,Y=-0.041334,Z=0.992976),SecAxis2=(X=-0.080033,Y=0.995518,Z=0.050375),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=15.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_47" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_47'"
+   DefaultInstance=(JointName="UserConstraint_9",ConstraintBone1="neck_01",ConstraintBone2="spine_05",Pos1=(X=-0.000000,Y=0.000000,Z=0.000000),PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=-0.000000),Pos2=(X=11.313825,Y=0.152862,Z=-0.000000),PriAxis2=(X=0.935076,Y=0.354447,Z=0.000000),SecAxis2=(X=-0.354447,Y=0.935076,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=30.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_40" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_40'"
+   DefaultInstance=(JointName="UserConstraint_6",ConstraintBone1="upperarm_l",ConstraintBone2="clavicle_l",Pos1=(X=0.000000,Y=0.000000,Z=-0.000000),Pos2=(X=15.511094,Y=-0.000000,Z=0.000000),PriAxis2=(X=0.669016,Y=0.501215,Z=-0.548818),SecAxis2=(X=-0.422447,Y=0.863963,Z=0.274058),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=100.000000,Swing2LimitDegrees=100.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_41" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_41'"
+   DefaultInstance=(JointName="UserConstraint_7",ConstraintBone1="lowerarm_l",ConstraintBone2="upperarm_l",Pos1=(X=0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=0.000001,Y=-0.000002,Z=1.000000),SecAxis1=(X=1.000000,Y=0.000001,Z=-0.000001),Pos2=(X=26.651358,Y=-0.000000,Z=0.000000),PriAxis2=(X=0.000000,Y=0.080515,Z=0.996753),SecAxis2=(X=0.523713,Y=0.849129,Z=-0.068590),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_42" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_42'"
+   DefaultInstance=(JointName="UserConstraint_8",ConstraintBone1="hand_l",ConstraintBone2="lowerarm_l",Pos1=(X=0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=-0.000007,Y=-0.000000,Z=-1.000000),SecAxis1=(X=1.000000,Y=-0.000002,Z=-0.000007),Pos2=(X=22.349146,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.067421,Y=0.997693,Z=0.007959),SecAxis2=(X=0.845903,Y=-0.052930,Z=-0.530703),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=50.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=100.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_44" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_44'"
+   DefaultInstance=(JointName="upperarm_r",ConstraintBone1="upperarm_r",ConstraintBone2="clavicle_r",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=-1.000000,Y=-0.000002,Z=-0.000000),SecAxis1=(X=0.000002,Y=-1.000000,Z=0.000002),Pos2=(X=-15.511082,Y=-0.000010,Z=-0.000013),PriAxis2=(X=-0.669015,Y=-0.501216,Z=0.548819),SecAxis2=(X=0.422448,Y=-0.863962,Z=-0.274057),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=60.000000,Swing2LimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=100.000000,Swing2LimitDegrees=100.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_45" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_45'"
+   DefaultInstance=(JointName="lowerarm_r",ConstraintBone1="lowerarm_r",ConstraintBone2="upperarm_r",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=0.000002,Y=0.000004,Z=-1.000000),SecAxis1=(X=-1.000000,Y=-0.000008,Z=-0.000002),Pos2=(X=-26.651451,Y=0.000002,Z=0.000002),PriAxis2=(X=0.000001,Y=-0.080512,Z=-0.996754),SecAxis2=(X=-0.523707,Y=-0.849133,Z=0.068587),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_46" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_46'"
+   DefaultInstance=(JointName="hand_r",ConstraintBone1="hand_r",ConstraintBone2="lowerarm_r",Pos1=(X=0.000000,Y=-0.000000,Z=-0.000000),PriAxis1=(X=0.000005,Y=-0.000003,Z=1.000000),SecAxis1=(X=-1.000000,Y=0.000003,Z=0.000005),Pos2=(X=-22.349243,Y=0.000010,Z=0.000014),PriAxis2=(X=-0.067418,Y=-0.997693,Z=-0.007962),SecAxis2=(X=-0.845904,Y=0.052926,Z=0.530703),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=50.000000,Swing2LimitDegrees=50.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=100.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_0" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_0'"
+   DefaultInstance=(JointName="UserConstraint",ConstraintBone1="neck_02",ConstraintBone2="neck_01",PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=-0.000000),Pos2=(X=4.562678,Y=0.000000,Z=-0.000000),PriAxis2=(X=0.994914,Y=-0.100732,Z=-0.000000),SecAxis2=(X=0.100732,Y=0.994914,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=25.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_1" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_1'"
+   DefaultInstance=(JointName="UserConstraint_10",ConstraintBone1="head",ConstraintBone2="neck_02",PriAxis1=(X=1.000000,Y=-0.000000,Z=-0.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000000),Pos2=(X=5.391383,Y=-0.000000,Z=-0.000000),PriAxis2=(X=0.973570,Y=-0.228388,Z=-0.000000),SecAxis2=(X=0.228388,Y=0.973570,Z=-0.000000),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_50" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_50'"
+   DefaultInstance=(JointName="UserConstraint_12",ConstraintBone1="calf_l",ConstraintBone2="thigh_l",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=-0.000000,Y=0.000004,Z=-1.000000),SecAxis1=(X=-1.000000,Y=0.000004,Z=0.000000),Pos2=(X=-39.048439,Y=-0.000000,Z=-0.000000),PriAxis2=(X=-0.032051,Y=-0.002531,Z=-0.999483),SecAxis2=(X=-0.430630,Y=-0.902385,Z=0.016094),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_51" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_51'"
+   DefaultInstance=(JointName="UserConstraint_13",ConstraintBone1="foot_l",ConstraintBone2="calf_l",Pos1=(X=-0.000000,Y=-0.000000,Z=0.000000),PriAxis1=(X=-0.000000,Y=0.000004,Z=-1.000000),SecAxis1=(X=0.000000,Y=1.000000,Z=0.000004),Pos2=(X=-42.561031,Y=0.107739,Z=0.429190),PriAxis2=(X=-0.093649,Y=-0.080237,Z=-0.992367),SecAxis2=(X=-0.108902,Y=0.991592,Z=-0.069897),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_53" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_53'"
+   DefaultInstance=(JointName="calf_r",ConstraintBone1="calf_r",ConstraintBone2="thigh_r",Pos1=(X=0.000000,Y=0.000000,Z=-0.000000),PriAxis1=(X=-0.000000,Y=0.000001,Z=1.000000),SecAxis1=(X=1.000000,Y=-0.000004,Z=0.000000),Pos2=(X=39.048656,Y=-0.000002,Z=0.000000),PriAxis2=(X=0.032051,Y=0.002535,Z=0.999483),SecAxis2=(X=0.430627,Y=0.902387,Z=-0.016098),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=60.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=50.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=5.000000,Swing2LimitDegrees=5.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=70.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/Engine.PhysicsConstraintTemplate Name="PhysicsConstraintTemplate_54" ExportPath="/Script/Engine.PhysicsConstraintTemplate'/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.PA_UEFN_Mannequin:PhysicsConstraintTemplate_54'"
+   DefaultInstance=(JointName="foot_r",ConstraintBone1="foot_r",ConstraintBone2="calf_r",PriAxis1=(X=0.000000,Y=0.000001,Z=1.000000),SecAxis1=(X=-0.000006,Y=-1.000000,Z=0.000001),Pos2=(X=42.561165,Y=-0.107729,Z=-0.429205),PriAxis2=(X=0.093648,Y=0.080242,Z=0.992366),SecAxis2=(X=0.108902,Y=-0.991592,Z=0.069902),ProfileInstance=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),LimitViolationResponse=WidenLimits)))
+   ProfileHandles(0)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=10.000000,Swing2LimitDegrees=10.000000,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=20.000000,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="NoLimit")
+   ProfileHandles(1)=(ProfileProperties=(ConeLimit=(Swing1LimitDegrees=30.000000,Swing2LimitDegrees=30.000000,Swing1Motion=ACM_Limited,Swing2Motion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),TwistLimit=(TwistLimitDegrees=40.000000,TwistMotion=ACM_Limited,Stiffness=1.000000,Damping=1.000000),bEnableProjection=False,AngularDrive=(TwistDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SwingDrive=(bEnablePositionDrive=True,bEnableVelocityDrive=True),SlerpDrive=(bEnableVelocityDrive=True))),ProfileName="Expanded")
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_0" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_0'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_1" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_1'"
+   BoneNameA="pelvis"
+   BoneNameB="thigh_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_2" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_2'"
+   BoneNameA="pelvis"
+   BoneNameB="thigh_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_3" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_3'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_4" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_4'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_5" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_5'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_6" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_6'"
+   BoneNameA="pelvis"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_7" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_7'"
+   BoneNameA="pelvis"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_8" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_8'"
+   BoneNameA="spine_01"
+   BoneNameB="thigh_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_9" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_9'"
+   BoneNameA="spine_01"
+   BoneNameB="thigh_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_10" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_10'"
+   BoneNameA="spine_01"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_11" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_11'"
+   BoneNameA="spine_01"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_12" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_12'"
+   BoneNameA="spine_01"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_13" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_13'"
+   BoneNameA="spine_01"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_14" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_14'"
+   BoneNameA="spine_01"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_15" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_15'"
+   BoneNameA="thigh_l"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_16" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_16'"
+   BoneNameA="thigh_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_17" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_17'"
+   BoneNameA="thigh_l"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_18" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_18'"
+   BoneNameA="thigh_r"
+   BoneNameB="spine_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_19" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_19'"
+   BoneNameA="thigh_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_20" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_20'"
+   BoneNameA="thigh_r"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_21" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_21'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_03"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_22" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_22'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_23" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_23'"
+   BoneNameA="spine_02"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_24" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_24'"
+   BoneNameA="spine_02"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_25" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_25'"
+   BoneNameA="spine_03"
+   BoneNameB="spine_04"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_26" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_26'"
+   BoneNameA="spine_03"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_27" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_27'"
+   BoneNameA="spine_03"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_28" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_28'"
+   BoneNameA="spine_03"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_29" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_29'"
+   BoneNameA="spine_03"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_30" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_30'"
+   BoneNameA="spine_04"
+   BoneNameB="spine_05"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_31" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_31'"
+   BoneNameA="spine_04"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_32" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_32'"
+   BoneNameA="spine_04"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_33" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_33'"
+   BoneNameA="spine_04"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_34" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_34'"
+   BoneNameA="spine_04"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_35" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_35'"
+   BoneNameA="spine_04"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_36" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_36'"
+   BoneNameA="spine_05"
+   BoneNameB="clavicle_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_37" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_37'"
+   BoneNameA="spine_05"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_38" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_38'"
+   BoneNameA="spine_05"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_39" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_39'"
+   BoneNameA="spine_05"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_40" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_40'"
+   BoneNameA="spine_05"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_41" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_41'"
+   BoneNameA="spine_05"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_42" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_42'"
+   BoneNameA="clavicle_l"
+   BoneNameB="clavicle_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_43" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_43'"
+   BoneNameA="clavicle_l"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_44" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_44'"
+   BoneNameA="clavicle_l"
+   BoneNameB="upperarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_45" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_45'"
+   BoneNameA="clavicle_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_46" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_46'"
+   BoneNameA="clavicle_r"
+   BoneNameB="neck_01"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_47" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_47'"
+   BoneNameA="clavicle_r"
+   BoneNameB="upperarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_48" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_48'"
+   BoneNameA="clavicle_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_49" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_49'"
+   BoneNameA="neck_01"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_50" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_50'"
+   BoneNameA="neck_01"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_51" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_51'"
+   BoneNameA="upperarm_l"
+   BoneNameB="lowerarm_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_52" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_52'"
+   BoneNameA="upperarm_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_53" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_53'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="hand_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_54" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_54'"
+   BoneNameA="lowerarm_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_55" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_55'"
+   BoneNameA="hand_l"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_56" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_56'"
+   BoneNameA="upperarm_r"
+   BoneNameB="lowerarm_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_57" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_57'"
+   BoneNameA="upperarm_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_58" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_58'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="hand_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_59" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_59'"
+   BoneNameA="lowerarm_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_60" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_60'"
+   BoneNameA="hand_r"
+   BoneNameB="neck_02"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_61" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_61'"
+   BoneNameA="neck_02"
+   BoneNameB="head"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_62" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_62'"
+   BoneNameA="neck_02"
+   BoneNameB="calf_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_63" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_63'"
+   BoneNameA="neck_02"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_64" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_64'"
+   BoneNameA="neck_02"
+   BoneNameB="calf_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_65" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_65'"
+   BoneNameA="neck_02"
+   BoneNameB="foot_r"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_66" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_66'"
+   BoneNameA="calf_l"
+   BoneNameB="foot_l"
+End Object
+Begin Object Class=/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair Name="PhysicsAssetCollisionPair_67" ExportPath="/Script/PhysicsAssetEditor.PhysicsAssetCollisionPair'/Engine/Transient.PhysicsAssetCollisionPair_67'"
+   BoneNameA="calf_r"
+   BoneNameB="foot_r"
+End Object

@@ -9,6 +9,7 @@
 - `Source/ImagineGame` 为共享运行时，`Source/ImagineEditor` 为编辑器模块；`Plugins/GameFeatures/ShooterCore/Source/ShooterCoreRuntime` 放射击玩法派生规则并依赖 ImagineGame，共享层不反向依赖玩法。
 - `ImagineGame` 与 `ImagineEditor` 按文件类型统一目录：`.h` 放 `Public`，`.cpp` 放 `Private`，配对文件保留相同相对路径；include 从所属模块 `Public` 根写起，不依赖 Private 同目录搜索或写 `Private/...`。内部算法和调试头也遵守此布局，跨模块导出仍按实际调用需求设置。
 - 新规则先核对所有者、权限、复制与生命周期；共享机制扩展核心职责，玩法规则放对应 Game Feature。
+- 跨工程 PA/PCA/物理材质对照、用户资料包、骨骼框架适配和统一脚本入口见 [PA/PCA 迁移流程](physics-asset-migration.md)；资产基线与Ragdoll运行时职责见 [Ragdoll](ragdoll.md)。
 - Lyra 参考：`D:/Application/UnrealProjects/LyraStarterGame`（已核对本地源码）。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
 - GTA 参考当前位于 `C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`；引擎侧 IK 在 `src/dev_ng/rage/base/src/crbody/iksolver.*`。该源码快照用于静态对照，发行版配置另行验证；本工程保留 UE/GAS/CMC 网络体系。
 - UE 源码当前位于 `D:/Application/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。

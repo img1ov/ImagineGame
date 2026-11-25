@@ -63,6 +63,33 @@ GTA 主链为 `task/Physics/TaskNM.{h,cpp}`、`TaskRageRagdoll.cpp`、`TaskBlend
 - GetRagdollMovementIssue 是本机诊断。`IMG.Ragdoll.DebugDraw`：0关、1跟随/失败目标、2增加候选胶囊/支撑/两段通路；青点为采样点，黄点为匹配点。`IMG.Ragdoll.DebugDuration` 默认2秒，仅影响显式查询，跟随单帧；绘图受 ENABLE_DRAW_DEBUG 保护，CVar 为 Cheat并默认关闭。
 - `Log LogIMG Verbose` 查看 [Ragdoll] 状态、原因及 ExitRejected，按角色/Role/Session/Revision 对照，结束用 `Log LogIMG Log` 恢复。
 
+## PA / PhysicsControl 资产基线
+
+完整复用流程、用户资料包、不同骨架映射公式、统一脚本入口、工具限制及本轮全部参数/原脚本归档见 [PA/PCA 迁移流程](physics-asset-migration.md)。下次迁移由AGENTS先读该入口，不直接重跑Saved中的历史硬编码脚本。
+
+- 2026-11-25 已从 `D:/Application/UnrealProjects/GameAnimationSanple/Content/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin.uasset` 移植到 `Content/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.uasset`。目标为 Manny 预览 Mesh；原 `PA_Mannequin` 不作为此次修改对象。目标现为23刚体、19胶囊+4盒、22约束、185对可碰撞组合（68对禁用），已在编辑器回读确认。迁移前目标为22刚体、23约束（3交叉约束）、4对可碰撞组合。
+- 源/目标骨架骨名对应，但参考姿势和骨长不同，不能直接复制全部关节坐标。此次保留源碰撞形状、BodyInstance、Constraint Profile/驱动/软限位/投影等参数；保留子体 `Pos1/PriAxis1/SecAxis1`，按 Manny 参考姿势重新对齐父体 `Pos2`，旋转父体 `PriAxis2/SecAxis2`，保持源参考姿势下两约束框架的相对角度。直接套用源坐标在 Manny 上的最大锚点偏差约9.43cm；不得用增加阻尼掩盖该几何错误。骨架参考入口为 `AnimPoseExtensions.get_reference_pose(mesh.skeleton)` 的 LOCAL/WORLD 姿势；后续换 Mesh 仍须重新核对参考姿势及形状适配。
+- 新物理材质 `Rigs/PM_Mannequin_PC` 复制源 `PM_UEFN_Mannequin`：Friction=1.75、StaticFriction=1、FrictionCombine=Multiply并覆盖、Restitution=0、RestitutionCombine=Multiply并覆盖、SleepLinearVelocityThreshold=1、SleepAngularVelocityThreshold=0.05、SleepCounterThreshold=4。依源资产保留 `neck_02/head` 的无显式材质状态，其余21体引用新材质。源 `neck_02` 的 MassInKgOverride 数字为默认100但 **bOverrideMass=false**，不能将该数字加进覆盖质量总和或解释为实际100kg；此次按源设置保留。
+- `PCA_Mannequin` 与源 `PCA_SandboxCharacter` 的 authored setup、集合及 `kinematic/physicalAnimation/ragdoll` Profiles 原本一致；此次将其 PhysicsAsset 从旧 `PA_Mannequin` 改为 `PA_Mannequin_PC`。回读 `IsCompilationNeeded=false`，不以只比较 authored 字段代替编译数据检查。PA 的 SolverSettings 同源为 Position/Velocity/Projection=6/1/1、CullDistance=3、UseLinearJointSolver=true、UseManifolds=false，SolverType=World；引擎 `PhysicsAsset.h` 明确这些 SolverSettings 的数值用于 RBAN，不应据此断言它们控制 World ragdoll 的全部迭代设置。
+- `Config/DefaultEngine.ini` 的 `[/Script/Engine.PhysicsSettings]` 同源显式配置：`bTickPhysicsAsync=False`、`bSubstepping=True`、`MaxSubstepDeltaTime=0.016667`、`MaxSubsteps=16`、`bSubsteppingAsync=False`、`AsyncFixedTimeStepSize=0.016667`。迁移前目标 Substepping=false、MaxSubsteps=6、AsyncFixedTimeStepSize约1/30秒；该配置影响全工程物理。两边完整 PhysicsSettings 回读一致，1208个 `p.*` CVar 同名同值；不是只比 DefaultEngine.ini 文本。
+- 编辑器鼠标弹簧与插值是 `UPhysicsAssetEditorOptions` 的预览设置，不是 PA 关节驱动或 PCA Control 参数。本次两边本来一致：线阻尼/刚度200/750、角阻尼/刚度500/1500、InterpolationSpeed=50；重力倍率1、无GravityOverride、PhysicsBlend=1、UpdateJointsFromAnimation=false、MaxFPS=-1。源码入口 `Engine/Source/Editor/UnrealEd/Classes/Preferences/PhysicsAssetEditorOptions.h`。比较动态表现仍需一致的预览初姿、帧率、地面碰撞、拖拽/冲量及 PCA Profile。
+- 本轮已完成参数/依赖/编译状态回读与编辑器结构确认；用户实际模拟反馈“效果很好”。这不等于完整游戏运行链、全部冲量/姿态/帧率或网络场景验收。原始资产和配置备份在 `Saved/Codex/PhysicsParity/backup`，导出、适配说明与回读证据在同级JSON/T3D；Saved只作当次证据，不成为运行时依赖。临时迁移Content已清理；最终PA仅依赖 Manny预览Mesh与新物理材质，没有 UEFN工程或临时目录依赖。
+
+### 运行时调用时序（PhysicsControl 组件）
+
+- 四条刷屏 warning 同源，全部来自 `UPhysicsControlComponent`（引擎 `Engine/Plugins/Animation/PhysicsControl/Source/PhysicsControl/Private/PhysicsControlComponent.cpp`，5.8 已从 Experimental 移到 Animation）。`No physics asset in skeletal mesh`（无 owner 后缀）只可能出自 `CreateControlsAndBodyModifiersFromLimbBones` 的 line 3191；该函数在 `SkeletalMeshComponent->GetPhysicsAsset()` 为空时直接 return false，`CreateControlsAndBodyModifiersFromPhysicsControlAsset` 见失败即整链 return（line 3232-3246），因此控件与 BodyModifier 数为 0，PCA 的 InitialControlAndModifierUpdates 也不会应用。
+- `WorldSpace`/`ParentSpace` 是 `GetControlTypeName()`（line 39-50）自动命名的集合，`All` 由 `FPhysicsControlNameRecords::AddControl` 的默认 `bAddToAll=true` 自动加入（`PhysicsControlNameRecords.cpp` line 18-27）；三者只在控件/修饰器成功创建后才存在。`ExpandName`（`PhysicsControlNameRecords.cpp` line 147）命中集合才展开，否则原样当控件名查 → `ApplyControlAndModifierUpdates`（line 3330-3414）报 `Failed to find control/modifier with name ...`。即"找不到集合"等价于"本次调用时一个控件都没建出来"，不是名字拼错。
+- 本机 `Saved/Logs/ImagineGame.log`（2026-11-25）对照：13:35-13:36 批次含 `WorldSpace_Feet` 与 `Feet` 修饰器，对应 PCA 的 `PhysicalAnimation`；13:38 起只剩 `WorldSpace`/`ParentSpace`×2/`All`，对应 `Ragdoll`（与上方 PCA 快照 1/2/1 一致）。每批都是"No physics asset"同帧紧跟 ApplyControlAndModifierUpdates，说明调用方没有用 Create 的返回值兜住就调 InvokeControlProfile。
+- 触发时机在 `B_ExperienceDef_ShooterCore` 加载后的 Pawn 生成阶段，紧跟其后同一毫秒报 `Controller Parts ... has no available PawnComponent_CharacterParts ... waiting for CharacterPartsReady`（`IMGControllerComponent_CharacterParts.cpp` line 161）。身体网格要等 `UIMGPawnComponent_CharacterParts::BroadcastChanged` 里的 `SetSkeletalMesh` / `SetPhysicsAsset(ForcedPhysicsAsset)`（line 345-359）才带 PA，此时 `GetPhysicsAsset()` 仍为空，故不是 PCA 或 PA 资产问题，而是运行时顺序：先建控件失败，再套 profile。
+- 修法与就绪信号：`NAME_CharacterPartsReady`（`IMGPawnComponent_CharacterParts.cpp` line 254 的 GameFrameworkComponentExtensionEvent）或 `OnCharacterPartsChanged` 之后再 Create，Create 返回 true 才 Invoke；换 body style 或 `ForcedPhysicsAsset` 变更后须先 Reset/销毁再重建控件。`bWarnAboutInvalidNames`（`PhysicsControlComponent.h` line 1706-1710）只静音不修复。调用点位于蓝图/AnimBP，本仓 C++ 无该组件引用（`Source/` 全量无 `PhysicsControl` 命中），具体是哪个 BP 的哪两个节点未验证，需在编辑器确认。
+
+### 编辑器工具边界
+
+- 本轮会话 MCP 端点为 ImagineGame `http://127.0.0.1:8001/mcp`、GameAnimationSanple `http://127.0.0.1:8002/mcp`。端口/编辑器状态会变，操作前先验证工程身份。HTTP需先 initialize并保存 `Mcp-Session-Id`，再通知 initialized；不带session直接调用tools会400。内置客户端配置曾指向8000，不能据配置文件认定实时端口。
+- 内置 ObjectTools 不提供 PA 刚体数组和非反射 `CollisionDisableTable` 的完整编辑。`ObjectExporterT3D` 可导出刚体/约束结构，但不能代表完整碰撞禁用表；整资产复制保留该表，再逐项适配。`PhysicsAssetEditorSharedData.cpp::CopySelectedBodiesAndConstraintsToClipboard/PasteBodiesAndConstraintsFromClipboard` 会按骨名输出/恢复 `PhysicsAssetCollisionPair`；粘贴先启用所有粘贴体之间碰撞，再按文本禁用，但不会自动删除目标多余约束，不能只粘贴一次就认为拓扑一致。
+- Python读取未生成专用包装的内嵌UObject时须用原始反射名，如 `load_object(None, pa_path+':SkeletalBodySetup_18').get_editor_property('DefaultInstance')`；snake_case 可能找不到字段。PA的 `SkeletalBodySetups/ConstraintSetup/PreviewSkeletalMesh` 是受保护字段，不应假定通用getter可读。此次预览Mesh经原生反射 `get_default_object(SystemLibrary).call_method('SetSoftObjectPropertyByName', args=(pa, Name('PreviewSkeletalMesh'), mesh))` 设置；Value传加载的Mesh对象，不能传SoftObjectPath包装。修改后须用完整导出和最终依赖回读确认。
+- 已加载uasset可能仍被UE文件读取器占用；仅关闭资产编辑器不保证释放。此次目标无referencer且无dirty修改，备份后关闭编辑器、释放Python资产引用并 `EditorLoadingAndSavingUtils.unload_packages`，再替换同名包、加载并保存。任何后续迁移须重新确认引用/dirty状态及备份，不能直接覆盖已加载或有未保存修改的文件。会话内的 CodexPhysicsParityTools 是此次任务临时Python Toolset，不是工程插件或通用运行时接口，重启即消失；不依赖开启Python远程执行。
+
 ## Ragdoll GA 接入规划（尚未实现）
 
 ### 会话、激活与身体事实

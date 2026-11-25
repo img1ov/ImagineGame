@@ -1,0 +1,43 @@
+import json, urllib.request, sys
+import re
+
+class Client:
+    def __init__(self, port):
+        self.url = f'http://127.0.0.1:{port}/mcp'
+        self.session = None
+        self.index = 0
+        self.request('initialize', {'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'codex-physics-parity','version':'1'}})
+        self.request('notifications/initialized', {}, notification=True)
+    def request(self, method, params, notification=False):
+        self.index += 1
+        payload = dict(jsonrpc='2.0',method=method,params=params)
+        if not notification: payload['id'] = self.index
+        headers = {'Content-Type':'application/json','Accept':'application/json, text/event-stream'}
+        if self.session: headers['Mcp-Session-Id'] = self.session
+        with urllib.request.urlopen(urllib.request.Request(self.url,json.dumps(payload).encode(),headers),timeout=90) as response:
+            self.session = response.headers.get('Mcp-Session-Id',self.session)
+            body = response.read().decode()
+        if not body: return None
+        if body.startswith('event:') or body.startswith('data:'):
+            body = '\n'.join(line[5:].strip() for line in body.splitlines() if line.startswith('data:'))
+        result = json.loads(body)
+        if 'error' in result: raise RuntimeError(result['error'])
+        return result.get('result')
+    def call(self, name, arguments, toolset=None):
+        args = dict(tool_name=name,arguments=arguments)
+        if toolset: args['toolset_name']=toolset
+        return self.request('tools/call',dict(name='call_tool',arguments=args))
+    def stage(self, stage):
+        listing=self.request('tools/call',{'name':'list_toolsets','arguments':{}})
+        name=re.search(r'- ([^\n:]*CodexPhysicsParityTools[^\n:]*):',listing['content'][0]['text']).group(1)
+        return self.call('run_stage',{'stage':stage},name)
+
+if __name__ == '__main__':
+    if len(sys.argv)>2:
+        print(json.dumps(Client(int(sys.argv[1])).stage(sys.argv[2]),ensure_ascii=False))
+        sys.exit()
+    for port in (8001,8002):
+        try:
+            client = Client(port)
+            print(port,json.dumps(client.request('tools/list',{})))
+        except Exception as error: print(port,repr(error))

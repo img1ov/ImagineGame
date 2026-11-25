@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "job_id": "uefn-manny-review-example",
+  "source": {
+    "project_dir": "D:/Application/UnrealProjects/GameAnimationSanple",
+    "port": 8002,
+    "pa": "/Game/Characters/UEFN_Mannequin/Rigs/PA_UEFN_Mannequin",
+    "pca": "/Game/Characters/UEFN_Mannequin/Rigs/PCA_SandboxCharacter",
+    "mesh": "/Game/Characters/UEFN_Mannequin/Meshes/SKM_UEFN_Mannequin",
+    "clipboard": "D:/Application/UnrealProjects/ImagineGame/.agents/references/physics-asset-migration/case-data/source_clipboard.txt"
+  },
+  "target": {
+    "project_dir": "D:/Application/UnrealProjects/ImagineGame",
+    "port": 8001,
+    "pa": "/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC",
+    "pca": "/Game/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin",
+    "mesh": "/Game/Characters/Heroes/Mannequin/Meshes/SKM_Manny",
+    "clipboard": null
+  },
+  "bone_map": {
+    "neck_02": "neck_02",
+    "pelvis": "pelvis",
+    "spine_01": "spine_01",
+    "spine_02": "spine_02",
+    "spine_03": "spine_03",
+    "spine_04": "spine_04",
+    "spine_05": "spine_05",
+    "clavicle_l": "clavicle_l",
+    "upperarm_l": "upperarm_l",
+    "lowerarm_l": "lowerarm_l",
+    "hand_l": "hand_l",
+    "clavicle_r": "clavicle_r",
+    "upperarm_r": "upperarm_r",
+    "lowerarm_r": "lowerarm_r",
+    "hand_r": "hand_r",
+    "neck_01": "neck_01",
+    "head": "head",
+    "thigh_l": "thigh_l",
+    "calf_l": "calf_l",
+    "foot_l": "foot_l",
+    "thigh_r": "thigh_r",
+    "calf_r": "calf_r",
+    "foot_r": "foot_r"
+  },
+  "child_basis": {},
+  "geometry": {
+    "policy": "copy_source",
+    "uniform_scale_by_bone": {}
+  },
+  "materials": {
+    "/Game/Characters/UEFN_Mannequin/Rigs/PM_UEFN_Mannequin": "/Game/Characters/Heroes/Mannequin/Rigs/PM_Mannequin_PC"
+  },
+  "pca_policy": "copy_source",
+  "reference_name_map": {},
+  "physics_settings_policy": "preserve_target",
+  "allow_target_writes": false,
+  "allow_project_physics_settings": false,
+  "source_anchor_tolerance_cm": 0.01,
+  "target_anchor_tolerance_cm": 0.001
+}

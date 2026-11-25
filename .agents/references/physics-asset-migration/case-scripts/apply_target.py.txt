@@ -1,0 +1,45 @@
+import unreal, json, shutil, hashlib
+from pathlib import Path
+root=Path('D:/Application/UnrealProjects/ImagineGame/Saved/Codex/PhysicsParity')
+project=Path('D:/Application/UnrealProjects/ImagineGame')
+assert 'ImagineGame/' in unreal.Paths.project_dir()
+assert not (root/'committed.json').exists(),'Already committed'
+verified=json.loads((root/'verification.json').read_text(encoding='utf-8'))
+assert verified['path']=='/Game/__CodexPhysicsParity/PA_Mannequin_PC.PA_Mannequin_PC'
+assert len(verified['bodies'])==23 and len(verified['constraints'])==22
+target_path='/Game/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC'
+target_file=project/'Content/Characters/Heroes/Mannequin/Rigs/PA_Mannequin_PC.uasset'
+candidate_file=project/'Content/__CodexPhysicsParity/PA_Mannequin_PC.uasset'
+backup=root/'backup/PA_Mannequin_PC.uasset'
+assert hashlib.sha256(target_file.read_bytes()).digest()==hashlib.sha256(backup.read_bytes()).digest(),'Target changed since backup'
+old=unreal.load_asset(target_path)
+assert old.get_outermost() not in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages(),'Unsaved target changes'
+subsystem=unreal.get_editor_subsystem(unreal.AssetEditorSubsystem)
+subsystem.close_all_editors_for_asset(old)
+package=old.get_outermost()
+old=None
+unload_result=unreal.EditorLoadingAndSavingUtils.unload_packages([package])
+assert unload_result,str(unload_result)
+shutil.copy2(candidate_file,target_file)
+try:
+    final=unreal.load_asset(target_path)
+    result=('unloaded and loaded',str(unload_result))
+    assert len(final.get_constraints(True))==22,'Reload did not load migrated constraints'
+except Exception:
+    shutil.copy2(backup,target_file)
+    unreal.load_asset(target_path)
+    raise
+final.modify()
+unreal.get_default_object(unreal.SystemLibrary).call_method('SetSoftObjectPropertyByName',args=(final,unreal.Name('PreviewSkeletalMesh'),unreal.load_asset('/Game/Characters/Heroes/Mannequin/Meshes/SKM_Manny')))
+assert unreal.EditorAssetLibrary.save_loaded_asset(final,False)
+pca=unreal.load_asset('/Game/Characters/Heroes/Mannequin/Rigs/PCA_Mannequin')
+subsystem.close_all_editors_for_asset(pca)
+pca.modify()
+pca.set_editor_property('physics_asset',final)
+assert unreal.EditorAssetLibrary.save_loaded_asset(pca,False)
+settings=unreal.get_default_object(unreal.PhysicsSettings)
+settings.set_editor_properties(dict(substepping=True,max_substeps=16,max_substep_delta_time=0.016667,async_fixed_time_step_size=0.016667))
+out=dict(pa=final.get_path_name(),pca=pca.get_path_name(),reload_result=str(result),backup=str(backup))
+(root/'committed.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+subsystem.open_editor_for_assets([final])
+print('PHYSICS_PARITY_COMMITTED',out)
