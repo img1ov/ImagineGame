@@ -36,6 +36,9 @@
 
 ## 检测、发起与选片
 
+- 自动分层搜索使用具名标量：`Search → Automatic` 下的 `AutomaticLowerLayerCount=2`、`AutomaticLowerSearchDistance=250 cm`、`AutomaticUpperSearchDistance=150 cm`。实际层数仍由 MaxHeight、胶囊高度、SearchStartHeightOffset、SearchProbeRadius 和 MaxSearchLayers 计算，低层数量不增加探针；0表示全部用高层距离，不小于实际层数则全部用低层距离。每层最终长度为 `Min(SearchDistance, 所属组距离) * SearchScale`；Manual/AI 仅用统一 SearchDistance 与速度缩放。旧逐层数组已删除，无兼容/自动迁移；旧蓝图覆盖需在新字段重设，例如250/250/200/200/200/200对应2、250、200。入口：`IMGTraversalTypes.h`、`IMGTraversalDetector.cpp::Detect`。
+- 配置按消费职责排列并使用原生详情分组：Detector 的 Search（含 Speed Scaling/Automatic）、Geometry、Facing、Handhold、Depth、Clearance、Edges、Scoring、Slopes、Stairs、Surface Policy、Collision、Validation、Recommendation；推荐速度及 Hurdle/Vault 高度的显示名明确标注 Recommended，不代表硬准入。Initiation 分 Manual and AI、Automatic、Networking，关闭 bEnabled 后禁用子参数；StandingMaxDistance 另依赖允许站立。Execution 分 Warp Targets、Landing、Clearance、Playback；Landing 关闭时禁用附属字段，只有 DistanceCurve 模式可编辑曲线/接触锚点参数。长度、速度、角度和时间标注单位；原有字段名与默认值除替换数组外保持不变。
+- ActionSettings、MontageSettings、WarpBindings、RequiredTargets、表面标签及网络列表按动作/资产/目标名表达条目身份，保留可变数组；MontageSettings/AllowedMontages 标题显示 Action + Montage，WarpBindings 显示 TargetName。GA RetryInterval 归 Activation，超时/白名单统一归 Networking；Component 的 ReplicatedMontages 与 GA 的 AllowedMontages 分别控制模拟代理播放归属和远端请求准入，不能因都列出 Montage 就合并。
 - 每次激活只尝试一次，外部决定触发时机，`RequestSource` 与 `ActivationPolicy` 独立。`CanActivate` 作本地几何/发起预筛，激活后依次执行 `PreSelectTraversalAnimation`、`SelectTraversalAnimation`。Chooser 消费入场 MovementMode/Gait/Speed，必须早于 `BeginTraversal` 切 Flying。
 - `SampleHandhold` 采样中心/左右顶部、宽度和楼梯轮廓，`MakeCandidate → ValidateCandidateDirection` 验证方向。方向回退复用本次公共采样，但从原始候选副本重算深度、后沿、净空和坡向；不跨 Detect 调用、帧或网络端缓存，不省略服务端重检。
 - `InitiationSettings.bEnabled=false` 仅跳过发起限制。Manual 默认允许站立、范围150 cm；Automatic 默认允许 Falling，要求有效意图、朝向点积≥0.65、固定范围150 cm，不按速度二次缩距。速度缩放只影响搜索长度；`Candidate.Speed/RunningSpeedThreshold` 仅供建议/选片，不限制原生 Supports。
@@ -46,7 +49,7 @@
 - Supports 与推荐动作分开：Mantle 是登顶，要求前沿；Hurdle 是有后方支撑的翻越，要求前沿+后沿+`bHasBackFloor`；Vault 是没有确认后方支撑的翻越，要求前沿+后沿且 `!bHasBackFloor`。Mantle 可与其中一种翻越同时可选，由 CHT 决定覆盖与优先级；高度/深度/速度不在 Supports 中硬编码。`RecommendedAction` 仅作建议，Hurdle/Vault 各用自己的推荐高度限制，不因 Hurdle 超出建议高度改推有地面的 Vault。
 - `bHasBackFloor=false` 表示探测范围内尚未确认可用后方支撑，不证明世界中不存在地面，也不能当作落点。`BackLedge` 在 `bHasBackLedge=false` 时仍保留最后顶面采样位置，坐标与 ObstacleDepth 都不能代替已确认后沿。空中 Height 随当前脚底升高而减小，需结合 StartTime 和选片核对。
 - 后方地面即使命中且 `CMC.IsWalkable=true`，仍须满足 `0 <= DropHeight <= DetectorSettings.MaxDrop`（默认180 cm）、Block FloorTraceChannel 及组件可用，才置 `bHasBackFloor=true`；`DropHeight` 从前沿量到采样地面，`BackLedgeHeight` 从后沿量到该地面。`DepthProbeLength` 默认500 cm，探针可量到超过准入落差的地面；`Sampled floor: drop ... max ... walkable ...` 可区分命中与接纳。`AutomaticMaxGroundDrop` 是另一项相对角色地面/脚底基准的自动发起限制，不代替此处 MaxDrop。入口：`IMGTraversalDetector.cpp::ValidateCandidateDirection`、`IMGTraversalTypes.h`。
-- 编辑器配置归角色蓝图的 `IMGTraversalComponent` 默认值：`IMG|Traversal|Detection → Detector Settings → Max Drop` 控制后方支撑接纳；`IMG|Traversal|Execution → Action Settings → Action=Hurdle → Settings → Landing` 配置通用落地规则，特定动画用同分类 `Montage Settings → Action + Montage → Settings → Landing` 整份覆盖。三组属性均为 `EditDefaultsOnly`，应编辑蓝图组件默认值而非关卡实例或运行时实例；Warp 窗口时间及 Modifier 参数仍在 Montage 的 MotionWarping Notify 中。入口：`IMGTraversalComponent.h`、`IMGTraversalTypes.h::FIMGTraversalLandingSettings`。
+- 编辑器配置归角色蓝图的 `IMGTraversalComponent` 默认值：`IMG|Traversal|Detection → Detector Settings → Geometry → Max Drop` 控制后方支撑接纳；`IMG|Traversal|Execution → Action Settings → Action=Hurdle → Settings → Landing` 配置通用落地规则，特定动画用同分类 `Montage Settings → Action + Montage → Settings → Landing` 整份覆盖。三组属性均为 `EditDefaultsOnly`，应编辑蓝图组件默认值而非关卡实例或运行时实例；Warp 窗口时间及 Modifier 参数仍在 Montage 的 MotionWarping Notify 中。入口：`IMGTraversalComponent.h`、`IMGTraversalTypes.h::FIMGTraversalLandingSettings`。
 
 ## 手点、坡面与表面规则
 

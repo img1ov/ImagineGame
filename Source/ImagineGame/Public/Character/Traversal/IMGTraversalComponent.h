@@ -119,7 +119,7 @@ protected:
 	 * Do not configure duplicate Action/Montage pairs.
 	 */
 	UPROPERTY(
-	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (TitleProperty = "Montage"))
+	    EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (TitleProperty = "{Action}: {Montage}"))
 	TArray<FIMGTraversalMontageSettings> MontageSettings;
 
 	/**
@@ -129,7 +129,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Networking")
 	TArray<TObjectPtr<UAnimMontage>> ReplicatedMontages;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (ClampMin = "0.01"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Traversal|Execution", meta = (ClampMin = "0.01", ForceUnits = "s"))
 	float TargetValidationInterval = 0.05f;
 
 	virtual void BeginPlay() override;

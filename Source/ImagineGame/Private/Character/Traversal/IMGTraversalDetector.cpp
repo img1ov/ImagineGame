@@ -112,14 +112,8 @@ bool AreSettingsValid(const FIMGTraversalDetectorSettings& Settings)
 	{
 		return false;
 	}
-	for (float Distance : Settings.AutomaticSearchLayerDistances)
-	{
-		if (!FMath::IsFinite(Distance) || Distance <= 0.f)
-		{
-			return false;
-		}
-	}
 	const float Positive[] = {Settings.SearchDistance, Settings.MaxAnimationReachDistance, Settings.MaxDepth,
+	    Settings.AutomaticLowerSearchDistance, Settings.AutomaticUpperSearchDistance,
 	    Settings.MaxHorizontalClearance, Settings.DepthProbeLength, Settings.MinWidth, Settings.MaxCandidateAge,
 	    Settings.SearchProbeRadius, Settings.TopProbeRadius, Settings.DepthProbeRadius,
 	    Settings.HorizontalClearanceRadius, Settings.VerticalClearanceRadius, Settings.ScoreDistanceScale};
@@ -158,6 +152,7 @@ bool AreSettingsValid(const FIMGTraversalDetectorSettings& Settings)
 	    Settings.MaxClearanceSlopeAngle < 90.f && Settings.MaxHeight > Settings.MinHeight &&
 	    Settings.MaxHorizontalClearance > Settings.MinHorizontalClearance && Settings.MaxSearchLayers >= 1 &&
 	    Settings.MaxSearchLayers <= 16 && Settings.MaxDepthSamples >= 1 && Settings.MaxDepthSamples <= 16 &&
+	    Settings.AutomaticLowerLayerCount >= 0 && Settings.AutomaticLowerLayerCount <= 16 &&
 	    Settings.AutomaticMinDepthSamples >= 1 && Settings.AutomaticMinDepthSamples <= 16 &&
 	    Settings.BackLedgeRefinementSteps >= 0 && Settings.BackLedgeRefinementSteps <= 8;
 }
@@ -1383,10 +1378,11 @@ bool FIMGTraversalDetector::Detect(
 	for (int32 LayerIndex = 0; LayerIndex < ProbeLayerCount; ++LayerIndex)
 	{
 		float LayerMaxDistance = Settings.SearchDistance;
-		if (Query.Source == EIMGTraversalRequestSource::Automatic && !Settings.AutomaticSearchLayerDistances.IsEmpty())
+		if (Query.Source == EIMGTraversalRequestSource::Automatic)
 		{
-			const int32 DistanceIndex = FMath::Min(LayerIndex, Settings.AutomaticSearchLayerDistances.Num() - 1);
-			LayerMaxDistance = FMath::Min(LayerMaxDistance, Settings.AutomaticSearchLayerDistances[DistanceIndex]);
+			const float AutomaticDistance = LayerIndex < Settings.AutomaticLowerLayerCount
+			    ? Settings.AutomaticLowerSearchDistance : Settings.AutomaticUpperSearchDistance;
+			LayerMaxDistance = FMath::Min(LayerMaxDistance, AutomaticDistance);
 		}
 		const float LayerDistance = LayerMaxDistance * SearchScale;
 		// A miss proves clearance only as far as this layer was actually swept.

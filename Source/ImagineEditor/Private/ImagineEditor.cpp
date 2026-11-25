@@ -1,6 +1,7 @@
 
 #include "ImagineEditor.h"
 #include "Character/Traversal/IMGTraversalRewindDebugger.h"
+#include "Character/Traversal/IMGTraversalSettingsCustomization.h"
 
 #include "AbilitySystemGlobals.h"
 #include "DataValidationModule.h"
@@ -209,6 +210,7 @@ class FImagineEditorModule : public FDefaultGameModuleImpl
 	{
 		FImagineEditorStyle::Initialize();
 		IMGTraversalRewind::Startup();
+		IMGTraversalSettingsEditor::Startup();
 
 		if (!IsRunningGame())
 		{
@@ -248,6 +250,7 @@ class FImagineEditorModule : public FDefaultGameModuleImpl
 	virtual void ShutdownModule() override
 	{
 		IMGTraversalRewind::Shutdown();
+		IMGTraversalSettingsEditor::Shutdown();
 		// Unregister the Context Effects Library asset type actions.
 		{
 			FAssetToolsModule* AssetToolsModule = FModuleManager::GetModulePtr<FAssetToolsModule>("AssetTools");

@@ -80,32 +80,38 @@ struct FIMGTraversalInitiationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bEnabled = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Manual and AI",
+	    meta = (ClampMin = "0", EditCondition = "bEnabled", ForceUnits = "cm"))
 	float ManualMaxDistance = 150.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Manual and AI",
+	    meta = (ClampMin = "-1", ClampMax = "1", EditCondition = "bEnabled"))
+	float ManualMovementDirectionDot = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Manual and AI", meta = (EditCondition = "bEnabled"))
 	bool bAllowStandingManual = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Manual and AI",
+	    meta = (ClampMin = "0", EditCondition = "bEnabled && bAllowStandingManual", ForceUnits = "cm"))
 	float StandingMaxDistance = 150.f;
 
 	/** Fixed Automatic initiation limit (cm); character speed changes search length, not this acceptance limit. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Automatic",
+	    meta = (ClampMin = "0", EditCondition = "bEnabled", ForceUnits = "cm"))
 	float AutomaticMaxDistance = 150.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
-	float ManualMovementDirectionDot = 0.3f;
-
 	/** Minimum movement-to-ledge dot; 0.65 allows about 49.5 degrees, including diagonal input. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Automatic",
+	    meta = (ClampMin = "-1", ClampMax = "1", EditCondition = "bEnabled"))
 	float AutomaticMovementDirectionDot = 0.65f;
 
 	/** Falling requests still require movement intent and valid geometry/animation coverage. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Automatic", meta = (EditCondition = "bEnabled"))
 	bool bAllowAutomaticInAir = true;
 
 	/** Allow for movement/ability messages arriving on different server ticks. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Networking",
+	    meta = (ClampMin = "0", EditCondition = "bEnabled", ForceUnits = "cm"))
 	float ServerDistanceTolerance = 15.f;
 };
 
@@ -115,204 +121,198 @@ struct FIMGTraversalDetectorSettings
 {
 	GENERATED_BODY()
 
-	/** Trace channel used for traversal surfaces and traversal-specific clearance probes. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
-	TEnumAsByte<ECollisionChannel> TraceChannel = IMG_TraceChannel_Traversal;
-
-	/** Rear-floor support queries, independent of climbable surfaces. Capsule clearance still uses movement collision. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
-	TEnumAsByte<ECollisionChannel> FloorTraceChannel = ECC_Visibility;
-
-	/** Used only by the advisory action recommendation, never to reject a CHT selection. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float RunningSpeedThreshold = 350.f;
-
 	/** Absolute forward search length cap (cm), defaulting to the reference manual search's 250 cm; caps every layer's final length. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float SearchDistance = 250.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float SearchProbeRadius = 21.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ForceUnits = "cm"))
+	float SearchStartHeightOffset = -75.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 MaxSearchLayers = 6;
 
 	/**
 	 * Project extension: scales forward search lengths for all requests using CMC planar speed, preserving origins, sphere radii, and layer spacing.
 	 * Scale = Lerp(MinSearchDistanceScale, 1, Clamp(Speed / SpeedForMaxSearchDistance, 0, 1)).
 	 * Only probe length changes here; GA/Blueprint decides whether to detect while stationary. The detector does not check input or skip detection.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Speed Scaling")
 	bool bScaleSearchDistanceBySpeed = true;
 
 	/**
 	 * Fraction of each layer's maximum length used while stationary. Default 0.3: a 250 cm layer shrinks to 75 cm, a 150 cm layer to 45 cm.
 	 * This is a project-specific short-range search ratio, not a native speed-scaling constant from the reference algorithm.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Speed Scaling",
 	    meta = (ClampMin = "0.01", ClampMax = "1", EditCondition = "bScaleSearchDistanceBySpeed"))
 	float MinSearchDistanceScale = 0.3f;
 
 	/** CMC planar speed (cm/s) at which each layer reaches full length; higher speeds add no length, and vertical falling speed is excluded. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search",
-	    meta = (ClampMin = "1", EditCondition = "bScaleSearchDistanceBySpeed"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Speed Scaling",
+	    meta = (ClampMin = "1", EditCondition = "bScaleSearchDistanceBySpeed", ForceUnits = "cm/s"))
 	float SpeedForMaxSearchDistance = 600.f;
 
-	/**
-	 * Maximum lengths (cm) for Automatic request layers from bottom to top, following the reference layered search: 250, 250, 150, 150, 150, 150.
-	 * Each entry is capped by SearchDistance, then multiplied by the speed scale; Manual/AI use the uniform SearchDistance cap.
-	 * An empty array uses the uniform cap for all layers; extra layers use the last entry. Input, speed thresholds, and initiation distance are configured elsewhere.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
-	TArray<float> AutomaticSearchLayerDistances = {250.f, 250.f, 150.f, 150.f, 150.f, 150.f};
+	/** Bottom layers using AutomaticLowerSearchDistance; remaining layers use AutomaticUpperSearchDistance. Does not add layers; zero uses only the upper distance. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Automatic", meta = (ClampMin = "0", ClampMax = "16"))
+	int32 AutomaticLowerLayerCount = 2;
+
+	/** Automatic-only length cap for the bottom layers, before the common SearchDistance cap and speed scale. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Automatic",
+	    meta = (ClampMin = "1", ForceUnits = "cm", EditCondition = "AutomaticLowerLayerCount > 0"))
+	float AutomaticLowerSearchDistance = 250.f;
+
+	/** Automatic-only length cap for all layers above the bottom group, before the common SearchDistance cap and speed scale. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search|Automatic", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float AutomaticUpperSearchDistance = 150.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ForceUnits = "cm", ClampMin = "0"))
+	float MinHeight = 32.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ForceUnits = "cm", ClampMin = "0"))
+	float MaxHeight = 300.5f;
+
+	/** Default height is relative to capsule feet; enabled uses valid CMC support, falling back to feet. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry")
+	bool bUseGroundPositionForHeight = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ForceUnits = "cm", ClampMin = "1"))
+	float MinWidth = 60.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ForceUnits = "cm", ClampMin = "1"))
+	float MaxDepth = 300.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ForceUnits = "cm", ClampMin = "0"))
+	float MaxDrop = 180.f;
 
 	/**
 	 * Maximum planar distance (cm) from the returned front ledge to the actor origin; an independent animation coverage cap unaffected by probe speed scaling.
 	 * May exceed a shorter SearchDistance; a probe hit is still required, then InitiationSettings and CHT determine whether initiation is allowed.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search", meta = (ClampMin = "1", ForceUnits = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Geometry", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float MaxAnimationReachDistance = 250.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinHeight = 32.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxHeight = 300.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxDepth = 300.f;
-
-	/** Forward free space measured from the front ledge; mirrors the reference detector's clearance probe. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxHorizontalClearance = 300.f;
-
-	/** A blocker this close behind the ledge invalidates every supported traversal. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinHorizontalClearance = 35.f;
-
-	/** Downward depth probes measure the first drop even when it is not a valid landing. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float DepthProbeLength = 500.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxDrop = 180.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinWidth = 60.f;
-
 	/** Manual-facing threshold; 0.3 is the reference manual traversal value. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Facing",
+	    meta = (ClampMin = "-1", ClampMax = "1", DisplayName = "Manual / AI Min Facing Dot"))
 	float MinFacingDot = 0.3f;
 
 	/** Automatic-facing threshold; 0.65 allows about 49.5 degrees from the surface approach direction. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1", ClampMax = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Facing", meta = (ClampMin = "-1", ClampMax = "1"))
 	float AutomaticMinFacingDot = 0.65f;
 
-	/** Default height is relative to capsule feet; enabled uses valid CMC support, falling back to feet. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height")
-	bool bUseGroundPositionForHeight = false;
-
-	/** Obstacle/carrier linear speed limit (cm/s), not the traversing character's speed. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxMovingSpeed = 500.f;
-
-	/** Obstacle/carrier angular speed limit (degrees/s). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxAngularSpeedDegrees = 85.f;
-
-	/** Bounds delayed Blueprint/network use of a geometric snapshot. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxCandidateAge = 0.25f;
-
-	/** Advisory hurdle height for RecommendedAction; does not restrict chooser animation coverage. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxHurdleHeight = 110.f;
-
-	/** Advisory vault height for RecommendedAction; independent of the hurdle recommendation limit. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MaxVaultHeight = 300.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bAllowSimulatingPhysics = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1"))
-	float SearchProbeRadius = 21.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes")
-	float SearchStartHeightOffset = -75.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1", ClampMax = "16"))
-	int32 MaxSearchLayers = 6;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1"))
-	float TopProbeRadius = 10.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
-	float TopHeightTolerance = 20.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0", ClampMax = "1"))
-	float HandholdMinNormalZ = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1"))
-	float DepthProbeRadius = 27.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
-	float DepthHeightTolerance = 20.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1", ClampMax = "16"))
-	int32 MaxDepthSamples = 5;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0", ClampMax = "8"))
-	int32 BackLedgeRefinementSteps = 4;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1"))
-	float HorizontalClearanceRadius = 22.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
-	float HorizontalClearanceVerticalOffset = 15.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
-	float HorizontalClearanceBackOffset = 25.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "1"))
-	float VerticalClearanceRadius = 17.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes")
-	float HandholdPathVerticalOffset = 20.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
-	float HandholdPathNormalOffset = 33.5f;
-
 	/** Low obstacles may retain the requested heading instead of turning into the face normal. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Facing", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float UseRequestDirectionBelowHeight = 80.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float TopProbeRadius = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float TopHeightTolerance = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold", meta = (ClampMin = "0", ClampMax = "1"))
+	float HandholdMinNormalZ = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold", meta = (ForceUnits = "cm"))
+	float HandholdPathVerticalOffset = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HandholdPathNormalOffset = 33.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold",
+	    meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "deg"))
+	float LargeApproachAngle = 37.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Handhold",
+	    meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "deg"))
+	float MaxApproachAngle = 42.5f;
+
+	/** Downward depth probes measure the first drop even when it is not a valid landing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float DepthProbeLength = 500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float DepthProbeRadius = 27.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float DepthHeightTolerance = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 MaxDepthSamples = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "0", ClampMax = "8"))
+	int32 BackLedgeRefinementSteps = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Depth", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 AutomaticMinDepthSamples = 1;
+
+	/** A blocker this close behind the ledge invalidates every supported traversal. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ForceUnits = "cm", ClampMin = "0"))
+	float MinHorizontalClearance = 35.f;
+
+	/** Forward free space measured from the front ledge; mirrors the reference detector's clearance probe. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ForceUnits = "cm", ClampMin = "1"))
+	float MaxHorizontalClearance = 300.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float HorizontalClearanceRadius = 22.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HorizontalClearanceVerticalOffset = 15.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HorizontalClearanceBackOffset = 25.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float VerticalClearanceRadius = 17.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance",
+	    meta = (ClampMin = "0", ClampMax = "89", ForceUnits = "deg"))
+	float MaxClearanceSlopeAngle = 42.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float EdgePlanarTolerance = 9.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0", ClampMax = "90"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "deg"))
 	float EdgeHeadingToleranceDegrees = 45.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring", meta = (ClampMin = "1", ForceUnits = "cm"))
 	float ScoreDistanceScale = 500.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring", meta = (ClampMin = "0"))
 	float DistanceScoreWeight = 5.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring", meta = (ClampMin = "0"))
 	float HeadingScoreWeight = 1.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edges", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring", meta = (ClampMin = "1"))
 	float SecondaryHitPenalty = 1.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slopes", meta = (ClampMin = "0", ClampMax = "1"))
 	float WalkableSlopeMinNormalZ = 0.55f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slopes", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slopes", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float WalkableSlopeDistanceTolerance = 13.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slopes", meta = (ClampMin = "0", ClampMax = "89"))
-	float MaxClearanceSlopeAngle = 42.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stairs")
+	FName StairSurfaceTag = TEXT("Traversal.Stairs");
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0", ClampMax = "90"))
-	float LargeApproachAngle = 37.5f;
+	/** Reject spans strictly below this cutoff when standing on stairs, matching the reference comparison. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stairs", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float StairMinEdgeSpan = 22.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Probes", meta = (ClampMin = "0", ClampMax = "90"))
-	float MaxApproachAngle = 42.5f;
+	/** Replaces StairMinEdgeSpan for tagged faces/tops; equality is accepted by the span filter. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stairs", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float TaggedStairMinEdgeSpan = 30.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stairs", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float StairAmbiguousEdgeSpan = 40.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stairs", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float StairMaxPlanarDrift = 10.f;
 
 	/** Climbing exclusions on the component or owning actor; do not restrict rear-floor support. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
@@ -321,9 +321,6 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	TArray<FName> AutomaticBlockedSurfaceTags;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
-	FName StairSurfaceTag = TEXT("Traversal.Stairs");
-
 	/** Vehicle-like angular surfaces retain a closely aligned request heading (dot > 0.95) and require both side supports. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	FName AngularSurfaceTag = TEXT("Traversal.Angular");
@@ -331,26 +328,47 @@ struct FIMGTraversalDetectorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy")
 	bool bRejectAutomaticHighOpenApproach = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "1", ClampMax = "16"))
-	int32 AutomaticMinDepthSamples = 1;
-
 	/** Drop below the approach ground for automatic crossing of shallow tops with open space behind. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float AutomaticMaxGroundDrop = 150.f;
 
-	/** Reject spans strictly below this cutoff when standing on stairs, matching the reference comparison. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
-	float StairMinEdgeSpan = 22.5f;
+	/** Trace channel used for traversal surfaces and traversal-specific clearance probes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	TEnumAsByte<ECollisionChannel> TraceChannel = IMG_TraceChannel_Traversal;
 
-	/** Replaces StairMinEdgeSpan for tagged faces/tops; equality is accepted by the span filter. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
-	float TaggedStairMinEdgeSpan = 30.f;
+	/** Rear-floor support queries, independent of climbable surfaces. Capsule clearance still uses movement collision. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	TEnumAsByte<ECollisionChannel> FloorTraceChannel = ECC_Visibility;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
-	float StairAmbiguousEdgeSpan = 40.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	bool bAllowSimulatingPhysics = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Policy", meta = (ClampMin = "0"))
-	float StairMaxPlanarDrift = 10.f;
+	/** Obstacle/carrier linear speed limit (cm/s), not the traversing character's speed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Validation", meta = (ForceUnits = "cm/s", ClampMin = "0"))
+	float MaxMovingSpeed = 500.f;
+
+	/** Obstacle/carrier angular speed limit (degrees/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Validation", meta = (ForceUnits = "deg/s", ClampMin = "0"))
+	float MaxAngularSpeedDegrees = 85.f;
+
+	/** Bounds delayed Blueprint/network use of a geometric snapshot. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Validation", meta = (ForceUnits = "s", ClampMin = "0.001"))
+	float MaxCandidateAge = 0.25f;
+
+	/** Used only by the advisory action recommendation, never to reject a CHT selection. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recommendation",
+	    meta = (ForceUnits = "cm/s", ClampMin = "0", DisplayName = "Recommended Running Speed Threshold"))
+	float RunningSpeedThreshold = 350.f;
+
+	/** Advisory hurdle height for RecommendedAction; does not restrict chooser animation coverage. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recommendation",
+	    meta = (ForceUnits = "cm", ClampMin = "0", DisplayName = "Recommended Max Hurdle Height"))
+	float MaxHurdleHeight = 110.f;
+
+	/** Advisory vault height for RecommendedAction; independent of the hurdle recommendation limit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recommendation",
+	    meta = (ForceUnits = "cm", ClampMin = "0", DisplayName = "Recommended Max Vault Height"))
+	float MaxVaultHeight = 300.5f;
 };
 
 /** A single, bounded synchronous geometry request. The detector owns no live state. */
@@ -559,36 +577,45 @@ struct FIMGTraversalLandingSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EIMGTraversalLandingMode Mode = EIMGTraversalLandingMode::None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Landing Target",
+	    meta = (EditCondition = "Mode != EIMGTraversalLandingMode::None"))
 	FName TargetName = TEXT("BackFloor");
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	/** Landing evaluation ends at this translation window, even when it is the last; excludes the montage tail. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Landing Target",
+	    meta = (ClampMin = "-1", EditCondition = "Mode != EIMGTraversalLandingMode::None"))
+	int32 LandingWindowIndex = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Distance Curve",
+	    meta = (EditCondition = "Mode == EIMGTraversalLandingMode::DistanceCurve"))
 	FName AnchorTargetName = TEXT("BackLedge");
 
 	/** Explicit alternate contact for assets without a rear-contact translation window. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Distance Curve",
+	    meta = (EditCondition = "Mode == EIMGTraversalLandingMode::DistanceCurve"))
 	FName FallbackAnchorTargetName = TEXT("FrontLedge");
 
 	/** Translation-window ordinal in montage order; -1 selects the last eligible window. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Distance Curve",
+	    meta = (ClampMin = "-1", EditCondition = "Mode == EIMGTraversalLandingMode::DistanceCurve"))
 	int32 AnchorWindowIndex = -1;
 
-	/** Landing evaluation ends at this translation window, even when it is the last; excludes the montage tail. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "-1"))
-	int32 LandingWindowIndex = -1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Distance Curve",
+	    meta = (EditCondition = "Mode == EIMGTraversalLandingMode::DistanceCurve"))
 	FName DistanceCurveName = TEXT("Distance_From_Ledge");
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Distance Curve",
+	    meta = (EditCondition = "Mode == EIMGTraversalLandingMode::DistanceCurve"))
 	bool bAbsoluteCurveDistance = true;
 
 	/** Conservative straight-path rejection is opt-in; it does not represent a warped animation arc. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Validation",
+	    meta = (EditCondition = "Mode != EIMGTraversalLandingMode::None"))
 	bool bCheckStraightPath = false;
 
 	/** Vertical margin for landing validation queries; not an additional lift applied to the Warp Target. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Validation",
+	    meta = (ClampMin = "0", EditCondition = "Mode != EIMGTraversalLandingMode::None", ForceUnits = "cm"))
 	float CapsuleClearance = 3.f;
 };
 
@@ -604,27 +631,27 @@ struct IMAGINEGAME_API FIMGTraversalExecutionSettings
 
 	FIMGTraversalExecutionSettings();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Warp Targets", meta = (TitleProperty = "TargetName"))
 	TArray<FIMGTraversalWarpBinding> WarpBindings;
 
 	/** Required contacts must retain a window after the selected start time. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Warp Targets")
 	TArray<FName> RequiredTargets;
 
 	/** Explicit rear-floor landing for Hurdle. Mantle and Vault require Mode=None. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIMGTraversalLandingSettings Landing;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float MinVerticalClearance = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float MinHorizontalClearance = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Playback", meta = (ClampMin = "0.01"))
 	float MinPlayRate = 0.1f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Playback", meta = (ClampMin = "0.01"))
 	float MaxPlayRate = 3.f;
 };
 

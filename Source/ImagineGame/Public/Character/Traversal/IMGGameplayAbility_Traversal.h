@@ -45,15 +45,15 @@ protected:
 	 * Optional remote-client security whitelist. An empty array accepts any montage that passes the native
 	 * geometry, action, timing and Motion Warping contract checks; a non-empty array enforces exact pairs.
 	 */
-	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network")
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Networking", meta = (TitleProperty = "{Action}: {Montage}"))
 	TArray<FIMGTraversalAllowedMontage> AllowedMontages;
 
 	/** Minimum delay from local end; authority termination releases its gate without restarting this interval. */
-	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network", meta = (ClampMin = "0.01"))
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Activation", meta = (ClampMin = "0.01", ForceUnits = "s"))
 	float RetryInterval = 0.25f;
 
 	/** Releases a remote authority instance whose target data has not arrived. */
-	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Network", meta = (ClampMin = "0.1"))
+	UPROPERTY(EditDefaultsOnly, Category = "IMG|Traversal|Networking", meta = (ClampMin = "0.1", ForceUnits = "s"))
 	float TargetDataTimeout = 2.f;
 
 	/**

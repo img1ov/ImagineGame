@@ -21,6 +21,7 @@
 
 ## ImagineEditor 目录与接口
 
+- Traversal 配置详情分组由 `{Public,Private}/Character/Traversal/IMGTraversalSettingsCustomization` 承接，在 ImagineEditor 模块启动/关闭时成对注册/注销四个配置结构体的 `IPropertyTypeCustomization`。UE 5.8 的 `FItemPropertyNode::InitChildNodes` 对普通结构体直接创建字段节点，不自动按 Category 建组；定制仅按字段 Category（支持 `|` 子组）组织原生 PropertyHandle 行，保留重置、多对象编辑和 EditCondition，不另存配置或重写运行时权限。配置职责及路径见 [Traversal](traversal.md#检测发起与选片)。
 - ImagineEditor 遵循上面的文件类型布局，保留现有动画、验证、Traversal 等职责分类；不为头/源文件分离额外拆出 System/Style/Feedback/Rewind/Export 子目录。
 
 | 目录（相对Source/ImagineEditor） | 职责 |
