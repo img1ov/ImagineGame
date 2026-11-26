@@ -1429,6 +1429,14 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 		Super::ClientHandleMoveResponse(MoveResponse);
 	}
 	const FNetworkPredictionData_Client_Character* ClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
+	if (HasValidData() && !bDiscardCorrection && Response.IsCorrection() && !bClientIgnoreMovementCorrections &&
+	    ClientData && ClientData->LastAckedMove.IsValid() && ClientData->LastAckedMove != PreviousAckedMove &&
+	    ClientData->LastAckedMove->TimeStamp == Response.ClientAdjustment.TimeStamp)
+	{
+		const FSavedMovePtr AcceptedMove = ClientData->LastAckedMove;
+		ClientCorrectionApplied.Broadcast(MoveResponse, *AcceptedMove);
+		ClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
+	}
 	if (HasValidData() && !bDiscardCorrection && (!Response.IsCorrection() || !bClientIgnoreMovementCorrections)
 		&& Response.bHasMovementContext && HasMovementRequestProvider()
 		&& Response.MovementContextGeneration == MovementRequestGeneration && ClientData

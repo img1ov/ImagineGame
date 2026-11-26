@@ -15,7 +15,8 @@
 | `IMGTraversalComponent` | 配置、Target、临时碰撞忽略、Flying 接管/释放和复制快照。 |
 | `{Public,Private}/Character/Traversal/Execution/IMGTraversalWarpWindows`、`IMGTraversalPlaybackPath` | 显式配置的窗口收集、有限 Section 路径及播放时间映射。 |
 | `{Public,Private}/Character/Traversal/Execution/IMGTraversalWarpPrediction` | 根运动/原生 Warp 窗口预测及当次计算缓存，不反查 Component 或 GA。 |
-| `{Public,Private}/Character/Traversal/Execution/IMGTraversalPlacement` | 目标准备、支撑落位、可选补偿和显式 Landing 校验。 |
+| `{Public,Private}/Character/Traversal/Execution/IMGTraversalPlacement` | 目标准备、支撑落位、可选补偿、显式 Landing 校验与 Mantle 交接边界。 |
+| `{Public,Private}/Character/Traversal/Execution/IMGGroundPlacement` | 无行为类型依赖的支撑几何计算及实际胶囊有限恢复/查地。 |
 | `{Public,Private}/Character/Traversal/Animation` | 专用手部 AnimNode 与 Traversal 前沿接触算法；编辑器包装在 ImagineEditor 同路径。 |
 | Private `IMGTraversalReplay.cpp` | 同一 Component 的逐 Move 上下文记录/恢复，无独立复制服务。 |
 | Types / TargetData / Debug | 公共数据、客户端请求、私有观测采集、独立Trace与DrawDebugLibrary表现；编辑器轨道位于ImagineEditor同层级Character/Traversal。 |
@@ -32,12 +33,12 @@
 - `IsTraversalAvailable` 表达组件注册/活动及不在释放/失效过程，`IsTraversalReady` 核对 CMC/MotionWarping 执行设施，模拟代理另要求有效 ASC Montage 接合；本地/权威端的 ASC/Avatar 有效性由 GA 当前 ActorInfo 核对，不等待 Component 收到 ASC 初始化广播。MotionWarping 的原生更新依赖注册及 OwnerAdapter，不以组件 IsActive 标记作为准入。GA 从激活开始订阅 `OnTraversalUnavailable`，覆盖等待 TargetData 与已执行阶段；基础接合失效时先关闭入口、报告给 GA，再兜底幂等释放资源。GA 结束精确解除自己的委托。
 - ASC 解绑/换绑、停用、注销、EndPlay 及执行接合失效均在通知 GA 前退休本方 Replay，并结束本方执行；回调后的对象/绑定重新核对。组件或模拟代理 ASC 接合不可用时 OnRep 只保留复制值；重新接合后从当前快照补齐。模拟代理 CMC/移动模式、Target 引用和快照可以乱序，保持原有活动快照及 Tick 重试，由 Montage 前置条件等待所需数据，不把暂未就绪误判为执行失效。同 ASC 重复接合不重置活动执行；首次 ASC 接合不走解绑清理，因为 OnSpawn 能力可在 InitAbilityActorInfo 内先于 PawnExt 初始化广播激活。热插拔不依赖 ABP 回调或手点曲线，不表示运行时卸载 C++ 模块。
 - 选片入口保持 `PreSelectTraversalAnimation → SelectTraversalAnimation → CHT/PoseMatch`。原生读取选中 Action/Montage 的执行规则：匹配 MontageSettings 则整份覆盖，否则用 ActionSettings；不要求为每个 CHT 结果登记 MontageSettings 或 ReplicatedMontages。ReplicatedMontages 保持原有可选语义：空列表按执行窗口/绑定合同识别模拟代理播放，非空才限定列表及 MontageSettings 的归属；它不替代 CHT 选片。
-- 执行算法只依赖传入合同和原生设施：`IMGTraversalWarpWindows::Collect` 显式接收 MotionWarping 的 `bSearchForWindowsInAnimsWithinMontages`；PlaybackPath/Prediction/Placement 不包含 Component/GA。播放路径和预测上下文仅存在于单次准备调用，不另建复制状态或跨帧缓存。外部死亡/Ragdoll 通过 GAS/移动接管合同中断，具体行为不互查组件。
+- 执行算法只依赖传入合同和原生设施：`IMGTraversalWarpWindows::Collect` 显式接收 MotionWarping 的 `bSearchForWindowsInAnimsWithinMontages`；PlaybackPath/Prediction/Placement 不包含 Component/GA。完整窗口/预测上下文只存在于单次准备调用；Component/Replay 另保存不含窗口或 Modifier 指针的数值 Section 路径，用于跨帧判断交接。外部死亡/Ragdoll 通过 GAS/移动接管合同中断，具体行为不互查组件。
 
 ## 检测、发起与选片
 
 - 自动分层搜索使用具名标量：`Search → Automatic` 下的 `AutomaticLowerLayerCount=2`、`AutomaticLowerSearchDistance=250 cm`、`AutomaticUpperSearchDistance=150 cm`。实际层数仍由 MaxHeight、胶囊高度、SearchStartHeightOffset、SearchProbeRadius 和 MaxSearchLayers 计算，低层数量不增加探针；0表示全部用高层距离，不小于实际层数则全部用低层距离。每层最终长度为 `Min(SearchDistance, 所属组距离) * SearchScale`；Manual/AI 仅用统一 SearchDistance 与速度缩放。旧逐层数组已删除，无兼容/自动迁移；旧蓝图覆盖需在新字段重设，例如250/250/200/200/200/200对应2、250、200。入口：`IMGTraversalTypes.h`、`IMGTraversalDetector.cpp::Detect`。
-- 配置按消费职责排列并使用原生详情分组：Detector 的 Search（含 Speed Scaling/Automatic）、Geometry、Facing、Handhold、Depth、Clearance、Edges、Scoring、Slopes、Stairs、Surface Policy、Collision、Validation、Recommendation；推荐速度及 Hurdle/Vault 高度的显示名明确标注 Recommended，不代表硬准入。Initiation 分 Manual and AI、Automatic、Networking，关闭 bEnabled 后禁用子参数；StandingMaxDistance 另依赖允许站立。Execution 分 Warp Targets、Landing、Clearance、Playback；Landing 关闭时禁用附属字段，只有 DistanceCurve 模式可编辑曲线/接触锚点参数。长度、速度、角度和时间标注单位；原有字段名与默认值除替换数组外保持不变。
+- 配置按消费职责排列并使用原生详情分组：Detector 的 Search（含 Speed Scaling/Automatic）、Geometry、Facing、Handhold、Depth、Clearance、Edges、Scoring、Slopes、Stairs、Surface Policy、Collision、Validation、Recommendation；推荐速度及 Hurdle/Vault 高度的显示名明确标注 Recommended，不代表硬准入。Initiation 分 Manual and AI、Automatic、Networking，关闭 bEnabled 后禁用子参数；StandingMaxDistance 另依赖允许站立。Execution 分 Warp Targets、Landing、Ground Handoff、Clearance、Playback；Landing 关闭时禁用附属字段，只有 DistanceCurve 模式可编辑曲线/接触锚点参数。长度、速度、角度和时间标注单位；原有字段名与默认值除替换数组外保持不变。
 - ActionSettings、MontageSettings、WarpBindings、RequiredTargets、表面标签及网络列表按动作/资产/目标名表达条目身份，保留可变数组；MontageSettings/AllowedMontages 标题显示 Action + Montage，WarpBindings 显示 TargetName。GA RetryInterval 归 Activation，超时/白名单统一归 Networking；Component 的 ReplicatedMontages 与 GA 的 AllowedMontages 分别控制模拟代理播放归属和远端请求准入，不能因都列出 Montage 就合并。
 - 每次激活只尝试一次，外部决定触发时机，`RequestSource` 与 `ActivationPolicy` 独立。`CanActivate` 作本地几何/发起预筛，激活后依次执行 `PreSelectTraversalAnimation`、`SelectTraversalAnimation`。Chooser 消费入场 MovementMode/Gait/Speed，必须早于 `BeginTraversal` 切 Flying。
 - `SampleHandhold` 采样中心/左右顶部、宽度和楼梯轮廓，`MakeCandidate → ValidateCandidateDirection` 验证方向。方向回退复用本次公共采样，但从原始候选副本重算深度、后沿、净空和坡向；不跨 Detect 调用、帧或网络端缓存，不省略服务端重检。
@@ -138,10 +139,10 @@
 | --- | --- |
 | 权威端 | 独立重检并计算 Target，复制执行快照；生命周期沿 GAS，移动沿 CMC。 |
 | 自主代理 | 本地先执行；仅活动且 Avatar/Spec/预测键/Action/Montage/StartTime 匹配时回填权威 Target/障碍。引用未齐继续预测并在活动 Tick 重试；保留本机 PreviousWarpTargets，版本变化后 GA 重建表面复核快照。晚到/结束快照不启动或结束本地会话。 |
-| 模拟代理 | 不选片、不重检几何；按 Montage/PlayInstanceId 等待快照引用、Target、碰撞忽略和 Flying。结束先到时保留已播放实例至退出（含混出），未播放终态实例丢弃，晚引用不得复活。恢复 Target 使用权威历史，非 Flying 到达后先恢复碰撞再查支撑。 |
+| 模拟代理 | 不选片、不重检几何；按 Montage/PlayInstanceId 及阶段等待快照引用：Warping 等 Target、碰撞忽略和 Flying，GroundExit 等地面模式与权威尾段相位。结束先到时保留已播放实例至退出（含混出），未播放终态实例丢弃，晚引用不得复活。恢复 Target 使用权威历史，非 Flying 到达后先恢复碰撞再查支撑。 |
 
-- Component 在模拟代理按独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 为空时无需预登记 CHT 结果，按动作配置的 Warp 窗口/绑定识别缺快照的待播 Montage；非空列表保留原有精确归属限制。已匹配执行实例仍核对 Target、碰撞忽略和 Flying；同实例引用补齐不重复拆建，结束快照保留 Montage/PlayInstanceId。
-- `CMC.ClientCorrectionFilter` 仅处理 Packed MoveResponse 中仍匹配 SavedMove 的纠偏。GA 只在本方活动且 Flying 时过滤启动前已记录的待确认 Move；保留原生 ACK/缓存释放，不应用该次位置/模式/根运动，超出时间戳重置安全窗口则放行。启动后的纠偏和权威拒绝仍有效，不能据过滤推断落位已被权威消费。
+- Component 在模拟代理按独立句柄注册 ASC Montage 前置条件。ReplicatedMontages 为空时无需预登记 CHT 结果，按动作配置的 Warp 窗口/绑定识别缺快照的待播 Montage；非空列表保留原有精确归属限制。已匹配执行实例按 Warping/GroundExit 分别核对空中执行或地面收尾前置条件；同实例引用补齐不重复拆建，结束快照保留 Montage/PlayInstanceId。
+- `CMC.ClientCorrectionFilter` 仅处理 Packed MoveResponse 中仍匹配 SavedMove 的纠偏。GA 只在本方活动且对应 Warping/Flying 或 GroundExit/地面模式有效时过滤启动前已记录的待确认 Move；保留原生 ACK/缓存释放，不应用该次位置/模式/根运动，超出时间戳重置安全窗口则放行。启动后的纠偏和权威拒绝仍有效，不能据过滤推断落位已被权威消费。
 - UE 的 ASC.PrePredictionActivation 和 GameplayAbility.PreActivate 已有激活前 FlushServerMoves 路径；沿用它们，不额外发送或增加确认等待。
 
 - 丢包诊断：Traversal 请求沿 GAS 的可靠激活与 TargetData RPC，底层丢包可使重传晚到。CMC 启动后纠偏和 GAS 权威拒绝均可使本机预测回退。画面回拉本身无法判定是哪条消息晚到，按预测键对照服务端重检、终止和移动纠偏。
@@ -151,9 +152,72 @@
 - 原生 SavedMove 保存原始动画根运动，MotionWarpingCharacterAdapter 在 bClientUpdating 时再次处理。Traversal 经 CMC 通用 MovementReplayCapture 保留逐 Move 的 setup/restore 闭包；在原生 OnPreUpdate（发现窗口后、更新 Modifier 前）记录世界 Target、SwapState 和本方碰撞忽略，记录/重放不合并 Move。
 - 重放临时安装历史上下文，以原生 Modifier 副本计算并屏蔽重复 Notify gameplay 回调，随后恢复当前会话。副本仅首次重放创建，后续重置状态复用，FreeMove/Clear 释放历史引用；无额外 Tick/保活计时器。历史 Flying/退出边界可重放，不强制接管外部 Custom/物理模式。
 - 权威终止/取消/拒绝按 Avatar/Spec/预测键退休对应上下文；组件停用、注销、销毁、ASC解绑或换绑同样使其失效。旧 Move 仍可能进入 PrepMoveFor，失效分支须清除属于该历史 Montage 的 RootMotionParams，不能只提前返回。闭包弱引用组件；不承诺回滚世界碰撞、动态载体或自定义 Modifier 外部副作用。
-- 正常完成以 PlayMontageAndWait.OnCompleted（含 BlendOut）为边界。有限动作要求开启 AutoBlendOut 且时间有限，否则 Commit 前拒绝。站稳动作应在站稳后混出；预测落点、Warp 窗口结束或途中接触不提前切 Walking，也不增加独立落地阶段复制。
+- 动作正常完成仍以 PlayMontageAndWait.OnCompleted（含 BlendOut）为边界，有限动作要求 AutoBlendOut 和有限播放路径。Mantle 在已准备的最后登顶平移窗末交回地面物理，正常尾段保留 Montage/GA；Hurdle/Vault 暂保留原有 Montage 退出移动合同。交接与最终完成是不同生命周期边界。
+- **登顶后坡面交接问题及修复范围。** 用户指出原来前后坡上 Warp 完成后仍处于 Flying 的缺口：即使窗末补偿位置安全，后续 Root Motion 尾段沿坡前进时所需地面高度仍会变化。原实现直到 `ReleaseExecution` 才恢复障碍碰撞；当前 Mantle 已在准备出的登顶边界恢复碰撞并请求地面交接，原生 `PhysFlying` 虽有碰撞扫掠，却不执行 Walking 的持续地面高度约束，不能仅靠准备阶段的 Target.Z 修正覆盖后续地面移动。若胶囊在所选补偿终点当帧已穿入，则仍须另查补偿是否生效及预测/实际执行偏差，不能仅凭 Flying 定因。现场个例尚未运行核对。
+- 当前 Mantle 交接合同：最后登顶根运动消费完成后撤销本方碰撞忽略，用实际胶囊有限恢复并查近处可走支撑，成功交 Walking/Base；失败交 Falling 并取消/混出站起 Montage，不能报告登顶完成。Component、GA、快照/前置门槛和逐 Move Replay 已按阶段接合；不能任一 Warp 窗末都切换，也不以准备阶段安全中心作运行时传送点。资产和联机表现仍待运行验收。
 - 完成、中断、取消、死亡、失效或 ASC解绑均幂等释放 Target、碰撞忽略、Tick依赖、委托和计时器。恢复碰撞后，仅存活且仍 Flying 时按实际支撑切 Walking/Falling；Ragdoll 等接管的新模式不得覆盖，退出无需等待 Montage 自然结束。
 - BeginPlay/Activate/重新注册接合 MotionWarping、PawnExt/ASC 和 CMC。Deactivate/OnUnregister/EndPlay 释放接合，期间 IsTraversalAvailable=false，晚快照不重启。拒绝无根运动、非正/非有限 RateScale 和无效检测通道；PawnExt 解绑顺序见 ASC 生命周期。
+
+### GTA 登顶交接映射与决定（Mantle 已接通，待运行验收）
+
+- **依据与边界。** 用户要求先沿 GTA 完整机制逐项映射，再取舍，不能把前一版独立推导的“两阶段+切模式”当作已充分覆盖的实现。已复核 Vault 的 Pre/PostFSM、MoveSignals、Physics、ClamberStand、Falling、IK、打断、附着异常、CleanUp、ClonedTaskInfo 和 CloneFSM，并追到 MotionPed/Ped 的动画Z与地面物理、Player 的 movement breakout。未读取运行时动画包或本工程 Content，不能确认 GTA 各素材的实际标记先后；UE 网络部分按本工程 GAS/CMC 合同重建，不声称 GTA 有 SavedMove 式预测重放。
+
+| GTA 已核实职责 | ImagineGame 对应及决定 |
+| --- | --- |
+| Climb/Slide 才调用 ScaleDesiredVelocity；ClamberStand 不再补偿 | 登顶阶段结束后停止 Warp 移动接管，保留动作会话。 |
+| EnterEndVault 信号进入 ClamberStand，EndClip 有自己的相位 | 映射成当前 Montage 内的地面收尾阶段；用户已确认最后登顶 Warp 窗末可承担阶段边界，不新增整套 MoVE/FSM 或另播一段动画。 |
+| ClamberStand 另按 AdjustAnimVel 相位恢复碰撞，未附着才恢复重力 | 停止补偿与物理交接职责独立；当前用户素材允许二者同点，最后登顶根运动消费完后恢复本方碰撞忽略并交 CMC，不能泛化为所有动作/资产同点。 |
+| IsLanding 启用地面约束；SlopeNormal 交给腿IK | CMC Walking 负责查地、AdjustFloorHeight、沿坡移动和 Base；脚/骨盆表现沿既有 FootPlacement，不用 IK 替代胶囊落地。 |
+| ClamberStand 继续 AnimatedVelocity，停止消费动画Z后仍可消费XY | 保留 Montage 水平根运动并由 Walking 沿坡执行，不能在交接时把根运动或水平速度全部清零。 |
+| 无支撑进入 Falling，创建 CTaskFall 接管空中/落地 | 作为登顶失败/失去支撑出口，交 CMC Falling 及既有空中表现；不得强行站立，也不得无条件继续站起尾段并报告成功。无需复制一个 RAGE Fall 任务体系。 |
+| Detach 是独立相位，附着期间不恢复重力；载体异常/净空丢失可脱离或Ragdoll | 当前 IMG 没有这套物理 Attach 合同，不能照搬标志；落地建立 CMC MovementBase，退出空中目标跟随，避免双重平台位移。继续核对已有动态载体准入/失效，不据静态坡面修复宣称完整 GTA 动态攀爬完成。 |
+| 手臂、腿、骨盆分别受动画信号控制，腿有落地混合覆盖 | 已有手Alpha、DisableLegIK/contact、FootPlacement 各自映射；地面交接不等于强制全开IK。资产时序列入验收，不增加逐脚接触任务或复制IK。 |
+| EnableHeadingUpdate、MovementBreakout、Interruptible、AimInterrupt 各管不同控制窗口 | 物理落地、朝向接管、输入打断与能力互斥不合并。本次保持原GAS控制/互斥规则；提前输入/瞄准打断是明确未移植差异，不能因切Walking就一并开放。 |
+| 退出按 Stand/Walk/Run 和实际速度交接；Fall 显式传递步态避免MBR复制晚到 | 保留 CMC 实际速度与既有Locomotion步态/输入合同，验收尾段结束不急停、不错误重启冲刺；不复制第二套步态或写死退出速度。 |
+| ClonedTaskVaultInfo 同步 State 与起点、手点、速率、载体；Clone继续执行FSM | 现有 Traversal 快照同步阶段与执行参照，GAS同步Montage，CMC负责权威移动/预测纠偏；UE模拟代理不额外运行本地GA。此项是网络职责映射，不是复制RAGE Clone协议。 |
+| Owner任务消失后已开始的Clone可继续到可退出点；Init/后续新动作有例外 | 保留已播模拟代理的可见尾段与终态不复活规则，同时立即按权威地面阶段撤销物理接管，不能为保留动画延迟碰撞恢复。 |
+| CleanUp 恢复碰撞/重力、脱离、Heading、IK覆盖、动画网络、武器/瞄准临时状态 | 按 IMG 实际取得的资源对称清理，交接后清理不覆盖新移动模式；GTA专属武器/镜头/SoftAim策略不迁入共享Traversal。 |
+
+- **源码入口。** 上表对应 `TaskVault.cpp:404,581,647,678,766,794,1847,1914,1986,2033,2376,2781,3263,3442,3550,4237,4325,4379`，`TaskVault.h::CClonedTaskVaultInfo::Serialise`，`TaskMotionPed.cpp::CalcDesiredVelocity`，`Ped.cpp::SetUseExtractedZ/ProcessProbes/ProcessPedStanding`，`TaskPlayer.cpp::Jump_OnUpdate`。GTA 的 ClamberStand 使用 EndClip，恢复碰撞的标记相位不是前面 StartClip 补偿窗口的同一个时间值；先前将这些时点压成一个 Released 事件不够完整。
+- **取舍权重。** 最高优先级为完整覆盖上述正常/失败/清理出口，以及权威端、自主代理、模拟代理和历史重放一致；不满足即排除。其次是保留当前资产合同、CMC移动职责与现有IK/输入所有权；最后比较新增配置、标记、状态和维护成本。这是本工程取舍顺序，不是 GTA 注释提供的量化评分。
+- **决定。** 采用 GTA 的“爬升执行→地面收尾→正常退出；失去支撑→下落；外部接管→取消清理”职责模型，映射到现有 Component/GA/CMC。当前 Mantle 资产把停止补偿与恢复地面物理两个触发点合并到最后登顶 Warp 窗末，但控制恢复、IK恢复、动作完成仍各守自己的合同。排除继续Flying到整个Montage结束、继续加Target.Z修正代替地面移动，以及移植RAGE站立弹簧/附着/Clone整套实现。阶段名称、复制字段、纠偏通知接口是实现细节，不能仅凭 GTA 状态同步就宣称已解决 UE 预测。
+- **触发与时序。** Placement/PlaybackPath 解析已选登顶窗口及有限Section路径中的终点，独立于补偿量/预测降级；不跨帧存临时窗口指针。Component 在当前Move根运动和 scoped movement 完成后的 `OnCharacterMovementUpdated` 执行交接，不在 MotionWarping OnPreUpdate 提前切Walking、不用世界定时器。窗内起播、跨Section、混出、变速、大DeltaTime跨界均纳入核对；若一个Move合并尾段造成不可接受的偏差，需拆分该Move，不能声称亚帧精确。
+- **正常交接。** 恢复本方碰撞忽略→按实际胶囊检查近处可走支撑/净空并进行通用受限穿透恢复→建立Walking/Base；继续Montage水平根运动和既有姿势控制。GA/会话仍活动，最终Completed/Interrupted/Cancelled负责清理。RefreshWarpTargets与ignore所有权拆开，地面收尾后不能因刷新或晚到Target再次忽略平台。目标失效由接触表现自行降级；实际MovementBase失效则由CMC进入下落出口。
+- **失败与中断。** 无有效支撑、支撑丢失、无法安全消解的穿透均不得伪装为登顶成功；恢复碰撞后交Falling/现有空中表现，站起Montage按失败出口取消或混出。死亡、Ragdoll、Custom/None、ASC/Avatar失效继续沿原能力取消与资源释放路径，不用通用落地修正覆盖它们。失败处理不传送到准备时安全中心、不无界搜索别层支撑。
+- **网络和重放必须一起完成。** 同执行阶段更新保留已有实例身份，阶段接收与AppliedAuthoritySequence的Target去重解耦；不加第二套位置/速度/MovementMode或交接RPC。自主代理预测、服务端独立判定；CMC已接受响应对应TimeStamp/SavedMove的权威模式/根运动相位是纠偏锚点，OnRep不能把历史阶段直接强加当前帧。SavedMove闭包记录边界、播放路径及碰撞所有权，在临时上下文中重演过渡并重新查实际支撑；锚点已交接时旧Move不能强制Flying，锚点在交接前则允许合法回退重演。重放不发业务通知、RPC或权威快照。CMC只在必要处提供通用已接受纠偏通知，不包含Traversal业务类型。
+- **模拟代理和终态。** 按权威阶段分别等待Warping所需Flying/Targets/ignores，或地面收尾所需模式/当前Montage尾段相位；阶段、模式、Montage、引用允许乱序，不要求已交接实例重新进入Flying。Component→CMC Tick依赖保证先恢复碰撞再查地。已播实例可正常混出，未播终态不得启动，快速重复同Montage不得串实例。
+- **实现覆盖与验收。** Placement/PlaybackPath输出边界，Component持阶段/资源/快照，GA处理阶段有效性和正常/失败出口，Replay处理历史模拟，CMC执行地面/下落及必要通用接口。必须覆盖静态前后上下坡、当前允许的动态支撑及Base交接、最后一帧/低帧率/高播放速率、浅穿透/无支撑/深穿透、IK曲线与输入窗口、尾段速度连续性、交接前后取消/Ragdoll、专服/Listen Server、纠偏跨界、消息乱序、引用晚到、远端终态与重复播放。资产具体标记和联机表现仍待用户运行验收。
+
+### 实施步骤与后续拆分（当前 Mantle 已落代码）
+
+- **执行状态。** 用户已发出开始信号。当前代码已接入 Placement 基础计算、Mantle 地面交接、三端阶段与纠偏重放；步骤5的资产/运行验收由用户执行，步骤6的梯子等独立行为仍待后续任务。
+- **长期边界。** 共用目标是“为行为找到满足胶囊和支撑约束的落位，并把实际运动交回地面”，不是所有行为都改用同一 Warp、同一轨迹或结束时瞬移胶囊。准备阶段 Placement 补偿、行为执行期间的目标位移、运行时实际胶囊地面交接和最终动作清理是四项独立职责。普通楼梯沿 CMC Walking/StepUp/地面跟随；梯子、悬挂退出等特殊行为才需要自己的退出合同。
+
+| 职责 | 当前落点与后续边界 |
+| --- | --- |
+| 安全落位的几何求解 | 从现有 Placement 识别可共用的支撑/完整胶囊扫掠、净空、可走性和地面间隙计算；显式接收胶囊形状、参考位置/参照体、搜索范围及表面约束，不反查行为类型。 |
+| 行为的补偿适配 | IMGTraversalPlacement 保留 Montage/窗口投影、Bone/Static Provider、Target.Z反推、全链复算与降级合同；Mantle顶层、Hurdle后方、未来梯子出口的资格/层位规则分别归来源。不能把整个 PrepareTargets 当作所有行为的通用接口。 |
+| 行为执行 | Mantle消费Warp根运动，未来梯子消费梯档/挂载/退出相位，其他行为按自身模型生成移动；行为独立拥有生命周期。 |
+| 实际地面交接 | 在行为指定的安全退出阶段恢复本方碰撞约束，按实际胶囊有限消解误差，交 CMC Walking/Base 或失败下落；来源决定何时请求、可接受支撑和失败策略，CMC提供通用移动执行。 |
+| 网络与表现 | 位移继续沿CMC预测/纠偏，每个行为保留自己的阶段与历史上下文；共用必要通用入口，不新增全局行为调度器。IK、输入恢复、动画结束各守原合同。 |
+
+1. **固定合同与改动清单。** 以本节前面的GTA映射为基线，明确登顶窗末、正常地面收尾、无支撑/穿透失败、外部接管和最终清理各出口；保留可选Placement补偿降级与显式Landing严格校验差异。交接时间从行为准备结果取得，不绑定补偿量是否非零。
+2. **整理Placement计算边界。** 保留现有有效算法，先分清“可复用的胶囊/支撑几何计算”与“Traversal的Warp预测/Target修正”；必要提取只形成无状态计算接口，不先建设总Placement组件。下一消费者出现后，再依据真实共同输入提升共享层级，不引入GTA无对应证据的统一运动模型。新增struct的具体头文件仍按工程约定在实际落地前确定。
+3. **接通Mantle完整生命周期。** Placement产出登顶边界，Component在最后登顶根运动消费后交接；同步修改碰撞ignore刷新、GA阶段有效性、地面/下落失败出口、动态Base交接、尾段速度及取消清理。准备补偿负责到位，运行时交接只处理实际状态和有限残差，不能回写第二轮整链补偿或把预估位置当作执行事实。
+4. **同期完成联网与重放。** 按现有实例身份扩展阶段快照，分开Target与阶段消费；接通自主预测、服务端独立执行、CMC纠偏锚点、SavedMove跨界重演，以及模拟代理的分阶段起播/尾段/终态。必要通用CMC接口不反向依赖Traversal。诊断随本步骤加入，不等运行失败再补观测。
+5. **静态收口与用户运行验收。** 核对接口、访问权限、依赖、重入、资源对称及三端时序；用户验收平地/前后上下坡、当前允许的移动支撑、低帧率/窗内起播/跨Section、补偿成功/零修正/降级、无支撑/浅深穿透、尾段速度与IK/输入窗口、取消/Ragdoll、专服/ListenServer、延迟丢包/纠偏跨界/乱序和重复Montage。按现有约定不编写测试代码、不自行编译或修改Content。
+6. **后续接入第二种行为再抽取。** 梯子先独立实现检测、占用、攀爬和上下端退出，只有其落位几何和地面交接与Mantle确实共用的部分向共享执行层提取；梯档对齐、出口选择、动画/控制相位、载体和联网会话继续归梯子。悬挂、绳索等按同一职责边界逐个适配，不能把有限Montage/Flying合同推广到所有持续行为。
+
+### Mantle 地面交接的当前实现
+
+- 模拟代理 GroundExit 起播从项目 ASC 的 `GetReplicatedMontagePosition` 取得匹配 Montage/PlayInstanceId 的权威位置；未取得有效位置则保持等待，不直接访问引擎 protected 复制状态接口。
+- `IMGTraversalPlacement::PrepareTargets` 输出独立的 GroundHandoffTime；Mantle 用已选 FinalTranslationWindow 的路径终点，不依赖补偿是否非零或预测模型能否补偿。窗口必须在预计播放结束前可完成。原 Target.Z 反推、全链复算、可选降级与 Hurdle 显式 Landing 合同保留。
+- `IMGGroundPlacement` 目前只提取 PlaneAdjustment、IsUsableSupport 等共用计算，未把整个 Montage PrepareTargets 泛化。FindGround 面向当前 CMC/胶囊，沿角色碰撞过滤器查询、调用原生穿透恢复并限制总位移，最终复查完整胶囊和近处可走支撑；失败回滚本次恢复。失败还恢复原 bJustTeleported，支撑距离使用原生 GetDistanceToFloor（含 LineTrace 回退）。默认 MaxGroundAdjustment=10 cm，在 Execution Settings → Ground Handoff 配置，仍按 Action/Montage 整份覆盖；不是额外 Warp 抬高量。
+- Component 的 `OnCharacterMovementUpdated` 在当前 Move 的根运动执行后解析数值播放路径，进入 GroundExit 并恢复本方 ignores、Walking/Base；失败进入 Falling，向本 GA 报失败并取消动作。GroundExit 仍在会话中，目标可供手部只读消费，但不会重加 ignores 或继续用障碍准入限制地面尾段；实际失去支撑也走失败下落出口。交接查询期间以原 ExecutionId 临时抑制重新加入 ignores，直到恢复提交前仍保留 Flying 清理所有权，覆盖 overlap 取消/重入。Montage Completed 若先于当次物理结束，只排队完成，待最后根运动和地面检查完成才结束 GA；重放完成交接后在实时移动更新补交完成通知。帧跨界在该 Move 末处理，尚无亚帧拆分；低帧率/高播放速率造成的偏差须运行验收。
+- 现有 FIMGTraversalRepState 增加 MovementPhase（Warping/GroundExit/Falling）、GroundHandoffTime、MaxGroundAdjustment；阶段更新不换 Sequence，不增加位置/速度/模式副本或交接 RPC。自主代理接收权威边界但不在 OnRep 直接套历史模式；模拟代理按阶段等待 Flying 或实际地面模式及权威尾段播放位置，晚 Montage 引用重试，不退休有效实例。终态保留交接阶段，允许已播放尾段完成，但碰撞不能随尾段延迟。
+- CMC 只增加通用 `ClientCorrectionApplied` 通知：Packed 纠偏实际被接受、对应 SavedMove 且 ACK 推进后才广播，先让原生应用位置/模式/根运动。Traversal 按捕获的 Move→ExecutionId 及 Montage 核对，再用权威模式建立重放交接起点。启动前旧 Move 的现有过滤延续到有效 GroundExit，交接后的正常纠偏不屏蔽。
+- Replay 在旧闭包中保留数值路径、边界、恢复上限及本方碰撞所有权，通常使用原生 SavedMove 的重算后 RootMotionTrackPosition 判断跨界；仅在 Montage 已于该 Move 完成、原生不再保留 Montage 引用时使用原 Move 记录的交接标记兜底，这不重建引擎未保存的末帧根运动，仍需最后一帧纠偏验收。已交接锚点不强制 Flying；纠偏回登顶前时可从 GroundHandoffIgnores 取得原属本次动作的忽略集，再重演交接。临时 ReplayPostMovement 不广播玩法失败/发布网络，按实际修正后支撑决定模式，恢复时不撤销物理结果；GA 在实时帧接收失败出口。每次捕获先移除池化 SavedMove 的旧执行身份，正常尾段 Move 即使 Montage 引用已消失仍以捕获身份接收纠偏锚点。新 Begin/解绑清历史索引与弱忽略集，原 Session 退休/失效规则继续有效。
+- 新诊断事件：GroundHandoff（路径相位/边界、实际中心、支撑/法线、失败原因）、GroundHandoffFailed、GroundHandoffCorrection（已接受 Move/模式）、ReplayGroundHandoff；快照 State 文本含阶段/边界/恢复上限。事件沿既有 Trace/Rewind/JSONL，不改 Trace 结构版本；Rewind 显式将交接及失败归 Execution。
 
 ## 性能与诊断
 
@@ -174,9 +238,15 @@
 
 ## GTA 对照与已知边界
 
+- **梯子进一步佐证“独立位移模型，共用地面职责”的边界。** `TaskLadderClimb.cpp::ScaleClimbToMatchRung` 按梯档与动画相位生成DesiredVelocity，`DriveTowardsPerfect` 用动画位移与理想挂载变换求速度，两者不是Vault的DistanceDiff补偿。`StateAtTopDismount_OnEnter` 关闭碰撞，Update在动画IsInterrupt信号恢复碰撞，随后关闭ExtractedZ并设Standing；底部与滑降退出在目标动画状态就绪后恢复碰撞/重力，置IsLanding使胶囊地面弹簧阻尼生效，同时请求腿IK。滑降入口另衰减原有向下速度，注释明确防止猛烈砸地；CleanUp恢复碰撞/重力并释放MP梯子占用及导航阻挡对象。源码入口约为`:388,2399,2429,2498,2898,3532,3575,3628`。这些证明行为各管自身运动和退出时机、地面机制消费交接事实，不能据此宣称GTA所有行为共用同一个Placement类，也不能把挂载对齐函数误当作登顶时统一贴地补偿。
+- **GTA 在任务结束前恢复地面约束。** `TaskVault.cpp::StateClamberStand_OnEnter` 取当前 Clip 的 `AdjustAnimVel` 相位作恢复碰撞时机（无标记默认0.5），`StateClamberStand_OnUpdate` 每帧置 `IsLanding`，注释明确为启用强制落地代码及提前控制；超过该相位恢复碰撞，未附着时 `SetUseExtractedZ(false)` 交回重力。`Ped.cpp::SetUseExtractedZ` 实际控制 NO_GRAVITY，MotionPed 同时据此停止消费动画 Z。`Ped.cpp::ProcessPedStanding` 将 IsLanding 视为站立候选，非 ExtractedZ 条件下执行地面弹簧/阻尼，下降时还有防止入地的落地阻尼分支。ClamberStand 同时仍强制 AnimatedVelocity，说明尾段动画水平位移可继续，竖直已交给地面/物理；无支撑则转 Falling，后者入口恢复碰撞和重力。它与“登顶后不等整个动画结束就交回地面移动”职责对应，但不是 UE Flying/Walking 的直接模式映射，也不是恰好补偿窗末自动切换。入口：`TaskVault.cpp:581,1986,2033,2147,1847`、`Ped.cpp:10508,16408,16545,16650`。
+- **GTA 补偿停止条件。** `TaskVault.cpp::ProcessPhysics` 仅在 Climb/Slide 调 `ScaleDesiredVelocity`，ClamberStand/ClamberVault 不调用；`ProcessMoveSignals` 通过 `EnterEndVault` / `EnterFall` 动画网络信号转入这两个后续阶段。每轴修正还受调整相位区间约束，未发现以 Root.Z 达到峰值或竖直速度变号来停补偿的条件。`:1553` 的“延长至相位1”只适用于仍处于 Climb 的当前 Clip，不能理解为整个翻墙任务直至落地都持续同一补偿。是否通常在视觉最高点附近切阶段须核对 MoVE/动画资产；当前快照缺少运行时动画包，尚未验证。
 - GTA 路径相对 `src/dev_ng/game`：检测/手点 `task/Movement/Climbing/{ClimbDetector,ClimbHandHold}.*`，发起 `task/Default/TaskPlayer.cpp`，Jump/Vault 分流 `task/Movement/Jumping/TaskJump.*`，执行/清理 `task/Movement/Climbing/TaskVault.*`。GTA Clone 同步不等同 UE 的 CMC Replay。
 - CTaskVault 按手点、DropPoint、GroundToRootOffset 和动画相位求目标位移，`CalcTotalAnimatedDisplacement`、`SetDesiredVelocityAdjustmentRange` 分别处理动画位移/调整区间。`ClimbDetector::ValidateHandHoldAndDetermineVolume` 调 `CTaskVault::IsHandholdSupported` 校验出口，不能把几何通过等同动画可落位；IMG 分层落实为选片后绑定、可选补偿和显式 Landing 合同。
 - 已验证 GTA 位移与接触分别处理：`TaskVault.cpp::CalcTotalAnimatedDisplacement` 从 StartScalePhase 提取至相位1的 mover 位移并按活动双 Clip 权重混合；`ScaleDesiredVelocity` 将 TargetDist 与该总位移之差按各轴调整区间添加到动画速度，`ProcessPhysics` 在 Climb/Slide 消费。`StateClimb_OnUpdate` 在混入或超过初始调整区间时重算剩余位移，并可把后续调整延长到相位1；因此不是只对齐手点后永久冻结后段位移。`ProcessHandIK/UpdateHandIK` 由动画信号启停，向 Arm IK 提交绝对或载体相对目标；`ComputeIsOnGround` 另查实际支撑。这些是本地源码事实，不代表该快照所有资产的配置或发行版实际行为，也不将其整体视为精确接触/必定落位证明。
+- **GTA 普通翻墙的移动来源。** `TaskVault.cpp::StateInit_OnEnter` 设置 `SetUseExtractedZ(true)`，`ProcessPreFSM` 强制 `MotionState_AnimatedVelocity` 并请求直接应用速度；`TaskMotionPed.cpp::CalcDesiredVelocity` 的 AnimatedVelocity 分支将提取的动画 XYZ 速度转为世界速度，`Ped.cpp::ApplyMovementRequests` 后的任务 `ProcessPhysics` 再执行 Vault 的速度修正。主路径属于动画 mover 位移驱动加程序目标修正，不是先把胶囊放到平台终点、再靠 Mesh 反向偏移播放 InPlace。RAGE 的 mover 轨道不等同于 UE 某一根骨的具体存储格式；抽取位移后局部姿势看似原地，也不能据此判为 InPlace 驱动。IMG 同样依赖 Root Motion Montage（GA 校验 `HasRootMotion`），Placement 只改 Warp Target.Z，Component 切 Flying 后沿 Montage/CMC 执行；两者职责方向接近，算法与碰撞合同不同。
+- **GTA 中看似预移动的例外。** `TaskVault.cpp::StateInit_OnEnter` 的 Clone 分支可纠正远端起始位置/朝向，纠正目标是动作起点，不是预先登顶。`StateClimb_OnEnter` 对动态物体以当前 Ped 位置反变换得到 AttachOffset，虽然带 `ATTACH_FLAG_INITIAL_WARP`，不能仅凭该标志判断先抬胶囊；后续 `ProcessPhysics` 用本帧动画/修正速度积分更新 AttachOffset。`ScaleDesiredVelocity` 的 Slide 特例注释明确要求 XY 由代码插值以避免穿过 slide point，实际在 Climb 且 `m_bSlideVault` 时清零动画局部前向 y；不能据这一特例推断普通翻墙全部 InPlace，或所有 Slide 轴都无动画位移。
+- **GTA 方案相关注释（局部实现理由）。** `TaskVault.cpp:524` 为准确到点并避免碰撞而禁止攀爬 AI 分时更新；`:1528` 为抵消混出动画带入的速度而在混入期间重算补偿；`:1553` 初始调整区间结束后允许继续修正至 Clip 相位1；`:1562` 只在完全混入后关闭静态攀爬碰撞，避免额外动画速度导致穿墙，附着分支不这样关闭；`:3176` 是上述 Slide 代码插值理由；`:3185` 说明 Clone 起播相位偏后可能穿过障碍，因此特定混入条件下暂不采用动画前向速度。`TaskVault.h:144` 与 `ClimbDetector.cpp:2656` 明确动画种类有限，检测通过还须执行任务确认资产可支持。上述是源码明文理由，不是“Root Motion 优于 InPlace”的完整选型文档；本次核对的 Vault/ClimbDetector、MotionPed、Ped 及 mover 提取链未发现直接对比这两种总体架构的说明。
 - 手部静态对照（`C:/Application/gta5`）：`TaskVault.cpp::UpdateHandIK` 以动画 IK helper 的 XY 发起竖扫，实际目标取命中点；Climb 漏探有保留旧 Z 的分支，本地玩家早段还会尝试横扫以避免误抓后沿，超出漂移/距离阈值会停止提交或拒绝更新。因此“动画 XY、环境 Z”是主要意图，未严格锁定 XY。目标按 helper 到腕骨的差量换算；Vault 未请求目标朝向。`SetHandIKPos` 能保存载体局部点，但 `GetHandIKPosWS` 和提交端在物理引用为空时都直接消费保存值，未见独立的局部点失效门，不能推断载体销毁会自动清掉手部接触。
 - `TaskVault.h::tHandIK` 左右独立，`ProcessHandIK` 共用 MoVE Enable/Disable 信号，按左右 `IK_HAND` 分别调用。`GetBonePosition` 读取已有骨架全局矩阵，可能是本帧或更早缓存（`Ped.cpp`）；并非保证当帧最终动画姿势。`CShapeTestCapsuleDesc::SetIsDirected(true)` 的实际类型是 Swept Sphere。竖扫中心 Z 为通常动作的 Handhold Z 或 Slide 的 helper Z，默认上下各 30 cm、半径 7.5 cm；各手有各自的命中 Z，故可体现斜面高低差。坡度加高则是共用的 `GetHandHoldGroundAngle`（`ClimbDetector` 的上坡清障方向角），默认 0–45° 对应 0–10 cm，应用在目标提交空间的 Z；不消费各手法线来旋掌。`HitNormal.Z < 0.1` 只参与已取得目标的 Climb 漏探回退，不能理解为所有首次命中的准入条件。
 - GTA Climb 腿部链已静态核对：`TaskVault.cpp::ProcessMoveSignals` 用 MoVE `DisableLegIK/EnableLegIK` 维护 `m_bLegIKDisabled`，Climb 相位>0.9也尝试启用，但同次后续 Disable 信号仍可覆盖；任务逐帧提交 `PEDIK_LEGS_AND_PELVIS_OFF`，由 `CIkManager::CanUseLegIK` 和通用 `CLegIkSolver::BlockLegIK` 消费。没有在该任务中发现手部那样独立生成、提交逐脚接触目标的路径。
@@ -188,6 +258,6 @@
 - 标记职责映射已核对：GTA `StateClimb_OnEnter` 直接读取 Clip 的 `AdjustAnimVel.GetStart/GetEnd`，传给 `SetDesiredVelocityAdjustmentRange`；它是 Climb 的位移调整区间，不特指手点对齐后的第二补偿阶段。UE 的 `UAnimNotifyState_MotionWarping` 本身就是区间标记，`OnBecomeRelevant` 以相同 StartTime/EndTime 创建 Modifier，`MotionWarpingComponent::ProcessRootMotionPreConvertToWorld` 逐帧消费。因此二者在“动画提供允许调整根运动的时间区间、执行端向目标收敛”这一职责上对应，不能据 GTA 使用标记便要求 IMG 再新增独立补偿 ANS。源码只证明标记数据消费，不证明 GTA 编辑器的具体制作操作。
 - 数学实现不能视为等同：GTA 以至 Clip 相位1的总动画位移计算 DistanceDiff，将各轴残差按调整区间相位覆盖量加到 DesiredVelocity，并可能动态延长区间；UE SkewWarp 默认从 PreviousPosition 提取到 Window.EndTime 的剩余根运动，缩放/剪切本帧根运动，Bone Provider 另做窗末 Root/骨点目标换算，`bSubtractRemainingRootMotion` 是额外尾段扣除选项。故 GTA 调整标记末端不必等于其目标位移的求值末端，而 IMG Mantle 当前明确以最后平移窗末作支撑求值。保留职责映射，不据此承诺同轨迹、同终点或同碰撞结果；项目准备阶段的 Target.Z 支撑修正也须与原生逐帧 Warp 区分。
 - `ms_VaultExitConditions` 的 eVEC_Slide 属于独立滑行动作且禁自动 Vault，IMG 推荐表只保留对应普通 Vault 的六条。27.5 cm深度球、55 cm步距、20 cm断层等保持既有映射，不以调阈值替代执行语义。GTA 多层搜索/坡面后筛、MBR发起范围、JumpVault步态门槛及 AutoVault摇杆/受阻/冷却可作对照；纯自动落地要求与 IMG 默认允许空中属于策略差异。
-- 当前预测假设资产默认有限 Section 链正常推进。运行时改链、混合权重、限速/轴耦合和 CMC 碰撞截断会改变实际落位；抓沿下移受阻后，后段会从实际高度继续根运动，预计算不能修复此执行偏差。结束时查实际支撑，不补做运行时轨迹或第二次 Warp；当前用户选择按 Mantle 窗口制作合同保留原生执行，不引入独立后段修正。
+- 当前预测假设资产默认有限 Section 链正常推进。运行时改链、混合权重、限速/轴耦合和 CMC 碰撞截断会改变实际落位；抓沿下移受阻后，后段会从实际高度继续根运动，预计算不能修复此执行偏差。当前 Mantle 在登顶边界查实际支撑并交 Walking，尾段由 CMC 持续约束地面；未补做运行时轨迹或第二次 Warp。Hurdle/Vault 保持原退出合同，低帧率跨界仍以 Move 为粒度，不应以延长 Warp 或表现调参代替运行验收。
 - 局部 Target 跟随不等于完整动态平台支持。BasedMovement/动态 Bone、世界回滚、异步检测、持续悬挂/Shimmy/梯子另行设计；沿用 UE/GAS/CMC，不移植 RAGE 的附着、Capsule、手动位移或网络协议。
 - **待运行验收：** 各 Action、窗内起播/跨 Section、上下补偿、失败/中断、专服/Listen Server 的自主与模拟代理、引用晚到及延迟/丢包纠偏。源码合同、静态检查及三客户端 PIE 总帧数均不能替代资产表现与联机验收。

@@ -16,18 +16,20 @@
 
 #include "Character/Traversal/IMGTraversalDebug.h"
 #include "Character/Traversal/Execution/IMGTraversalPlaybackPath.h"
+#include "Character/Traversal/Execution/IMGGroundPlacement.h"
 #include "Character/Traversal/Execution/IMGTraversalWarpPrediction.h"
 
 bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
     const FIMGTraversalExecutionSettings& Settings, const FIMGTraversalDetectorSettings& Geometry,
     TConstArrayView<FIMGTraversalWarpWindow> Windows, FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, TArray<FIMGTraversalWarpTarget>& OutTargets,
-    bool bVerboseDiagnostics, TFunctionRef<void(const TCHAR*, const FString&, bool)> LogEvent)
+    float& OutGroundHandoffTime, bool bVerboseDiagnostics, TFunctionRef<void(const TCHAR*, const FString&, bool)> LogEvent)
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(&InCharacter, IMGTraversalDebug::EPhase::Placement);
 #endif
 	OutTargets.Reset();
+	OutGroundHandoffTime = -1.f;
 	AIMGCharacter* Character = &InCharacter;
 	constexpr double UprightTolerance = 1.e-3;
 	auto LogTraversalEvent = [&LogEvent](const TCHAR* Event, const FString& Detail, bool bWarning = false) {
@@ -294,9 +296,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 #endif
 		const FVector Up = FVector::UpVector;
 		const FVector Feet = Center - Up * HalfHeight;
-		const float FloorGap =
-		    (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) *
-		    0.5f;
+		const float FloorGap = IMGGroundPlacement::FloorGap();
 		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalPlacementCompensation), false, Character);
 		FCollisionResponseParams Responses;
@@ -363,10 +363,8 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 			return;
 		}
 		// Estimate where the lower hemisphere clears the plane before sweeping the full capsule.
-		const FVector BottomSphere = Center - Up * (HalfHeight - Radius);
-		const double PlaneAdjustment =
-		    (Radius - FVector::DotProduct(BottomSphere - Plane.ImpactPoint, Normal)) / Normal.Z + FloorGap;
-		if (!FMath::IsFinite(PlaneAdjustment))
+		double PlaneAdjustment = 0.0;
+		if (!IMGGroundPlacement::PlaneAdjustment(Center, HalfHeight, Radius, Plane, PlaneAdjustment))
 		{
 			CompensationSkipReason = TEXT("Plane adjustment is non-finite");
 			return;
@@ -379,7 +377,7 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 		const bool bHasSupport = IMG_TRAVERSAL_QUERY(Character->GetWorld()->SweepSingleByChannel(
 		    Support, SweepStart, SweepEnd, FQuat::Identity, Channel, Shape, Params, Responses));
 		if (!bHasSupport || !IsPlacementSupport(Support) ||
-		    !Movement->IsWithinEdgeTolerance(Support.Location, Support.ImpactPoint, Radius))
+		    !IMGGroundPlacement::IsUsableSupport(*Movement, Support, Radius))
 		{
 			CompensationSkipReason = TEXT("Full capsule sweep has no usable support or fails edge tolerance");
 			if (bVerboseDiagnostics)
@@ -627,6 +625,12 @@ bool IMGTraversalPlacement::PrepareTargets(AIMGCharacter& InCharacter,
 	if (Selection.Action == EIMGTraversalAction::Mantle)
 	{
 		EvaluationWindow = FinalTranslationWindow;
+		if (!EvaluationWindow || WindowPlaybackTimes.FindChecked(EvaluationWindow).Y > PlacementTime ||
+		    !FMath::IsFinite(Settings.MaxGroundAdjustment) || Settings.MaxGroundAdjustment < 0.f)
+		{
+			return Reject(TEXT("Mantle requires a reachable ground handoff window and finite recovery limit"));
+		}
+		OutGroundHandoffTime = WindowPlaybackTimes.FindChecked(EvaluationWindow).Y;
 	}
 	else if (Selection.Action == EIMGTraversalAction::Hurdle && !LandingWindow)
 	{

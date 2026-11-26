@@ -535,8 +535,9 @@ void Event(const AActor* Actor, const TCHAR* Name, const FString& Detail, bool b
 void State(const AActor* Actor, const TCHAR* Name, const FIMGTraversalRepState& State, const TCHAR* Reason)
 {
 	Event(Actor, Name,
-	    FString::Printf(TEXT("Sequence=%u Active=%d Instance=%u | %s"), State.Sequence, State.bActive,
-	        State.MontagePlayInstanceId, Reason),
+	    FString::Printf(TEXT("Sequence=%u Active=%d Instance=%u MovementPhase=%s GroundHandoff=%.6f MaxGroundAdjustment=%.2f | %s"),
+	        State.Sequence, State.bActive, State.MontagePlayInstanceId,
+	        *UEnum::GetValueAsString(State.MovementPhase), State.GroundHandoffTime, State.MaxGroundAdjustment, Reason),
 	    false, EStage::Network, State.AbilitySpec.ToString(), State.ActivationPredictionKey);
 	const auto* Entry = Observations.Find(Actor);
 	if (Entry && !(*Entry)->Data.Events.IsEmpty() && (*Entry)->Data.Events.Last().Name == Name)

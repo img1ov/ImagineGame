@@ -168,3 +168,23 @@ const FIMGTraversalWarpWindow* FIMGTraversalPlaybackPath::SelectTranslationWindo
 	}
 	return Result;
 }
+
+bool FIMGTraversalPlaybackPath::GetPlaybackPosition(float MontagePosition, float& OutPosition) const
+{
+	if (!FMath::IsFinite(MontagePosition)) { return false; }
+	for (int32 Index = 0; Index < PlaybackRanges.Num(); ++Index)
+	{
+		const FVector2f& Range = PlaybackRanges[Index];
+		if (MontagePosition >= Range.X && MontagePosition < Range.Y)
+		{
+			OutPosition = PlaybackOffsets[Index] + MontagePosition - Range.X;
+			return true;
+		}
+	}
+	if (!PlaybackRanges.IsEmpty() && FMath::IsNearlyEqual(MontagePosition, PlaybackRanges.Last().Y))
+	{
+		OutPosition = PlaybackEnd;
+		return true;
+	}
+	return false;
+}

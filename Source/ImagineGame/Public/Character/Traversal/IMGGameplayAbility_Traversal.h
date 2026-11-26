@@ -87,10 +87,12 @@ private:
 	bool IsSelectionValid(const FIMGTraversalAnimationSelection& Selection, const FIMGTraversalCandidate& Candidate,
 	    const FVector& MovementIntent, bool bRemoteRequest) const;
 	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
-	    TArray<FIMGTraversalWarpTarget>& OutTargets) const;
+	    TArray<FIMGTraversalWarpTarget>& OutTargets, float& OutGroundHandoffTime) const;
 	void CheckActiveTarget();
 	void OnTargetDataTimedOut();
 	void OnTraversalUnavailable();
+	void OnGroundHandoffFailed();
+	void OnGroundHandoffSucceeded();
 	void FilterClientCorrection(const FCharacterMoveResponseDataContainer& Response, bool& bDiscardCorrection);
 	void RegisterCorrectionFilter();
 	void ClearCorrectionFilter();
@@ -113,6 +115,8 @@ private:
 	FDelegateHandle TargetDataCancelledDelegateHandle;
 	FDelegateHandle CorrectionFilterHandle;
 	FDelegateHandle TraversalUnavailableHandle;
+	FDelegateHandle GroundHandoffFailedHandle;
+	FDelegateHandle GroundHandoffSucceededHandle;
 	FDelegateHandle NetworkTerminationHandle;
 	FTimerHandle TargetCheckTimer;
 	TWeakObjectPtr<UIMGCharacterMovementComponent> FilteredMovement;

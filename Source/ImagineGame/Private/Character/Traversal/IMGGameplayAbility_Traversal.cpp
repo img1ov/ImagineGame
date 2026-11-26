@@ -436,7 +436,8 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
 	if (!Component || ActiveComponent.Get() != Component) { return false; }
 	TArray<FIMGTraversalWarpTarget> WarpTargets;
-	if (!PrepareWarpTargets(Candidate, Selection, WarpTargets))
+	float GroundHandoffTime = -1.f;
+	if (!PrepareWarpTargets(Candidate, Selection, WarpTargets, GroundHandoffTime))
 	{
 		return false;
 	}
@@ -494,11 +495,13 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 			return false;
 		}
 	}
+	GroundHandoffFailedHandle = Component->OnGroundHandoffFailed.AddUObject(this, &ThisClass::OnGroundHandoffFailed);
+	GroundHandoffSucceededHandle = Component->OnGroundHandoffSucceeded.AddUObject(this, &ThisClass::OnGroundHandoffSucceeded);
 	LocalCandidate = Candidate;
 	bTraversalStarted = true;
 	RegisterCorrectionFilter();
 	if (!Component->BeginTraversal(Candidate, Selection, WarpTargets, CurrentSpecHandle,
-	        CurrentActivationInfo.GetActivationPredictionKey().Current, ActiveExecutionId) || !IsTraversalExecutionValid() ||
+	        CurrentActivationInfo.GetActivationPredictionKey().Current, ActiveExecutionId, GroundHandoffTime) || !IsTraversalExecutionValid() ||
 	    CurrentActorInfo->AbilitySystemComponent.Get() != ASC)
 	{
 		LogTraversalEvent(TEXT("TraversalStartAborted"), TEXT("Ability/component invalidated or Flying was not retained"), true);
@@ -554,7 +557,7 @@ bool UIMGGameplayAbility_Traversal::IsTraversalExecutionValid() const
 	return IsActive() && !bIsAbilityEnding && bTraversalStarted && Component && Component->IsTraversalReady() &&
 	    Component->OwnsExecution(ActiveExecutionId) && IsValid(Character) && !Character->IsActorBeingDestroyed() &&
 	    Component->GetOwner() == Character && IsValid(ASC) && ASC->GetAvatarActor() == Character &&
-	    Movement->IsFlying() &&
+	    Movement && Component->IsMovementExecutionValid() &&
 	    (!Health || !Health->IsDeadOrDying());
 }
 
@@ -699,7 +702,7 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 }
 
 bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& Candidate,
-    const FIMGTraversalAnimationSelection& Selection, TArray<FIMGTraversalWarpTarget>& OutTargets) const
+    const FIMGTraversalAnimationSelection& Selection, TArray<FIMGTraversalWarpTarget>& OutTargets, float& OutGroundHandoffTime) const
 {
 	OutTargets.Reset();
 	AIMGCharacter* Character = GetIMGCharacterFromActorInfo();
@@ -716,7 +719,7 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 	const UMotionWarpingComponent* Warping = Traversal->GetMotionWarpingComponent();
 	IMGTraversalWarpWindows::Collect(Selection.Montage, Warping && Warping->bSearchForWindowsInAnimsWithinMontages, Windows);
 	return IMGTraversalPlacement::PrepareTargets(*Character, *Settings, Traversal->GetDetectorSettings(), Windows,
-		Candidate, Selection, OutTargets,
+		Candidate, Selection, OutTargets, OutGroundHandoffTime,
 		UE_LOG_ACTIVE(LogIMGTraversal, Verbose)
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 			|| IMGTraversalDebug::IsObserving(Character)
@@ -724,6 +727,20 @@ bool UIMGGameplayAbility_Traversal::PrepareWarpTargets(FIMGTraversalCandidate& C
 			,
 		[this](
 			const TCHAR* Event, const FString& Detail, bool bWarning) { LogTraversalEvent(Event, Detail, bWarning); });
+}
+
+void UIMGGameplayAbility_Traversal::OnGroundHandoffSucceeded()
+{
+	if (bMontageCompleted && IsActive() && !bIsAbilityEnding) { K2_EndAbility(); }
+}
+
+void UIMGGameplayAbility_Traversal::OnGroundHandoffFailed()
+{
+	if (IsActive() && !bIsAbilityEnding && CurrentActorInfo)
+	{
+		LogTraversalEvent(TEXT("GroundHandoffFailed"), TEXT("Ground support lost or capsule recovery failed"), true);
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	}
 }
 
 void UIMGGameplayAbility_Traversal::OnTraversalUnavailable()
@@ -894,6 +911,17 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		K2_EndAbility();
 		return;
 	}
+	if (Component && Component->OwnsExecution(ActiveExecutionId) &&
+	    Component->GetActiveTraversalState().MovementPhase == EIMGTraversalMovementPhase::Falling)
+	{
+		OnGroundHandoffFailed();
+		return;
+	}
+	if (IsTraversalExecutionValid() && Component &&
+	    Component->GetActiveTraversalState().MovementPhase == EIMGTraversalMovementPhase::GroundExit)
+	{
+		return;
+	}
 	if (IsTraversalExecutionValid() && Component &&
 	    TrackedTargetsRevision != Component->GetTraversalTargetsRevision())
 	{
@@ -972,6 +1000,11 @@ void UIMGGameplayAbility_Traversal::OnMontageCompleted()
 	IMGTraversalDebug::FScope DebugScope(GetAvatarActorFromActorInfo(), IMGTraversalDebug::EPhase::Lifecycle);
 #endif
 	bMontageCompleted = true;
+	if (UIMGTraversalComponent* Component = ActiveComponent.Get())
+	{
+		// Montage callbacks can run while CMC is still extracting this update's last root delta.
+		if (Component->DeferMontageCompletion(ActiveExecutionId)) { return; }
+	}
 	K2_EndAbility();
 }
 
@@ -1048,8 +1081,12 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		if (UIMGTraversalComponent* Component = ActiveComponent.Get())
 		{
 			Component->OnTraversalUnavailable.Remove(TraversalUnavailableHandle);
+			Component->OnGroundHandoffFailed.Remove(GroundHandoffFailedHandle);
+			Component->OnGroundHandoffSucceeded.Remove(GroundHandoffSucceededHandle);
 		}
 		TraversalUnavailableHandle.Reset();
+		GroundHandoffFailedHandle.Reset();
+		GroundHandoffSucceededHandle.Reset();
 		ClearCorrectionFilter();
 		DelayLocalRetry();
 		SendPendingTargetDataCancellation();

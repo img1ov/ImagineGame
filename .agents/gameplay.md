@@ -23,6 +23,7 @@
 
 ## 复制 Montage 前置条件
 
+- 引擎 `GetRepAnimMontageInfo` 是 protected，外部组件不能直接读取。项目 ASC 的 `GetReplicatedMontagePosition(Montage, PlayInstanceId, OutPosition)` 提供只读位置查询：校验资产/实例、未停止、确实复制 Position 且未禁用位置纠正，以及位置有限且在资产范围内；失败输出 -1。该查询允许前置条件等待中的实例使用，不要求已在本机起播，也不公开整份原生复制状态。
 - ASC 的 `RegisterReplicatedMontagePrerequisite(Avatar, Name, Delegate)` 返回注册句柄；委托须弱绑定 UObject，只接受当前 Avatar。相同对象/Name 重复注册复用句柄，不同步执行回调；注册后、前置数据变化后调用 `RetryReplicatedMontage`。检查返回 NotApplicable、Waiting、Ready 或 Discard，业务 Session/Sequence 由提供者自行核对，不复制第二套播放阶段。
 - 所有适用条件 Ready 才放行；只有所属表现系统提供非负 LogicalStartTime，其他条件返回 -1。多个起点提供者或非法起点保留等待并诊断，不以注册顺序/优先级覆盖。非所属 Montage 必须返回 NotApplicable；沿用原生 GAS 的 Montage/PlayInstanceId、播放/停止与位置同步，不能据此前置门控认定自主代理预测/重放已满足。
 - `UnregisterReplicatedMontagePrerequisite` 按句柄精确注销，默认丢弃本对象参与阻塞的待播放实例；只有明确交接前置职责时才传 false。Discard 仅抑制当前 Avatar/Montage/PlayInstanceId 的本机表现，不改变权威能力或移动阶段。新实例不继承旧丢弃；结束先到不创建已停止的新实例，已播放实例保留原生停止路径。

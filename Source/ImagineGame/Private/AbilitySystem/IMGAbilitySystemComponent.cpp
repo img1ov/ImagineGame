@@ -361,6 +361,22 @@ bool UIMGAbilitySystemComponent::GetActiveReplicatedMontagePlayInstanceId(
 	return true;
 }
 
+bool UIMGAbilitySystemComponent::GetReplicatedMontagePosition(
+	const UAnimMontage* Montage, uint8 PlayInstanceId, float& OutPosition) const
+{
+	OutPosition = -1.f;
+	const FGameplayAbilityRepAnimMontage& RepMontage = GetRepAnimMontageInfo();
+	if (!Montage || RepMontage.GetAnimMontage() != Montage || RepMontage.PlayInstanceId != PlayInstanceId ||
+		RepMontage.IsStopped != 0 || !RepMontage.bRepPosition || RepMontage.SkipPositionCorrection ||
+		!FMath::IsFinite(RepMontage.Position) ||
+		RepMontage.Position < 0.f || RepMontage.Position >= Montage->GetPlayLength())
+	{
+		return false;
+	}
+	OutPosition = RepMontage.Position;
+	return true;
+}
+
 bool UIMGAbilitySystemComponent::IsReadyForReplicatedMontage()
 {
 	ReadyReplicatedMontage = FReplicatedMontageInstance();

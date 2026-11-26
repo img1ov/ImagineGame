@@ -8,6 +8,7 @@
 #include "MotionWarpingComponent.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Character/Traversal/IMGTraversalDebug.h"
+#include "Character/Traversal/Execution/IMGGroundPlacement.h"
 
 void UIMGTraversalComponent::RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey)
 {
@@ -24,11 +25,14 @@ void UIMGTraversalComponent::RetirePredictedReplay(FGameplayAbilitySpecHandle Ab
 void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& Move, TArray<TFunction<TFunction<void()>()>>& OutSetups)
 {
 	RecordWarpContext = nullptr;
+	RecordGroundHandoff = nullptr;
 	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	if (!Character || Character->GetLocalRole() != ROLE_AutonomousProxy || bReplayingTraversalMove)
 	{
 		return;
 	}
+	// SavedMove objects are pooled; their previous execution identity must not survive reuse.
+	ReplayMoveExecutions.Remove(&Move);
 	const TWeakObjectPtr<ThisClass> WeakThis(this);
 	const TWeakObjectPtr<UIMGCharacterMovementComponent> WeakMovement = BoundMovement;
 	auto ReplayExit = [WeakThis, WeakMovement](uint8 PackedMode)
@@ -61,6 +65,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		return;
 	}
 	bCaptureTraversalExit = false;
+	ReplayMoveExecutions.Add(&Move, ExecutionId);
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	const FGameplayAbilitySpecHandle DebugSpec = ActiveState.AbilitySpec;
 	const int16 DebugPrediction = ActiveState.ActivationPredictionKey;
@@ -76,6 +81,13 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 	}
 #endif
 	const TSharedPtr<bool> SessionValid = ReplaySessionValid;
+	const TSharedPtr<bool> GroundReleased = ReplayGroundReleased;
+	const float HandoffTime = ActiveState.GroundHandoffTime;
+	const float MaxGroundAdjustment = ActiveState.MaxGroundAdjustment;
+	const FIMGTraversalPlaybackPath Playback = GroundPlayback;
+	const uint32 HistoricalExecutionId = ExecutionId;
+	const TSharedPtr<bool> RecordedHandoff = MakeShared<bool>(false);
+	RecordGroundHandoff = [RecordedHandoff]() { *RecordedHandoff = true; };
 	TEnumAsByte<EMovementMode> EntryMode(MOVE_None), EntryGroundMode(MOVE_None);
 	uint8 EntryCustomMode = 0;
 	if (BoundMovement.IsValid())
@@ -86,7 +98,8 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 	const TWeakObjectPtr<UAnimMontage> HistoricalMontage = ActiveState.Montage;
 	const TWeakObjectPtr<UMotionWarpingComponent> WeakWarping = BoundMotionWarpingComponent;
 	const TWeakObjectPtr<UCapsuleComponent> WeakCapsule(Character->GetCapsuleComponent());
-	const TArray<TWeakObjectPtr<UPrimitiveComponent>> HistoricalIgnores = AddedMovementIgnores;
+	const TArray<TWeakObjectPtr<UPrimitiveComponent>> HistoricalIgnores =
+	    ActiveState.MovementPhase == EIMGTraversalMovementPhase::Warping ? AddedMovementIgnores : GroundHandoffIgnores;
 	const TArray<FIMGTraversalWarpTarget> Targets = ActiveState.WarpTargets;
 	const auto Modifiers = MakeShared<TArray<TStrongObjectPtr<URootMotionModifier>>>();
 	const auto States = MakeShared<TArray<TSharedPtr<FRootMotionModifierSwapState>>>();
@@ -119,7 +132,7 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 	};
 	OutSetups.Add([WeakThis, WeakWarping, WeakMovement, WeakCapsule, HistoricalIgnores, Modifiers, States, Animations,
 					  ResolvedTargets, ReplayExit, RecordedMove = &Move, SessionValid, HistoricalMontage,
-					  bEnteredFlying, ReplayModifiers
+					  bEnteredFlying, ReplayModifiers, GroundReleased, HandoffTime, MaxGroundAdjustment, Playback, HistoricalExecutionId, RecordedHandoff
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 					  ,
 					  DebugSpec, DebugPrediction, DebugSequence
@@ -183,7 +196,8 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		IMGTraversalDebug::Event(
 			Self->GetOwner(), TEXT("ReplayBegin"), DebugIdentity, false, IMGTraversalDebug::EStage::Replay);
 #endif
-		if (bEnteredFlying && (Movement->IsMovingOnGround() || Movement->IsFalling()))
+		if (bEnteredFlying && (HandoffTime < 0.f || !GroundReleased || !*GroundReleased) &&
+		    (Movement->IsMovingOnGround() || Movement->IsFalling()))
 		{
 			Movement->SetMovementMode(MOVE_Flying);
 		}
@@ -250,13 +264,46 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 		TArray<TWeakObjectPtr<UPrimitiveComponent>> TemporaryIgnores;
 		for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : HistoricalIgnores)
 		{
+			if (HandoffTime >= 0.f && GroundReleased && *GroundReleased) { break; }
 			if (Obstacle.IsValid() && !Capsule->GetMoveIgnoreComponents().Contains(Obstacle.Get()))
 			{
 				Capsule->IgnoreComponentWhenMoving(Obstacle.Get(), true);
 				TemporaryIgnores.Add(Obstacle);
 			}
 		}
-		return [WeakThis, WeakWarping, WeakCapsule, Revision, LiveState, ResolvedTargets,
+		Self->ReplayPostMovement = [WeakThis, SessionValid, WeakMovement, WeakCapsule, HistoricalIgnores, GroundReleased,
+		    HandoffTime, MaxGroundAdjustment, Playback, RecordedMove, RecordedHandoff]()
+		{
+			UIMGCharacterMovementComponent* ReplayedMovement = WeakMovement.Get();
+			UCapsuleComponent* ReplayedCapsule = WeakCapsule.Get();
+			float Position = -1.f;
+			if (!ReplayedMovement || !ReplayedCapsule || !GroundReleased || *GroundReleased || HandoffTime < 0.f ||
+			    !ReplayedMovement->IsFlying()) { return; }
+			const bool bCompletedDuringMove = !RecordedMove->RootMotionMontage.IsValid() && *RecordedHandoff;
+			if (!bCompletedDuringMove &&
+			    (!Playback.GetPlaybackPosition(RecordedMove->RootMotionTrackPosition, Position) || Position < HandoffTime))
+			{
+				return;
+			}
+			for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : HistoricalIgnores)
+			{
+				if (Obstacle.IsValid()) { ReplayedCapsule->IgnoreComponentWhenMoving(Obstacle.Get(), false); }
+			}
+			*GroundReleased = true;
+			const bool bGrounded = IMGGroundPlacement::FindGround(*ReplayedMovement, MaxGroundAdjustment);
+			if (WeakThis.IsValid() && SessionValid && *SessionValid && ReplayedMovement->IsFlying())
+			{
+				ReplayedMovement->SetMovementMode(bGrounded ? MOVE_Walking : MOVE_Falling);
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+				IMGTraversalDebug::Event(ReplayedMovement->GetOwner(), TEXT("ReplayGroundHandoff"),
+				    FString::Printf(TEXT("Move=%.6f Playback=%.6f Boundary=%.6f Grounded=%d"),
+				        RecordedMove->TimeStamp, Position, HandoffTime, bGrounded), !bGrounded,
+				    IMGTraversalDebug::EStage::Replay);
+#endif
+			}
+		};
+		return [WeakThis, WeakWarping, WeakCapsule, WeakMovement, Revision, LiveState, ResolvedTargets,
+				   GroundReleased, HandoffTime, HistoricalExecutionId,
 				   PreviousTargets = MoveTemp(PreviousTargets), LiveModifiers = MoveTemp(LiveModifiers),
 				   LiveStates = MoveTemp(LiveStates), LiveAnimations = MoveTemp(LiveAnimations),
 				   TemporaryIgnores = MoveTemp(TemporaryIgnores), ReplayExit, RecordedMove
@@ -302,6 +349,21 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 					}
 				}
 			}
+			if (Current && Current->ActiveState.bActive && Current->ExecutionId == HistoricalExecutionId &&
+			    HandoffTime >= 0.f && GroundReleased)
+			{
+				if (UIMGCharacterMovementComponent* ReplayedMovement = WeakMovement.Get())
+				{
+					Current->ActiveState.MovementPhase = !*GroundReleased ? EIMGTraversalMovementPhase::Warping
+					    : ReplayedMovement->IsMovingOnGround() ? EIMGTraversalMovementPhase::GroundExit
+					    : EIMGTraversalMovementPhase::Falling;
+					if (*GroundReleased)
+					{
+						if (Current->GroundHandoffIgnores.IsEmpty()) { Current->GroundHandoffIgnores = Current->AddedMovementIgnores; }
+						Current->RestoreMovementIgnores();
+					}
+				}
+			}
 			if (UCapsuleComponent* CurrentCapsule = WeakCapsule.Get())
 			{
 				for (const TWeakObjectPtr<UPrimitiveComponent>& Obstacle : TemporaryIgnores)
@@ -324,17 +386,51 @@ void UIMGTraversalComponent::CaptureMovementReplay(const FSavedMove_Character& M
 			}
 			if (Current)
 			{
+				Current->ReplayPostMovement = nullptr;
 				Current->bReplayingTraversalMove = false;
 				if (Current->ActiveState.bActive && Current->IsTraversalReady())
 				{
 					Current->RefreshWarpTargets();
 				}
 			}
-			ReplayExit(RecordedMove->EndPackedMovementMode);
+			if (HandoffTime < 0.f) { ReplayExit(RecordedMove->EndPackedMovementMode); }
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 			IMGTraversalDebug::Event(Current ? Current->GetOwner() : nullptr, TEXT("ReplayRestored"), DebugIdentity,
 				false, IMGTraversalDebug::EStage::Replay);
 #endif
 		};
 	});
+}
+
+void UIMGTraversalComponent::HandleClientCorrectionApplied(const FCharacterMoveResponseDataContainer& Response,
+    const FSavedMove_Character& Move)
+{
+	const uint32* RecordedExecution = ReplayMoveExecutions.Find(&Move);
+	if (!RecordedExecution || *RecordedExecution != ExecutionId || !ReplayGroundReleased ||
+	    ActiveState.GroundHandoffTime < 0.f ||
+	    (Move.RootMotionMontage.IsValid() && Move.RootMotionMontage != ActiveState.Montage.Get()) ||
+	    !ReplaySessionValid || !*ReplaySessionValid || !BoundMovement.IsValid()) { return; }
+	TEnumAsByte<EMovementMode> Mode(MOVE_None), GroundMode(MOVE_None);
+	uint8 CustomMode = 0;
+	BoundMovement->UnpackNetworkMovementMode(Response.ClientAdjustment.MovementMode, Mode, CustomMode, GroundMode);
+	if (Mode != MOVE_Flying && Mode != MOVE_Walking && Mode != MOVE_NavWalking && Mode != MOVE_Falling)
+	{
+		*ReplaySessionValid = false;
+		return;
+	}
+	// This is the authority's phase at the acknowledged move, not the latest OnRep snapshot.
+	*ReplayGroundReleased = Mode != MOVE_Flying;
+	ActiveState.MovementPhase = Mode == MOVE_Flying ? EIMGTraversalMovementPhase::Warping
+	    : Mode == MOVE_Falling ? EIMGTraversalMovementPhase::Falling : EIMGTraversalMovementPhase::GroundExit;
+	if (*ReplayGroundReleased)
+	{
+		if (GroundHandoffIgnores.IsEmpty()) { GroundHandoffIgnores = AddedMovementIgnores; }
+		RestoreMovementIgnores();
+		BoundMovement->bForceNextFloorCheck = true;
+	}
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::Event(GetOwner(), TEXT("GroundHandoffCorrection"),
+	    FString::Printf(TEXT("Move=%.6f Released=%d Mode=%u"), Move.TimeStamp, *ReplayGroundReleased, static_cast<uint8>(Mode)), false, IMGTraversalDebug::EStage::Network,
+	    ActiveState.AbilitySpec.ToString(), ActiveState.ActivationPredictionKey);
+#endif
 }

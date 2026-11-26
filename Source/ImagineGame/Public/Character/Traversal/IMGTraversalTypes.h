@@ -642,6 +642,10 @@ struct IMAGINEGAME_API FIMGTraversalExecutionSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIMGTraversalLandingSettings Landing;
 
+	/** Bounds local capsule recovery at the authored Mantle ground handoff; not an extra Warp lift. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ground Handoff", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float MaxGroundAdjustment = 10.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Clearance", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float MinVerticalClearance = 0.f;
 
@@ -750,6 +754,14 @@ struct FIMGTraversalAllowedMontage
 	TObjectPtr<UAnimMontage> Montage = nullptr;
 };
 
+UENUM()
+enum class EIMGTraversalMovementPhase : uint8
+{
+	Warping,
+	GroundExit,
+	Falling
+};
+
 /** Server-owned targets and proxy presentation state; GAS owns ability and montage lifetime. */
 USTRUCT()
 struct FIMGTraversalRepState
@@ -793,4 +805,14 @@ struct FIMGTraversalRepState
 
 	UPROPERTY()
 	bool bActive = false;
+
+	UPROPERTY()
+	EIMGTraversalMovementPhase MovementPhase = EIMGTraversalMovementPhase::Warping;
+
+	/** Monotonic authored playback position; negative disables ground handoff for airborne actions. */
+	UPROPERTY()
+	float GroundHandoffTime = -1.f;
+
+	UPROPERTY()
+	float MaxGroundAdjustment = 10.f;
 };

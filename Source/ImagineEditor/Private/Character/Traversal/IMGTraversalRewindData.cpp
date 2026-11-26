@@ -18,7 +18,8 @@ int32 GetEventLane(const FIMGTraversalDebugEvent& Event)
 	    Event.Name == TEXT("TraversalAborted") || Event.Name == TEXT("MontageInterruptedOrCancelled") ||
 	    Event.Name == TEXT("MontageInterrupted") || Event.Name == TEXT("MontageTaskCancelled") ||
 	    Event.Name == TEXT("ExecutionAcquired") || Event.Name == TEXT("ExecutionReleasing") ||
-	    Event.Name == TEXT("ExecutionReleased") || Event.Name == TEXT("ExecutionState"))
+	    Event.Name == TEXT("ExecutionReleased") || Event.Name == TEXT("ExecutionState") ||
+	    Event.Name == TEXT("GroundHandoff") || Event.Name == TEXT("GroundHandoffFailed"))
 	{
 		return 2;
 	}

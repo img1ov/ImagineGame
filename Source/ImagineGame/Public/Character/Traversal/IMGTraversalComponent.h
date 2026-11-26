@@ -3,9 +3,11 @@
 #include "Components/PawnComponent.h"
 #include "Templates/Function.h"
 #include "Character/Traversal/IMGTraversalTypes.h"
+#include "Character/Traversal/Execution/IMGTraversalPlaybackPath.h"
 
 #include "IMGTraversalComponent.generated.h"
 
+class ACharacter;
 class UMotionWarpingComponent;
 class UAnimMontage;
 class UIMGAbilitySystemComponent;
@@ -13,8 +15,10 @@ class UIMGPawnExtensionComponent;
 class UIMGCharacterMovementComponent;
 struct FIMGReplicatedMontagePrerequisiteResult;
 class FSavedMove_Character;
+struct FCharacterMoveResponseDataContainer;
 
 DECLARE_MULTICAST_DELEGATE(FIMGTraversalUnavailable);
+DECLARE_MULTICAST_DELEGATE(FIMGTraversalGroundHandoffEvent);
 
 /** Configuration, network snapshot and warp-target bridge for a traversal ability. */
 UCLASS(BlueprintType, Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -48,10 +52,10 @@ public:
 	{
 		return TargetValidationInterval;
 	}
-	/** Acquires targets/collision ignores and enters Flying; EndTraversal releases them before restoring movement. */
+	/** Acquires movement until the prepared Mantle handoff; GAS retains ownership of the montage tail. */
 	bool BeginTraversal(const FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
 	    const TArray<FIMGTraversalWarpTarget>& WarpTargets, FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey,
-	    uint32& OutExecutionId);
+	    uint32& OutExecutionId, float GroundHandoffTime);
 	bool PublishTraversalState(uint32 ExpectedExecutionId, uint8 MontagePlayInstanceId);
 	void EndTraversal(uint32 ExpectedExecutionId);
 	bool OwnsExecution(uint32 ExpectedExecutionId) const
@@ -61,6 +65,10 @@ public:
 	bool IsTraversalReady() const;
 	/** Reports loss of infrastructure; the owning GA decides how its activation ends. */
 	FIMGTraversalUnavailable OnTraversalUnavailable;
+	FIMGTraversalGroundHandoffEvent OnGroundHandoffFailed;
+	FIMGTraversalGroundHandoffEvent OnGroundHandoffSucceeded;
+	bool DeferMontageCompletion(uint32 ExpectedExecutionId);
+	bool IsMovementExecutionValid() const;
 	void RetirePredictedReplay(FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey);
 	bool IsTraversalActive() const
 	{
@@ -144,6 +152,10 @@ private:
 	UFUNCTION()
 	void HandleMotionWarpingPreUpdate(UMotionWarpingComponent* Warping);
 
+	UFUNCTION()
+	void HandleMovementUpdated(float DeltaSeconds, FVector OldLocation, FVector OldVelocity);
+	void HandleClientCorrectionApplied(const FCharacterMoveResponseDataContainer& Response, const FSavedMove_Character& Move);
+	bool BuildGroundPlayback();
 	void RefreshWarpTargets();
 	void ReconcilePredictedTargets();
 	void CaptureMovementReplay(const FSavedMove_Character& Move, TArray<TFunction<TFunction<void()>()>>& OutSetups);
@@ -171,6 +183,7 @@ private:
 	FIMGTraversalRepState ActiveState;
 
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> AddedMovementIgnores;
+	TArray<TWeakObjectPtr<UPrimitiveComponent>> GroundHandoffIgnores;
 	TWeakObjectPtr<UMotionWarpingComponent> BoundMotionWarpingComponent;
 
 	TSet<TWeakObjectPtr<UPrimitiveComponent>> TargetTickPrerequisites;
@@ -180,7 +193,16 @@ private:
 	TWeakObjectPtr<UIMGPawnExtensionComponent> BoundPawnExtension;
 	TWeakObjectPtr<UIMGCharacterMovementComponent> BoundMovement;
 	FDelegateHandle MovementReplayCaptureHandle;
+	FDelegateHandle ClientCorrectionAppliedHandle;
+	TWeakObjectPtr<ACharacter> MovementEventCharacter;
+	FIMGTraversalPlaybackPath GroundPlayback;
+	TSharedPtr<bool> ReplayGroundReleased;
+	TMap<const FSavedMove_Character*, uint32> ReplayMoveExecutions;
+	TFunction<void()> ReplayPostMovement;
 	TFunction<void()> RecordWarpContext;
+	TFunction<void()> RecordGroundHandoff;
+	bool bMontageCompletionPending = false;
+	uint32 GroundHandoffExecutionId = 0;
 	TSharedPtr<bool> ReplaySessionValid;
 	bool bReplayingTraversalMove = false;
 	bool bCaptureTraversalExit = false;

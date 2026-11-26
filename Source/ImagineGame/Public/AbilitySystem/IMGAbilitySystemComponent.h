@@ -77,6 +77,8 @@ public:
 	/** Coalesces requests until the next tick; callers notify after changing prerequisite data. */
 	UE_API void RetryReplicatedMontage();
 	UE_API bool GetActiveReplicatedMontagePlayInstanceId(const UAnimMontage* Montage, uint8& OutPlayInstanceId) const;
+	/** Reads an explicit replicated position for this instance, including starts waiting on prerequisites. */
+	UE_API bool GetReplicatedMontagePosition(const UAnimMontage* Montage, uint8 PlayInstanceId, float& OutPosition) const;
 	/** Matches the replicated instance and the instance already started locally. */
 	UE_API bool MatchesReplicatedMontageInstance(const UAnimMontage* Montage, uint8 PlayInstanceId) const;
 

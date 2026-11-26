@@ -17,6 +17,7 @@
 #include "RootMotionModifier.h"
 #include "Character/Traversal/IMGTraversalDetector.h"
 #include "Character/Traversal/Execution/IMGTraversalWarpWindows.h"
+#include "Character/Traversal/Execution/IMGGroundPlacement.h"
 #include "IMGLogChannels.h"
 
 #include "Character/Traversal/IMGTraversalDebug.h"
@@ -311,7 +312,7 @@ void UIMGTraversalComponent::InitializeBindings()
 		BoundMotionWarpingComponent = Warping;
 		Warping->OnPreUpdate.AddUniqueDynamic(this, &ThisClass::HandleMotionWarpingPreUpdate);
 	}
-	if (const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner()))
+	if (AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner()))
 	{
 		if (UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent())
 		{
@@ -324,14 +325,25 @@ void UIMGTraversalComponent::InitializeBindings()
 					if (PreviousMovement.IsValid())
 					{
 						PreviousMovement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
+						PreviousMovement->ClientCorrectionApplied.Remove(ClientCorrectionAppliedHandle);
 						PreviousMovement->RemoveTickPrerequisiteComponent(this);
 					}
 					if (!IsTraversalAvailable() || !IsValid(Character) || !IsValid(Movement) ||
 					    Character->GetIMGMovementComponent() != Movement) { return; }
 				}
 				MovementReplayCaptureHandle = Movement->MovementReplayCapture.AddUObject(this, &ThisClass::CaptureMovementReplay);
+				ClientCorrectionAppliedHandle = Movement->ClientCorrectionApplied.AddUObject(this, &ThisClass::HandleClientCorrectionApplied);
 			}
 			BoundMovement = Movement;
+			if (MovementEventCharacter.Get() != Character)
+			{
+				if (MovementEventCharacter.IsValid())
+				{
+					MovementEventCharacter->OnCharacterMovementUpdated.RemoveDynamic(this, &ThisClass::HandleMovementUpdated);
+				}
+				MovementEventCharacter = Character;
+				Character->OnCharacterMovementUpdated.AddUniqueDynamic(this, &ThisClass::HandleMovementUpdated);
+			}
 			// Proxy collision restoration must precede CMC floor queries, even without a root-motion update.
 			Movement->AddTickPrerequisiteComponent(this);
 		}
@@ -394,7 +406,7 @@ void UIMGTraversalComponent::SetTargetTickPrerequisites(bool bAdd)
 
 bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candidate,
     const FIMGTraversalAnimationSelection& Selection, const TArray<FIMGTraversalWarpTarget>& WarpTargets,
-    FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey, uint32& OutExecutionId)
+    FGameplayAbilitySpecHandle AbilitySpec, int16 PredictionKey, uint32& OutExecutionId, float GroundHandoffTime)
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::FScope DebugScope(GetOwner(), IMGTraversalDebug::EPhase::Execution);
@@ -408,8 +420,7 @@ bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 		return false;
 	}
 	if (!Movement->IsRegistered() || !Movement->IsActive()) { return false; }
-	if (++ExecutionId == 0) { ++ExecutionId; }
-	OutExecutionId = ExecutionId;
+	const FIMGTraversalRepState PreviousState = ActiveState;
 	ActiveState = FIMGTraversalRepState();
 	ActiveState.Sequence = ReplicatedState.Sequence + 1;
 	ActiveState.AbilitySpec = AbilitySpec;
@@ -417,12 +428,22 @@ bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	ActiveState.Action = Selection.Action;
 	ActiveState.Montage = Selection.Montage;
 	ActiveState.MontageStartTime = Selection.StartTime;
+	ActiveState.GroundHandoffTime = GroundHandoffTime;
+	const FIMGTraversalExecutionSettings* Settings = FindExecutionSettings(Selection.Action, Selection.Montage);
+	ActiveState.MaxGroundAdjustment = Settings ? Settings->MaxGroundAdjustment : 0.f;
+	if (!BuildGroundPlayback()) { ActiveState = PreviousState; return false; }
+	if (++ExecutionId == 0) { ++ExecutionId; }
+	OutExecutionId = ExecutionId;
 	ActiveState.ObstacleComponents = Candidate.ObstacleComponents;
 	ActiveState.FloorOnlyComponents = Candidate.FloorOnlyComponents;
 	ActiveState.WarpTargets = WarpTargets;
 	ActiveState.bActive = true;
 	bLocallyPredictedTraversal = Character->GetLocalRole() == ROLE_AutonomousProxy;
 	ReplaySessionValid = bLocallyPredictedTraversal ? MakeShared<bool>(true) : TSharedPtr<bool>();
+	ReplayMoveExecutions.Reset();
+	GroundHandoffIgnores.Reset();
+	bMontageCompletionPending = false;
+	ReplayGroundReleased = bLocallyPredictedTraversal ? MakeShared<bool>(false) : TSharedPtr<bool>();
 	bAuthorityTargetsApplied = false;
 	++TraversalTargetsRevision;
 	if (const UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
@@ -515,7 +536,12 @@ void UIMGTraversalComponent::ReleaseExecution()
 	EndState.MontagePlayInstanceId = ActiveState.MontagePlayInstanceId;
 	EndState.AbilitySpec = ActiveState.AbilitySpec;
 	EndState.ActivationPredictionKey = ActiveState.ActivationPredictionKey;
+	EndState.MovementPhase = ActiveState.MovementPhase;
+	EndState.GroundHandoffTime = ActiveState.GroundHandoffTime;
+	EndState.MaxGroundAdjustment = ActiveState.MaxGroundAdjustment;
 	SetTargetTickPrerequisites(false);
+	bMontageCompletionPending = false;
+	RecordGroundHandoff = nullptr;
 	RestoreMovementIgnores();
 	RemoveWarpTargets();
 	ActiveState = MoveTemp(EndState);
@@ -554,6 +580,13 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 	}
 	if (!ReplicatedState.bActive && ShouldDeferSimulatedEnd())
 	{
+		if (ReplicatedState.Montage == ActiveState.Montage &&
+		    ReplicatedState.MontagePlayInstanceId == ActiveState.MontagePlayInstanceId &&
+		    ReplicatedState.MovementPhase != EIMGTraversalMovementPhase::Warping)
+		{
+			ActiveState.MovementPhase = ReplicatedState.MovementPhase;
+			RestoreMovementIgnores();
+		}
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		IMGTraversalDebug::State(
 			GetOwner(), TEXT("SimulatedEndDeferred"), ReplicatedState, TEXT("Native montage still playing"));
@@ -573,7 +606,14 @@ void UIMGTraversalComponent::OnRep_TraversalState()
 		RestoreMovementIgnores();
 		RemoveWarpTargets();
 	}
+	const EIMGTraversalMovementPhase PreviousPhase = ActiveState.MovementPhase;
 	ActiveState = ReplicatedState;
+	if (bSameInstance && static_cast<uint8>(PreviousPhase) > static_cast<uint8>(ActiveState.MovementPhase))
+	{
+		ActiveState.MovementPhase = PreviousPhase;
+	}
+	// A montage reference may resolve after this snapshot; retry the numeric path without retiring the instance.
+	if (!bSameInstance && ActiveState.bActive) { BuildGroundPlayback(); }
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	IMGTraversalDebug::State(GetOwner(), TEXT("SnapshotApplied"), ActiveState);
 #endif
@@ -597,15 +637,19 @@ void UIMGTraversalComponent::ReconcilePredictedTargets()
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	if (!bLocallyPredictedTraversal || !ActiveState.bActive || !ReplicatedState.bActive ||
 	    !Character || Character->GetLocalRole() != ROLE_AutonomousProxy || !BoundMovement.IsValid() ||
-	    BoundMovement.Get() != Character->GetIMGMovementComponent() || !BoundMovement->IsFlying() ||
+	    BoundMovement.Get() != Character->GetIMGMovementComponent() ||
 	    ActiveState.AbilitySpec != ReplicatedState.AbilitySpec || ActiveState.Action != ReplicatedState.Action ||
 	    ActiveState.ActivationPredictionKey == 0 ||
 	    ActiveState.ActivationPredictionKey != ReplicatedState.ActivationPredictionKey ||
-	    ActiveState.Montage != ReplicatedState.Montage || ActiveState.MontageStartTime != ReplicatedState.MontageStartTime ||
-	    (bAuthorityTargetsApplied && AppliedAuthoritySequence == ReplicatedState.Sequence))
+	    ActiveState.Montage != ReplicatedState.Montage || ActiveState.MontageStartTime != ReplicatedState.MontageStartTime)
 	{
 		return;
 	}
+	// Phase snapshots describe a different time from this client's current prediction.
+	// Accepted CMC corrections seed the replay phase; OnRep only supplies the shared boundary.
+	ActiveState.GroundHandoffTime = ReplicatedState.GroundHandoffTime;
+	ActiveState.MaxGroundAdjustment = ReplicatedState.MaxGroundAdjustment;
+	if (bAuthorityTargetsApplied && AppliedAuthoritySequence == ReplicatedState.Sequence) { return; }
 	// References may resolve after the snapshot. Keep predicting until the entire target set is ready.
 	if (ReplicatedState.WarpTargets.Num() != ActiveState.WarpTargets.Num())
 	{
@@ -677,6 +721,12 @@ void UIMGTraversalComponent::RefreshMovementIgnores()
 	{
 		return;
 	}
+	if (ActiveState.MovementPhase != EIMGTraversalMovementPhase::Warping ||
+	    (GroundHandoffExecutionId != 0 && GroundHandoffExecutionId == ExecutionId))
+	{
+		RestoreMovementIgnores();
+		return;
+	}
 	if (Character->GetLocalRole() == ROLE_SimulatedProxy)
 	{
 		const UIMGCharacterMovementComponent* Movement = Character->GetIMGMovementComponent();
@@ -726,7 +776,8 @@ void UIMGTraversalComponent::RestoreMovementMode()
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
 	if (!IsValid(Character) || Character->IsActorBeingDestroyed() || Character->GetLocalRole() == ROLE_SimulatedProxy ||
-	    !Movement || Movement != Character->GetIMGMovementComponent() || !Movement->IsFlying() || !Movement->UpdatedComponent)
+	    !Movement || Movement != Character->GetIMGMovementComponent() || !Movement->IsFlying() || !Movement->UpdatedComponent ||
+	    ActiveState.MovementPhase != EIMGTraversalMovementPhase::Warping)
 	{
 		return;
 	}
@@ -874,6 +925,24 @@ FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedM
 	const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
 	const AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
 	const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
+	if (ActiveState.MovementPhase == EIMGTraversalMovementPhase::Falling)
+	{
+		return Result(EIMGReplicatedMontageReadiness::Discard, -1.f, TEXT("TraversalGroundFailed"));
+	}
+	if (ActiveState.MovementPhase == EIMGTraversalMovementPhase::GroundExit)
+	{
+		const UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get();
+		float MontagePosition = -1.f;
+		float PlaybackPosition = -1.f;
+		if (!Movement || !Movement->IsMovingOnGround() || !ASC ||
+		    !ASC->GetReplicatedMontagePosition(Montage, MontagePlayInstanceId, MontagePosition) ||
+		    !GroundPlayback.GetPlaybackPosition(MontagePosition, PlaybackPosition) ||
+		    PlaybackPosition < ActiveState.GroundHandoffTime)
+		{
+			return Result(EIMGReplicatedMontageReadiness::Waiting, -1.f, TEXT("TraversalGroundExit"));
+		}
+		return Result(EIMGReplicatedMontageReadiness::Ready, MontagePosition, NAME_None);
+	}
 	// Movement mode and GAS montage arrive through different actors; do not start with falling Z constraints.
 	if (!Warping || !Character || !Character->GetCapsuleComponent() || !Movement ||
 	    !Movement->IsRegistered() || !Movement->IsActive() || !Movement->IsFlying())
@@ -993,6 +1062,7 @@ void UIMGTraversalComponent::TickComponent(
 	if (ActiveState.bActive)
 	{
 		ReconcilePredictedTargets();
+		if (ActiveState.GroundHandoffTime >= 0.f && GroundPlayback.GetRanges().IsEmpty()) { BuildGroundPlayback(); }
 		RefreshWarpTargets();
 		// A replicated component reference may resolve after the snapshot's first OnRep.
 		if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
@@ -1029,9 +1099,21 @@ void UIMGTraversalComponent::ReleaseBindings()
 	if (UIMGCharacterMovementComponent* Movement = BoundMovement.Get())
 	{
 		Movement->MovementReplayCapture.Remove(MovementReplayCaptureHandle);
+		Movement->ClientCorrectionApplied.Remove(ClientCorrectionAppliedHandle);
 		Movement->RemoveTickPrerequisiteComponent(this);
 	}
 	MovementReplayCaptureHandle.Reset();
+	ClientCorrectionAppliedHandle.Reset();
+	if (MovementEventCharacter.IsValid())
+	{
+		MovementEventCharacter->OnCharacterMovementUpdated.RemoveDynamic(this, &ThisClass::HandleMovementUpdated);
+	}
+	MovementEventCharacter.Reset();
+	ReplayPostMovement = nullptr;
+	RecordGroundHandoff = nullptr;
+	bMontageCompletionPending = false;
+	ReplayMoveExecutions.Reset();
+	GroundHandoffIgnores.Reset();
 	RecordWarpContext = nullptr;
 	bCaptureTraversalExit = false;
 	ReplaySessionValid.Reset();
@@ -1049,4 +1131,131 @@ void UIMGTraversalComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UIMGTraversalComponent, ReplicatedState);
+}
+
+bool UIMGTraversalComponent::BuildGroundPlayback()
+{
+	GroundPlayback = FIMGTraversalPlaybackPath();
+	if (ActiveState.GroundHandoffTime < 0.f) { return true; }
+	FIMGTraversalAnimationSelection Selection;
+	Selection.Action = ActiveState.Action;
+	Selection.Montage = ActiveState.Montage;
+	Selection.StartTime = ActiveState.MontageStartTime;
+	FString Failure;
+	// Only the numeric section mapping survives preparation; no modifier/window pointers are retained.
+	return FMath::IsFinite(ActiveState.GroundHandoffTime) &&
+	    GroundPlayback.Build(Selection, {}, false, [](const TCHAR*, const FString&, bool) {}, Failure);
+}
+
+bool UIMGTraversalComponent::IsMovementExecutionValid() const
+{
+	const UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	if (!Movement) { return false; }
+	return ActiveState.MovementPhase == EIMGTraversalMovementPhase::Warping
+	    ? Movement->IsFlying()
+	    : ActiveState.MovementPhase == EIMGTraversalMovementPhase::GroundExit && Movement->IsMovingOnGround();
+}
+
+void UIMGTraversalComponent::HandleMovementUpdated(float DeltaSeconds, FVector OldLocation, FVector OldVelocity)
+{
+	if (bReplayingTraversalMove)
+	{
+		TFunction<void()> PostMovement = ReplayPostMovement;
+		if (PostMovement) { PostMovement(); }
+		return;
+	}
+	AIMGCharacter* Character = Cast<AIMGCharacter>(GetOwner());
+	UIMGCharacterMovementComponent* Movement = BoundMovement.Get();
+	if (!ActiveState.bActive || !Character || Character->GetLocalRole() == ROLE_SimulatedProxy ||
+	    !Movement || !IsTraversalReady() || bReleasingBindings || bInvalidatingTraversal) { return; }
+	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
+	if (Health && Health->IsDeadOrDying()) { return; }
+	if (ActiveState.MovementPhase == EIMGTraversalMovementPhase::Falling)
+	{
+		OnGroundHandoffFailed.Broadcast();
+		return;
+	}
+	if (ActiveState.MovementPhase == EIMGTraversalMovementPhase::GroundExit)
+	{
+		if (Movement->IsFalling())
+		{
+			ActiveState.MovementPhase = EIMGTraversalMovementPhase::Falling;
+			OnGroundHandoffFailed.Broadcast();
+		}
+		else if (bMontageCompletionPending && Movement->IsMovingOnGround())
+		{
+			bMontageCompletionPending = false;
+			OnGroundHandoffSucceeded.Broadcast();
+		}
+		return;
+	}
+	if (ActiveState.MovementPhase != EIMGTraversalMovementPhase::Warping ||
+	    ActiveState.GroundHandoffTime < 0.f || !Movement->IsFlying()) { return; }
+	const UAnimInstance* Anim = Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	const FAnimMontageInstance* Instance = Anim ? Anim->GetActiveInstanceForMontage(ActiveState.Montage) : nullptr;
+	if (!Instance && Anim) { Instance = Anim->GetInstanceForMontage(ActiveState.Montage); }
+	float PlaybackPosition = -1.f;
+	if (bMontageCompletionPending)
+	{
+		PlaybackPosition = ActiveState.GroundHandoffTime;
+	}
+	else
+	{
+		if (!Instance) { return; }
+		if (!GroundPlayback.GetPlaybackPosition(Instance->GetPosition(), PlaybackPosition))
+		{
+			OnGroundHandoffFailed.Broadcast();
+			return;
+		}
+	}
+	if (PlaybackPosition < ActiveState.GroundHandoffTime) { return; }
+	const uint32 ExpectedExecution = ExecutionId;
+	if (RecordGroundHandoff)
+	{
+		TFunction<void()> Record = MoveTemp(RecordGroundHandoff);
+		Record();
+	}
+	// The last Flying root delta has already been consumed by this movement update.
+	FHitResult Support;
+	FString Failure;
+	bool bGrounded = false;
+	{
+		// Keep Flying owned until recovery commits: overlap callbacks may cancel or start another execution.
+		TGuardValue<uint32> HandoffGuard(GroundHandoffExecutionId, ExpectedExecution);
+		GroundHandoffIgnores = AddedMovementIgnores;
+		RestoreMovementIgnores();
+		bGrounded = IMGGroundPlacement::FindGround(*Movement, ActiveState.MaxGroundAdjustment, &Support, &Failure);
+	}
+	if (!OwnsExecution(ExpectedExecution) || BoundMovement.Get() != Movement || !Movement->IsFlying()) { return; }
+	ActiveState.MovementPhase = bGrounded ? EIMGTraversalMovementPhase::GroundExit : EIMGTraversalMovementPhase::Falling;
+	if (ReplayGroundReleased) { *ReplayGroundReleased = true; }
+	Movement->SetMovementMode(bGrounded ? MOVE_Walking : MOVE_Falling);
+	if (!OwnsExecution(ExpectedExecution) || BoundMovement.Get() != Movement) { return; }
+	bGrounded &= Movement->IsMovingOnGround();
+	if (!bGrounded) { ActiveState.MovementPhase = EIMGTraversalMovementPhase::Falling; }
+#if IMG_TRAVERSAL_DEBUG_ENABLED
+	IMGTraversalDebug::Event(GetOwner(), TEXT("GroundHandoff"),
+	    FString::Printf(TEXT("Playback=%.6f Boundary=%.6f Grounded=%d Loc=%s Delta=%.6f Support=%s Impact=%s Normal=%s Failure=%s"),
+	        PlaybackPosition, ActiveState.GroundHandoffTime, bGrounded,
+	        *Character->GetActorLocation().ToCompactString(), DeltaSeconds,
+	        *GetNameSafe(Support.GetComponent()), *Support.ImpactPoint.ToCompactString(),
+	        *Support.ImpactNormal.ToCompactString(), *Failure), !bGrounded,
+	    IMGTraversalDebug::EStage::Execution, ActiveState.AbilitySpec.ToString(), ActiveState.ActivationPredictionKey);
+#endif
+	if (Character->HasAuthority())
+	{
+		ReplicatedState = ActiveState;
+		Character->ForceNetUpdate();
+	}
+	bMontageCompletionPending = false;
+	if (!bGrounded) { OnGroundHandoffFailed.Broadcast(); }
+	else { OnGroundHandoffSucceeded.Broadcast(); }
+}
+
+bool UIMGTraversalComponent::DeferMontageCompletion(uint32 ExpectedExecutionId)
+{
+	if (!OwnsExecution(ExpectedExecutionId) || ActiveState.GroundHandoffTime < 0.f ||
+	    ActiveState.MovementPhase != EIMGTraversalMovementPhase::Warping) { return false; }
+	bMontageCompletionPending = true;
+	return true;
 }

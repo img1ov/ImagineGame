@@ -16,6 +16,7 @@ public:
 	const TArray<float>& GetOffsets() const { return PlaybackOffsets; }
 	const TMap<const FIMGTraversalWarpWindow*, FVector2f>& GetWindowTimes() const { return WindowPlaybackTimes; }
 	const TArray<const FIMGTraversalWarpWindow*>& GetReachableWindows() const { return ReachableWindows; }
+	bool GetPlaybackPosition(float MontagePosition, float& OutPosition) const;
 	float GetStartTime() const { return PlaybackStart; }
 	float GetPlacementTime() const { return PlacementTime; }
 	const FIMGTraversalWarpWindow* SelectTranslationWindow(TConstArrayView<FIMGTraversalWarpWindow> Windows,

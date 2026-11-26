@@ -16,6 +16,6 @@ namespace IMGTraversalPlacement
 bool PrepareTargets(AIMGCharacter& Character, const FIMGTraversalExecutionSettings& Settings,
     const FIMGTraversalDetectorSettings& Geometry, TConstArrayView<FIMGTraversalWarpWindow> Windows,
     FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
-    TArray<FIMGTraversalWarpTarget>& OutTargets, bool bVerboseDiagnostics,
+    TArray<FIMGTraversalWarpTarget>& OutTargets, float& OutGroundHandoffTime, bool bVerboseDiagnostics,
     TFunctionRef<void(const TCHAR*, const FString&, bool)> LogEvent);
 }

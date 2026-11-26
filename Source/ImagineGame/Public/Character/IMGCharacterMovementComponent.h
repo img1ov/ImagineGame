@@ -23,6 +23,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
 	const FCharacterMoveResponseDataContainer&, bool& /* bDiscardCorrection */);
 
+DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionApplied,
+	const FCharacterMoveResponseDataContainer&, const FSavedMove_Character&);
+
 using FMovementReplayRestore = TFunction<void()>;
 using FMovementReplaySetup = TFunction<FMovementReplayRestore()>;
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMovementReplayCapture, const FSavedMove_Character&, TArray<FMovementReplaySetup>&);
@@ -144,6 +147,8 @@ public:
 
 	/** Listeners may only set discard to true. Discarded corrections still ACK through the native path. Packed responses only. */
 	FIMGClientCorrectionFilter ClientCorrectionFilter;
+	/** Accepted timestamp-matched corrections only, after native mode/root-motion application. */
+	FIMGClientCorrectionApplied ClientCorrectionApplied;
 	/** Capture local execution context per move; setup/restore bracket each correction replay. */
 	FMovementReplayCapture MovementReplayCapture;
 

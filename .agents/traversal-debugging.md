@@ -22,6 +22,8 @@
 - Warp排查先区分目标接触点、接触窗末胶囊、完整播放路径终点和实际结束胶囊。Mantle 的 TopContactWindow、Hurdle 的 LandingWindow/BackFloorWindow 都以所选窗末为口径，不套用 PlaybackPath.PlacementTime/动画全长。完整路径终点含窗后根运动，不能冒充落地点；提前中断也不能反证或证明完整路径XY正确。Landing clearance胶囊另含校验余量。PlacementEvaluation/LandingEvaluation记录StartTime、求值终点、参考/修正Target、窗口时间、IncludeTail和中心；PlacementWindow记录首次投影的实际入窗时间、剩余平移、原生尾段扣除、WarpPoint/RootOffset与轴选项。旧记录可能仍用 PlaybackEnd/IncludeTail=1，须按记录版本和事件内容解释，不能套用新算法。
 - MontageStopped后的Montage_GetPosition可能为0，不能据此认为动画回到了0。应取最后活动帧与事件时序，实际播放时长须减去 Selection.StartTime。新事件 `MontageInterrupted` 对应任务 OnInterrupted（Montage 中断或 GA 取消转发），`MontageTaskCancelled` 对应 OnCancelled（启动失败或 ExternalCancel），记录可观察实例位置/ID、当前活动 Montage、AnimInstance 与结束标志；实例已销毁时位置为 -1。Rewind 继续识别旧合并事件 MontageInterruptedOrCancelled。原生 CancelAbility 先广播取消再 EndAbility，本项目回调可能先 K2_EndAbility，因此 End 日志 Cancelled=0 不能单独排除 GAS 取消或判定中断来源。只有本端 JSONL 时不以晚到权威结束快照倒推最初停止原因，也不以复制 Montage 重试排除自主代理的 GAS 取消。
 
+- Mantle 地面交接事件：`GroundHandoff` 记录当前Move后的实际胶囊、路径边界、支撑/法线及失败原因；`GroundHandoffCorrection` 记录已接受的纠偏Move/模式，`ReplayGroundHandoff` 记录回放跨界，`GroundHandoffFailed` 是业务失败/取消出口。State详情含MovementPhase、GroundHandoffTime和MaxGroundAdjustment。事件复用原有Trace/JSONL文本，无结构版本变化；绿色准备胶囊仍是预计算结果，不等于交接时实际中心。
+
 ### 模块、采集与版本
 
 - 运行时根目录为 `ImagineGame/{Public,Private}/Character/Traversal`，编辑器按同层级放在 `ImagineEditor/{Public,Private}/Character/Traversal`，头文件/实现按Public/Private分离，Game不依赖ImagineEditor。
