@@ -103,6 +103,8 @@ PreviewSkeletalMesh的Value应为已加载Mesh对象，传SoftObjectPath包装�
 
 保存PA并卸载/重载候选可重建骨名缓存。释放PA、内嵌对象、指向原结构的Python包装引用；检查unload返回首布尔值。不要用元组整体真假判断，不把关闭编辑器等同释放文件读取器。
 
+2026-11-26 已遇到：对刚关闭 PhysicsAsset 编辑器的正式 PA 调用 `EditorLoadingAndSavingUtils.reload_packages`，在 `SharedPointer.h:1133 / IsValid()` 触发断言并退出；当次资产已成功保存。不要将候选的卸载/重载流程机械用于当前打开过的正式 PA；优先保存后在新编辑器会话中读取验证。该断言的具体 Slate/编辑器持有者尚未查明，不能据此判定 PA 包损坏。当前 UE Python 没有 `unreal.duplicate_object`；资产候选可使用 `AssetToolsHelpers.get_asset_tools().duplicate_asset`，且目标必须使用有效资产挂载根，`/Temp/` 在此接口中不被接受。
+
 ### PA / PCA默认值
 
 完整克隆保留ProfileHandles、DefaultProfile、物理动画Profiles与不可反射数据。单独设DefaultInstance的Profile后应核对默认/命名Profile是否同步；本轮只改变框架，Profile保持源值。
