@@ -17,6 +17,8 @@ public:
 	bool ValidateRecoveryTransform(const UIMGCharacterMovementComponent& Movement, const FTransform& Transform, EIMGRagdollIssue& OutIssue, const FVector& BodyLocalOffset) const;
 	bool FindExitTransform(const UIMGCharacterMovementComponent& Movement, FTransform& OutTransform, EIMGRagdollIssue& OutIssue) const;
 	bool ValidateExitTransform(const UIMGCharacterMovementComponent& Movement, const FTransform& Transform, EIMGRagdollIssue& OutIssue) const;
+	bool ValidateTransitionTransform(const UIMGCharacterMovementComponent& Movement, const FTransform& Transform, bool bRequireFloor,
+		EIMGRagdollIssue& OutIssue, const FVector& BodyLocalOffset) const;
 	void ApplyRecoveryTransform(UIMGCharacterMovementComponent& Movement, const FTransform& Transform);
 
 	FIMGRagdollMovementInput Input;

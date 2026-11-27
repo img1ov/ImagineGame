@@ -3,6 +3,7 @@
 #include "Character/IMGCharacterMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
+#include "Cosmetics/IMGPawnComponent_CharacterParts.h"
 #include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGRagdollComponent)
@@ -15,6 +16,30 @@ UIMGRagdollComponent::UIMGRagdollComponent(const FObjectInitializer& ObjectIniti
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
+	BodyPrePhysicsTick.bCanEverTick = true;
+	BodyPrePhysicsTick.bStartWithTickEnabled = false;
+	BodyPrePhysicsTick.TickGroup = TG_PrePhysics;
+}
+
+void UIMGRagdollComponent::RegisterComponentTickFunctions(bool bRegister)
+{
+	Super::RegisterComponentTickFunctions(bRegister);
+	if (bRegister)
+	{
+		if (SetupActorComponentTickFunction(&BodyPrePhysicsTick)) { BodyPrePhysicsTick.Target = this; }
+		PrimaryComponentTick.AddPrerequisite(this, BodyPrePhysicsTick);
+	}
+	else
+	{
+		PrimaryComponentTick.RemovePrerequisite(this, BodyPrePhysicsTick);
+		BodyPrePhysicsTick.UnRegisterTickFunction();
+	}
+}
+
+void UIMGRagdollComponent::SetExecutionTickEnabled(bool bEnabled)
+{
+	SetComponentTickEnabled(bEnabled);
+	BodyPrePhysicsTick.SetTickFunctionEnable(bEnabled);
 }
 
 UIMGRagdollComponent* UIMGRagdollComponent::FindRagdollComponent(const AActor* Actor)
@@ -64,10 +89,13 @@ bool UIMGRagdollComponent::Initialize()
 	Character = OwnerCharacter;
 	Movement = OwnerMovement;
 	OwnerMovement->OnRagdollMovementUpdated.AddUniqueDynamic(this, &ThisClass::HandleMovementUpdated);
+	if (!CapsuleCorrectionHandle.IsValid())
+	{
+		CapsuleCorrectionHandle = OwnerMovement->RagdollCapsuleCorrection.AddUObject(this, &ThisClass::HandleCapsuleCorrection);
+	}
 	AddTickPrerequisiteComponent(OwnerMovement);
-	if (SampledMesh.IsValid()) { RemoveTickPrerequisiteComponent(SampledMesh.Get()); }
-	SampledMesh = OwnerCharacter->GetMesh();
-	if (SampledMesh.IsValid()) { AddTickPrerequisiteComponent(SampledMesh.Get()); }
+	BodyPrePhysicsTick.AddPrerequisite(OwnerMovement, OwnerMovement->PrimaryComponentTick);
+	RefreshMeshObservation();
 	HandleMovementUpdated();
 	return true;
 }
@@ -107,12 +135,16 @@ void UIMGRagdollComponent::TearDown()
 {
 	if (bTearingDown) { return; }
 	TGuardValue<bool> TearDownGuard(bTearingDown, true);
-	SetComponentTickEnabled(false);
+	const bool bPendingTransition = ActiveState.bExternalTransition && ReleasedTransitionRevision != ActiveState.Revision
+		&& (BodySession != 0 || ReadyTransitionRevision == ActiveState.Revision);
+	SetExecutionTickEnabled(false);
 	if (Movement.IsValid())
 	{
 		const int32 InputSession = Movement->GetRagdollMovementSession();
 		Movement->OnRagdollMovementUpdated.RemoveDynamic(this, &ThisClass::HandleMovementUpdated);
+		Movement->RagdollCapsuleCorrection.Remove(CapsuleCorrectionHandle);
 		RemoveTickPrerequisiteComponent(Movement.Get());
+		BodyPrePhysicsTick.RemovePrerequisite(Movement.Get(), Movement->PrimaryComponentTick);
 		// Removing a coordinator must not terminate a session started by another caller.
 		// Retain our cached target until the owned session has checked its safe exit.
 		if (GetOwner() && GetOwner()->HasAuthority() && OwnedSession != 0)
@@ -121,8 +153,29 @@ void UIMGRagdollComponent::TearDown()
 		}
 		if (Movement.IsValid()) { Movement->ClearRagdollFollowTarget(this, InputSession); }
 	}
+	CapsuleCorrectionHandle.Reset();
+	const bool bKeepBody = bKeepBodyWhenMovementDisabled && Movement.IsValid() && Movement->MovementMode == MOVE_None;
+	ReleaseBody(bKeepBody, bKeepBody);
+	ReleaseBodyResources();
+	RestartBodyTransforms.Reset();
+	RestartMesh.Reset();
+	RestartPhysicsAsset.Reset();
+	RestartMeshAsset.Reset();
+	FailedBodySession = 0;
+	FailedBodyMesh.Reset();
+	FailedBodyMeshAsset.Reset();
+	FailedBodyPhysicsAsset.Reset();
+	if (LocalSession != 0 || bPendingTransition) { SetBodyIssue(TEXT("ExecutionUnavailable")); }
 	OwnedSession = 0;
-	if (SampledMesh.IsValid()) { RemoveTickPrerequisiteComponent(SampledMesh.Get()); }
+	if (SampledMesh.IsValid())
+	{
+		SampledMesh->UnregisterOnPhysicsCreatedDelegate(PhysicsCreatedHandle);
+		RemoveTickPrerequisiteComponent(SampledMesh.Get());
+		BodyPrePhysicsTick.RemovePrerequisite(SampledMesh.Get(), SampledMesh->PrimaryComponentTick);
+	}
+	PhysicsCreatedHandle.Reset();
+	if (ObservedParts.IsValid()) { ObservedParts->OnCharacterPartsChanged.RemoveDynamic(this, &ThisClass::HandleCharacterPartsChanged); }
+	ObservedParts.Reset();
 	SampledMesh.Reset();
 	Movement.Reset();
 	Character.Reset();
@@ -141,6 +194,7 @@ bool UIMGRagdollComponent::IsRagdollAvailable() const
 bool UIMGRagdollComponent::StartRagdoll(FVector AdditionalVelocity)
 {
 	if (bTransitioning || !IsRagdollAvailable() || !GetOwner()->HasAuthority()) { return false; }
+	if (!IsRagdollReady()) { SetBodyIssue(TEXT("ExecutionNotReady")); return false; }
 	TGuardValue<bool> Transition(bTransitioning, true);
 	const TWeakObjectPtr<UIMGCharacterMovementComponent> StartedMovement = Movement;
 	const uint16 PreviousSession = Movement->GetRagdollMovementState().Session;
@@ -188,6 +242,111 @@ bool UIMGRagdollComponent::AbortRagdoll(int32 ExpectedSession, bool bForce)
 		bForce ? EIMGRagdollEndReason::Unavailable : EIMGRagdollEndReason::Interrupted, ExpectedSession);
 }
 
+bool UIMGRagdollComponent::BeginTransitionAt(int32 ExpectedSession, const FTransform& Transform, EMovementMode TargetMode,
+	uint8 TargetCustomMode, FVector CarryVelocity, int32& OutTransitionRevision, FVector BodyLocalOffset)
+{
+	OutTransitionRevision = 0;
+	if (bTransitioning || !IsRagdollAvailable() || !GetOwner()->HasAuthority()) { return false; }
+	TGuardValue<bool> Transition(bTransitioning, true);
+	return Movement->TransitionRagdollMovementAt(ExpectedSession, Transform, TargetMode, TargetCustomMode,
+		CarryVelocity, OutTransitionRevision, BodyLocalOffset);
+}
+
+bool UIMGRagdollComponent::QueryTransition(int32 ExpectedSession, const FTransform& Transform, EMovementMode TargetMode,
+	uint8 TargetCustomMode, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset) const
+{
+	OutIssue = EIMGRagdollIssue::Unavailable;
+	return IsRagdollAvailable() && Movement->QueryRagdollTransition(ExpectedSession, Transform, TargetMode, TargetCustomMode, OutIssue, BodyLocalOffset);
+}
+
+bool UIMGRagdollComponent::IsTransitionReady(int32 ExpectedSession, int32 ExpectedRevision) const
+{
+	return IsRagdollAvailable() && Movement->IsRagdollTransitionReady(ExpectedSession, ExpectedRevision);
+}
+
+bool UIMGRagdollComponent::GetTransitionMovement(int32 ExpectedSession, int32 ExpectedRevision, EMovementMode& OutMode,
+	uint8& OutCustomMode, FVector& OutVelocity) const
+{
+	OutMode = MOVE_None;
+	OutCustomMode = 0;
+	OutVelocity = FVector::ZeroVector;
+	if (!IsRagdollAvailable() || ExpectedSession == 0 || ExpectedSession != ActiveState.Session
+		|| ExpectedRevision == 0 || ExpectedRevision != ActiveState.Revision || !ActiveState.bExternalTransition) { return false; }
+	OutMode = ActiveState.TransitionMode;
+	OutCustomMode = ActiveState.TransitionCustomMode;
+	OutVelocity = ActiveState.TransitionVelocity;
+	return true;
+}
+
+void UIMGRagdollComponent::ReconcileExternalTransition()
+{
+	const uint16 Session = ActiveState.Session;
+	const uint16 Revision = ActiveState.Revision;
+	const auto IsCurrentTransition = [this, Session, Revision]()
+	{
+		return !bTearingDown && IsRegistered() && IsActive() && !IsBeingDestroyed() && Character.IsValid() && Movement.IsValid()
+			&& ActiveState.Session == Session && ActiveState.Revision == Revision && ActiveState.bExternalTransition;
+	};
+	if (BodySession != 0 && BodySession != Session) { EndLocalSession(EIMGRagdollEndReason::Interrupted); }
+	if (!IsCurrentTransition()) { return; }
+	if (!IsRagdollAvailable())
+	{
+		EndLocalSession(EIMGRagdollEndReason::Unavailable);
+		if (!IsCurrentTransition()) { return; }
+		ReleasedTransitionRevision = ReadyTransitionRevision = Revision;
+		SetBodyIssue(TEXT("ExecutionUnavailable"));
+		if (IsCurrentTransition()) { SetExecutionTickEnabled(false); }
+		return;
+	}
+	if (BodySession != 0 && BodyMesh.IsValid() && BodyMesh->GetAttachParent())
+	{
+		HandedOffSession = BodySession;
+		ReleaseBody(true);
+		SetBodyIssue(TEXT("BodyAttachmentTakenOver"));
+		if (!IsCurrentTransition()) { return; }
+	}
+	if (BodySession != 0 && (!HasCurrentBody() || (!bBodyRecovering && !IsBodySimulationValid())))
+	{
+		ReleaseBody();
+		SetBodyIssue(TEXT("BodyResourcesChanged"));
+		if (!IsCurrentTransition()) { return; }
+	}
+	if (!IsTransitionReady(Session, Revision))
+	{
+		const bool bTargetMode = Movement->MovementMode == ActiveState.TransitionMode
+			&& (Movement->MovementMode != MOVE_Custom || Movement->CustomMovementMode == ActiveState.TransitionCustomMode);
+		// A retained body does not prove native movement has received this transition yet.
+		const bool bCanDetectSupersession = ReadyTransitionRevision == Revision || Character->HasAuthority();
+		if (bCanDetectSupersession && !Movement->IsRagdollMovementMode() && !bTargetMode)
+		{
+			// Native movement has already handed control to a different action. Do not retain a frozen old body.
+			EndLocalSession(EIMGRagdollEndReason::Transferred);
+			if (!IsCurrentTransition()) { return; }
+			ReleasedTransitionRevision = Revision;
+			ReadyTransitionRevision = Revision;
+			SetBodyIssue(TEXT("TransitionSuperseded"));
+			if (!IsCurrentTransition()) { return; }
+		}
+		if (IsRegistered() && IsActive()) { SetExecutionTickEnabled(BodySession != 0); }
+		return;
+	}
+	if (ReadyTransitionRevision != Revision)
+	{
+		if (ReleasedTransitionRevision != Revision) { PrepareBodyRecovery(); }
+		if (!IsCurrentTransition()) { return; }
+		ReadyTransitionRevision = Revision;
+		const uint16 EndedSession = LocalSession;
+		LocalSession = OwnedSession = 0;
+		bStartedNotified = bRecoveryNotified = false;
+		// Stop the old ability's work before the receiver starts animation. Neither callback owns capsule movement.
+		if (EndedSession != 0) { OnRagdollEnded.Broadcast(EndedSession, EIMGRagdollEndReason::Transferred); }
+		if (!IsTransitionReady(Session, Revision) || ReleasedTransitionRevision == Revision) { return; }
+		OnTransitionReady.Broadcast(Session, Revision);
+	}
+	if (!IsRegistered() || !IsActive() || !Movement.IsValid() || ActiveState.Session != Session || ActiveState.Revision != Revision) { return; }
+	SetExecutionTickEnabled(BodySession != 0);
+}
+
 void UIMGRagdollComponent::CompleteRecovery(int32 ExpectedSession, bool bInterrupted)
 {
 	if (Movement.IsValid()) { Movement->CompleteRagdollRecovery(ExpectedSession, bInterrupted); }
@@ -198,20 +357,30 @@ void UIMGRagdollComponent::HandleMovementUpdated()
 	if (bTearingDown || !IsRegistered() || !IsActive() || !Movement.IsValid()) { return; }
 	if (!Movement->IsRegistered() || Movement->IsBeingDestroyed()) { TearDown(); return; }
 	ActiveState = Movement->GetRagdollMovementState();
+	if (ObservedTransitionSession != ActiveState.Session)
+	{
+		ObservedTransitionSession = ActiveState.Session;
+		ReadyTransitionRevision = ReleasedTransitionRevision = 0;
+	}
+	if (ActiveState.bExternalTransition) { OwnedSession = 0; }
 	if (OwnedSession != ActiveState.Session) { OwnedSession = 0; }
 	if (!Movement->IsActive())
 	{
 		EndLocalSession(EIMGRagdollEndReason::Unavailable);
-		SetComponentTickEnabled(false);
+		SetExecutionTickEnabled(false);
 		return;
 	}
-	if (HasBegunPlay()) { ReconcileState(); }
-	SetComponentTickEnabled((ActiveState.Phase != EIMGRagdollPhase::Inactive || LocalSession != 0)
+	SetExecutionTickEnabled((ActiveState.Phase != EIMGRagdollPhase::Inactive || LocalSession != 0 || BodySession != 0
+		|| (ActiveState.bExternalTransition && ReadyTransitionRevision != ActiveState.Revision
+			&& Movement->IsRagdollTransitionReady(ActiveState.Session, ActiveState.Revision)))
 		&& Movement.IsValid() && IsRegistered() && IsActive() && !bTearingDown);
 }
 
 void UIMGRagdollComponent::EndLocalSession(EIMGRagdollEndReason Reason)
 {
+	const bool bKeepBody = bKeepBodyWhenMovementDisabled && Movement.IsValid() && Movement->MovementMode == MOVE_None;
+	ReleaseBody(bKeepBody, bKeepBody);
+	RecoveryPose = FPoseSnapshot();
 	const uint16 EndedSession = LocalSession;
 	LocalSession = 0;
 	bStartedNotified = false;
@@ -221,24 +390,46 @@ void UIMGRagdollComponent::EndLocalSession(EIMGRagdollEndReason Reason)
 
 void UIMGRagdollComponent::ReconcileState()
 {
-	if (bReconciling || bTearingDown || !Character.IsValid() || !Movement.IsValid() || Character->bClientUpdating) { return; }
+	if (bReconciling || bTearingDown || !Character.IsValid() || !Movement.IsValid() || !Movement->IsActive() || Character->bClientUpdating) { return; }
 	TGuardValue<bool> ReconcileGuard(bReconciling, true);
 	TGuardValue<bool> Transition(bTransitioning, true);
+	if (ActiveState.bExternalTransition && ActiveState.Phase == EIMGRagdollPhase::Inactive)
+	{
+		ReconcileExternalTransition();
+		return;
+	}
 	if (ActiveState.Phase == EIMGRagdollPhase::Inactive && Movement->IsRagdollMovementMode()) { return; }
 	if (LocalSession != ActiveState.Session)
 	{
+		FailedBodySession = 0;
+		if (HandedOffSession != ActiveState.Session) { HandedOffSession = 0; }
+		RestartBodyTransforms.Reset();
+		if (ActiveState.Phase == EIMGRagdollPhase::Simulating) { CaptureRestartPose(); }
 		EndLocalSession(EIMGRagdollEndReason::Interrupted);
 		if (bTearingDown || !Movement.IsValid() || !IsRegistered() || !IsActive()) { return; }
 		if (ActiveState.Phase != EIMGRagdollPhase::Inactive) { LocalSession = ActiveState.Session; }
 	}
-	if (ActiveState.Phase == EIMGRagdollPhase::Simulating && IsRagdollAvailable() && Movement->IsRagdollMovementMode() && !bStartedNotified)
+	if (BodySession != 0 && BodyMesh.IsValid() && BodyMesh->GetAttachParent())
+	{
+		HandedOffSession = BodySession;
+		ReleaseBody(true);
+		SetBodyIssue(TEXT("BodyAttachmentTakenOver"));
+	}
+	if (BodySession != 0 && (!HasCurrentBody() || (!bBodyRecovering && !IsBodySimulationValid())))
+	{
+		ReleaseBody();
+		SetBodyIssue(TEXT("BodyResourcesChanged"));
+	}
+	if (ActiveState.Phase == EIMGRagdollPhase::Simulating && IsRagdollAvailable() && Movement->IsRagdollMovementMode()
+		&& (ShouldExecuteBody() ? EnsureBody() : true) && !bStartedNotified)
 	{
 		bStartedNotified = true;
 		OnRagdollStarted.Broadcast(LocalSession);
 	}
-	if (bTearingDown || !Movement.IsValid() || !IsRegistered() || !IsActive()) { return; }
+	if (bTearingDown || !Movement.IsValid() || !Movement->IsActive() || !IsRegistered() || !IsActive()) { return; }
 	if (ActiveState.Phase == EIMGRagdollPhase::Recovering && IsRagdollAvailable() && Movement->IsRagdollRecoveryReady() && !bRecoveryNotified)
 	{
+		PrepareBodyRecovery();
 		bRecoveryNotified = true;
 		OnRecoveryStarted.Broadcast(LocalSession);
 	}
@@ -247,15 +438,18 @@ void UIMGRagdollComponent::ReconcileState()
 	{
 		OwnedSession = 0;
 		EndLocalSession(ActiveState.EndReason);
-		SetComponentTickEnabled(false);
+		SetExecutionTickEnabled(false);
 	}
 }
 
 bool UIMGRagdollComponent::GetRagdollFollowTarget_Implementation(FTransform& OutTarget, bool& bFaceUp) const
 {
-	if (!IsRagdollAvailable()) { return false; }
+	OutTarget = FTransform::Identity;
+	bFaceUp = false;
+	if (!IsRagdollBodyActive(ActiveState.Session)) { return false; }
 	OutTarget = Character->GetActorTransform();
 	bFaceUp = false;
+	bool bHasPelvis = false;
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
 	if (IsValid(Mesh) && Mesh->GetNumComponentSpaceTransforms() > 0)
 	{
@@ -263,7 +457,10 @@ bool UIMGRagdollComponent::GetRagdollFollowTarget_Implementation(FTransform& Out
 		if (PelvisIndex != INDEX_NONE && Mesh->IsSimulatingPhysics(PelvisBone))
 		{
 			const FVector Pelvis = Mesh->GetBoneTransform(PelvisIndex).GetLocation();
-			OutTarget.SetLocation(Pelvis);
+			if (Pelvis.ContainsNaN()) { return false; }
+			bHasPelvis = true;
+			// The movement frame is corrected immediately; the local physical body consumes this offset smoothly.
+			OutTarget.SetLocation(Pelvis + OwnerCorrectionRemaining);
 			// An optional orientation bone must not disable a valid position sample.
 			const int32 OrientationIndex = Mesh->GetBoneIndex(OrientationBone);
 			if (OrientationIndex != INDEX_NONE)
@@ -279,7 +476,7 @@ bool UIMGRagdollComponent::GetRagdollFollowTarget_Implementation(FTransform& Out
 			}
 		}
 	}
-	return true;
+	return bHasPelvis && !OutTarget.ContainsNaN();
 }
 
 void UIMGRagdollComponent::SampleTarget()
@@ -299,7 +496,7 @@ bool UIMGRagdollComponent::GetRagdollBodyMotion_Implementation(FVector& OutLinea
 {
 	OutLinearVelocity = FVector::ZeroVector;
 	OutAngularVelocityRadians = FVector::ZeroVector;
-	if (!IsRagdollAvailable()) { return false; }
+	if (!IsRagdollBodyActive(ActiveState.Session)) { return false; }
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
 	if (!IsValid(Mesh) || Mesh->GetBoneIndex(PelvisBone) == INDEX_NONE || !Mesh->IsSimulatingPhysics(PelvisBone)) { return false; }
 	OutLinearVelocity = Mesh->GetPhysicsLinearVelocity(PelvisBone);
@@ -324,6 +521,8 @@ bool UIMGRagdollComponent::IsFaceUp() const
 	{
 		const FIMGRagdollMovementInput Input = Movement->GetRagdollMovementInput();
 		if (Input.IsValid() && Input.Session == ActiveState.Session) { return Input.bFaceUp; }
+		FIMGRagdollBodyReference Reference;
+		if (Movement->GetRagdollBodyReference(ActiveState.Session, Reference)) { return Reference.bFaceUp; }
 	}
 	return ActiveState.bFaceUp;
 }
@@ -338,9 +537,26 @@ void UIMGRagdollComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 
 void UIMGRagdollComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (TickType != LEVELTICK_All) { return; }
+	if (ThisTickFunction == &PrimaryComponentTick) { Super::TickComponent(DeltaTime, TickType, ThisTickFunction); }
 	if (!Character.IsValid() || !Movement.IsValid() || !Movement->IsRegistered()
 		|| Character->GetCharacterMovement() != Movement.Get()) { TearDown(); return; }
 	HandleMovementUpdated();
-	if (IsRagdollAvailable()) { SampleTarget(); }
+	RefreshMeshObservation();
+	if (bTearingDown || !Movement.IsValid() || !Movement->IsActive() || !IsRegistered() || !IsActive()) { return; }
+	ReconcileState();
+	if (bBodyRecovering && HasCurrentBody())
+	{
+		// Walking corrections may touch the mesh before animation consumes the held pose.
+		BodyMesh->SetWorldTransform(RecoveryMeshTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+	if (ThisTickFunction == &BodyPrePhysicsTick)
+	{
+		if (IsRagdollBodyActive(ActiveState.Session))
+		{
+			UpdateBodyCorrection(DeltaTime);
+			if (IsRagdollBodyActive(ActiveState.Session)) { UpdateBodySimulation(DeltaTime); }
+		}
+	}
+	else if (IsRagdollAvailable()) { SampleTarget(); }
 }

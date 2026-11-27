@@ -27,6 +27,9 @@
 
 ## GTA 3C 过渡与交接候选
 
+- **梯子检测与翻墙检测独立。** `TaskPlayer.cpp::CanJumpOrVault`（约8001/8177）消费 `CClimbDetector` 手点/障碍结果，`DoJumpCheck`（7686）及 `CTaskJumpVault::WillVault` 分流 Jump/Vault。梯子由 `CheckShouldClimbLadder`（4451/4509）调用 `CTaskGoToAndClimbLadder::ScanForLadderToClimb`（832），扫描 NearbyObjects 中 GetIsLadder 的模型以及静态建筑注册的 ms_Ladders，沿 ET_LADDER/CalcLadderInfo 取得顶、底、法线及出口信息；不是用通用墙沿探测识别任意梯子网格。方向另在 `IsPedOrientatedCorrectlyToLadderToGetOn`（1132）校验输入期望朝向/速度、梯面交点及入梯侧，底部背面进入还受距离与 m_CanMountBehind 元数据限制；梯子不等于无方向的附近触发器。
+- **入口与执行边界。** `TaskPlayer.cpp` 的普通状态选择约6641处理梯子、6678处理 DoJumpCheck，3555创建独立的 CTaskGoToAndClimbLadder；梯子可由移动意图触发，不证明 GTA 将梯子、Jump、Vault 全绑在同一跳跃按键。可映射共享玩家意图入口、独立候选检测与独立执行生命周期；本工程是否用单个分流 GA 属于 UE 侧设计，不能宣称 GTA 本身使用此结构。
+
 - 资产目录线索（只枚举目录）：`Content/Characters/Heroes/Mannequin/Animations` 已按 Actions、Interactions、OverlaySystem、Poses、Unarmed 组织。Unarmed 下有 Avoidance、LookAtPOI、Ragdoll、MotionMatchingData（Databases/Schemas/Traversal）、StateMachineData、Traversal（Catch/Climb/Hurdle/Mantle/Vault）及 Bench/Shoves/Tackle/Takedowns 交互；Rifle Overlay 有 AimOffsets/Locomotion，CasualGirl 有独立 Animations/Rigs。覆盖面支持优先复用现有分层，具体选片、运行接线和内容质量待验证。
 - **Character｜注意力与局部反应。** GTA `TaskAmbient.cpp` 提交 BodyLook 请求，`ik/IkManager.cpp::Request` 的主姿态分支可拒绝低于当前优先级的请求，`BodyLookSolver` 分部位加权并处理混出；`weapons/WeaponDamage.cpp` 另提交命中位置、方向和部位给 TorsoReact。IMG 可从现有 LookAtPOI/Rifle Overlay 验证瞄准与 POI 的抢占/释放，从已确认的伤害事实验证局部受击与全身硬直/Ragdoll 的交接。表现由 AnimGraph 消费，来源负责是否发起；伤害、移动及身体约束沿现有权威链。
 - **Character｜有交接条件的起停与世界交互。** GTA `TaskHumanLocomotion.cpp::StateMoving_OnUpdate` 同时检查转向幅度及近期方向一致性，再进入 Turn180；Turn180 读取动画允许提前退出/混出的信号，Stop 使用步态、脚相位及中断信息。IMG 的 Hero 已有 Pivot 绕过及 GAS 事件入口，可用现有 Motion Matching/状态机验证急转连续性和落脚匹配。GTA `TaskUseScenario.cpp` 分接近、Enter、持续与 Exit，并在异常清理路径处理道具；IMG 可从现有 Interaction 的 GA 触发链和 Bench 目录验证单个交互点的占用、对齐、取消和释放。

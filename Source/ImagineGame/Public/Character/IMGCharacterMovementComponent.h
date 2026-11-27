@@ -13,6 +13,7 @@
 #define UE_API IMAGINEGAME_API
 
 class UObject;
+class AController;
 class USkeletalMeshComponent;
 struct FFrame;
 
@@ -20,6 +21,7 @@ DECLARE_DELEGATE_RetVal_TwoParams(bool, FMovementRequestCapture, uint8&, FMoveme
 DECLARE_DELEGATE_RetVal_FourParams(bool, FMovementRequestApply, uint8, const FMovementSimulationContext&, const FVector&, bool);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIMGRagdollMovementEvent);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGRagdollCapsuleCorrection, int32 /* Session */, const FVector& /* PostReplayDelta */);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FIMGClientCorrectionFilter,
 	const FCharacterMoveResponseDataContainer&, bool& /* bDiscardCorrection */);
 
@@ -66,6 +68,8 @@ struct IMAGINEGAME_API FIMGCharacterMoveResponseDataContainer : FCharacterMoveRe
 	/** Correlates the native result with placement, even if the snapshot changed before packing. */
 	bool bRagdollPlacementReflected = false;
 	FIMGRagdollRepState RagdollState;
+	bool bHasRagdollBodyReference = false;
+	FIMGRagdollBodyReference RagdollBodyReference;
 	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
 };
@@ -151,6 +155,8 @@ public:
 	FIMGClientCorrectionApplied ClientCorrectionApplied;
 	/** Capture local execution context per move; setup/restore bracket each correction replay. */
 	FMovementReplayCapture MovementReplayCapture;
+	/** Accepted owner corrections, once after replay. Body drivers may smooth this delta without modifying move history. */
+	FIMGRagdollCapsuleCorrection RagdollCapsuleCorrection;
 
 	/** One weak UObject provider; movement records opaque rule inputs and returns timestamp-matched authority context. */
 	UE_API bool RegisterMovementRequestProvider(UObject* Source, FMovementRequestCapture Capture, FMovementRequestApply Apply);
@@ -204,6 +210,14 @@ public:
 	UE_API bool QueryRagdollRecovery(int32 ExpectedSession, FTransform& OutTransform, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset = FVector::ZeroVector) const;
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
 	UE_API bool RecoverRagdollMovementAt(int32 ExpectedSession, const FTransform& Transform, FVector BodyLocalOffset = FVector::ZeroVector);
+	/** Source/ability validates its action first. This is the authority movement commit, not a client RPC. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool TransitionRagdollMovementAt(int32 ExpectedSession, const FTransform& Transform, EMovementMode TargetMode,
+		uint8 TargetCustomMode, FVector CarryVelocity, int32& OutTransitionRevision, FVector BodyLocalOffset = FVector::ZeroVector);
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool QueryRagdollTransition(int32 ExpectedSession, const FTransform& Transform, EMovementMode TargetMode,
+		uint8 TargetCustomMode, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset = FVector::ZeroVector) const;
+	UE_API bool IsRagdollTransitionReady(int32 ExpectedSession, int32 ExpectedRevision) const;
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
 	UE_API bool StopRagdollMovement(EIMGRagdollEndReason Reason = EIMGRagdollEndReason::Interrupted, int32 ExpectedSession = 0);
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "IMG|CharacterMovement|Ragdoll")
@@ -215,6 +229,9 @@ public:
 	UE_API bool IsRagdollRecovering() const;
 	UE_API bool IsRagdollRecoveryReady() const;
 	UE_API const FIMGRagdollRepState& GetRagdollMovementState() const;
+	/** Current accepted anchor in local world space. False until phase/mode/clock match, or when invalid/stale. */
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "IMG|CharacterMovement|Ragdoll")
+	UE_API bool GetRagdollBodyReference(int32 ExpectedSession, FIMGRagdollBodyReference& OutReference) const;
 	UE_API void ReceiveRagdollMovementState(const FIMGRagdollRepState& State);
 	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
 	EIMGRagdollPhase GetRagdollMovementPhase() const { return ActiveRagdollState.Phase; }
@@ -278,6 +295,10 @@ protected:
 
 	friend class FSavedMove_IMG;
 	friend struct FIMGCharacterMoveResponseDataContainer;
+	/** Extend only with movement modes implemented by this CMC; action admission belongs to the caller. */
+	UE_API virtual bool SupportsRagdollTransitionMode(EMovementMode TargetMode, uint8 TargetCustomMode) const;
+	bool BuildRagdollPlacement(const FTransform& Transform, bool bRequireFloor, FVector BodyLocalOffset,
+		FTransform& OutTransform, EIMGRagdollIssue& OutIssue) const;
 	friend struct FIMGStanceStateMachine;
 	friend class FIMGCustomMovementMode_Ragdoll;
 
@@ -312,6 +333,15 @@ protected:
 	FIMGRagdollRepState ReplicatedRagdollState;
 	UPROPERTY(Transient)
 	FIMGRagdollRepState ActiveRagdollState;
+	UPROPERTY(ReplicatedUsing = OnRep_RagdollBodyReference)
+	FIMGRagdollBodyReference ReplicatedRagdollBodyReference;
+	FIMGRagdollBodyReference ActiveRagdollBodyReference;
+	uint32 RagdollBodyReferenceSequence = 0;
+	double RagdollBodyReferencePublishTime = -1.0;
+	float RagdollInputMoveTimeStamp = -1.f;
+	TOptional<FVector> RagdollPreCorrectionLocation;
+	uint16 RagdollCorrectionSession = 0;
+	TWeakObjectPtr<AController> RagdollMovementController;
 	FIMGRagdollMovementInput SubmittedRagdollInput;
 	TWeakObjectPtr<UObject> RagdollInputSource;
 	double RagdollInputSampleTime = -1.0;
@@ -321,8 +351,13 @@ protected:
 	EIMGRagdollIssue RagdollMovementIssue = EIMGRagdollIssue::None;
 	bool bRagdollTransitioning = false;
 	uint16 RagdollRecoveryAppliedSession = 0;
+	uint16 RagdollLocalPlacementSession = 0;
 	UFUNCTION()
 	void OnRep_RagdollMovementState();
+	UFUNCTION()
+	void OnRep_RagdollBodyReference();
+	void ReceiveRagdollBodyReference(const FIMGRagdollBodyReference& Reference);
+	void PublishRagdollBodyReference(const FVector& PelvisLocation, EIMGRagdollIssue Issue);
 	void PublishRagdollMovementState();
 	void FinishRagdollMovement(EIMGRagdollEndReason Reason, bool bLeaveMode, bool bKeepPlacement = false);
 	void SetRagdollMovementIssue(EIMGRagdollIssue Issue);

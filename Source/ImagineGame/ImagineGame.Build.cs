@@ -57,6 +57,7 @@ public class ImagineGame : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"AnimationCore",
+			"PhysicsControl",
 			"InputCore",
 			"Slate",
 			"SlateCore",

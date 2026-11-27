@@ -27,7 +27,7 @@
 | 模块、命名、引擎/参考路径、编辑器 | [工程与编辑器](project.md) | `Source/ImagineEditor`、项目 Target / Build |
 | Experience、ASC、能力输入、Bot、UI/设置 | [Gameplay 框架](gameplay.md) | `GameModes`、`AbilitySystem`、`Player`、`UI`、`Settings` |
 | 角色输入、步态、CMC 预测 | [普通移动](locomotion.md) | `Character/IMGHero*`、`IMGCharacterMovementComponent` |
-| Ragdoll 跟随、恢复、PA/PCA 基线、GA 规划 | [Ragdoll](ragdoll.md) | `Character/Ragdoll`、CMC、Mannequin/Rigs |
+| Ragdoll 跟随、三端联网/身体同步、恢复选片与 GA 规划、PA/PCA 基线 | [Ragdoll](ragdoll.md) | `Character/Ragdoll`、CMC、Mannequin/Rigs |
 | PA/PCA 跨工程迁移、资料准备、骨骼映射、批量脚本、抖动/滑动诊断 | [PA/PCA 迁移流程](physics-asset-migration.md) | `.agents/tools/physics_asset_migration/run_job.py` |
 | Traversal 检测、选片、放置、执行与手部表现 | [Traversal](traversal.md) | `Character/Traversal`（内部 `Execution`、`Animation`） |
 | Traversal 录制、Trace、Rewind、Details | [Traversal 调试](traversal-debugging.md) | `Source/ImagineEditor/*/Character/Traversal` |

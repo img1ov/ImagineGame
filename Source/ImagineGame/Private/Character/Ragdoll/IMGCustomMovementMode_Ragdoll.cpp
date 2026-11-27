@@ -147,12 +147,20 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		Movement.MoveUpdatedComponent(Movement.Velocity * DeltaTime, Movement.UpdatedComponent->GetComponentQuat(), false, &Hit);
 		return;
 	}
+	if (Movement.CharacterOwner->HasAuthority() && !Movement.CharacterOwner->IsLocallyControlled()
+		&& Movement.CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy)
+	{
+		// Forced server updates can run between ticks; they must observe packet silence too.
+		Input = Movement.GetRagdollMovementInput();
+	}
 	const FIMGRagdollRepState& State = Movement.GetRagdollMovementState();
 	if (State.Phase != EIMGRagdollPhase::Simulating || Input.Session != State.Session || !Input.IsValid())
 	{
 		Movement.Velocity = FVector::ZeroVector;
 		Movement.SetRagdollMovementIssue(Input.Session != 0 && Input.Session != State.Session ? EIMGRagdollIssue::SessionMismatch
-			: Input.Status == EIMGRagdollTargetStatus::Expired ? EIMGRagdollIssue::ExpiredTarget : EIMGRagdollIssue::MissingTarget);
+			: Input.Status == EIMGRagdollTargetStatus::Expired ? EIMGRagdollIssue::ExpiredTarget
+			: Input.Status == EIMGRagdollTargetStatus::Ready ? EIMGRagdollIssue::InvalidTarget : EIMGRagdollIssue::MissingTarget);
+		Movement.PublishRagdollBodyReference(FVector::ZeroVector, Movement.GetRagdollMovementIssue());
 #if ENABLE_DRAW_DEBUG
 		IMGRagdoll::DrawFollowIssue(Movement, Movement.UpdatedComponent->GetComponentLocation(), Movement.GetRagdollMovementIssue());
 #endif
@@ -167,6 +175,7 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	{
 		Movement.Velocity = FVector::ZeroVector;
 		Movement.SetRagdollMovementIssue(EIMGRagdollIssue::TargetTooFar);
+		Movement.PublishRagdollBodyReference(FVector::ZeroVector, EIMGRagdollIssue::TargetTooFar);
 #if ENABLE_DRAW_DEBUG
 		IMGRagdoll::DrawFollowIssue(Movement, PelvisLocation, EIMGRagdollIssue::TargetTooFar);
 #endif
@@ -202,6 +211,7 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		{
 			Movement.Velocity = FVector::ZeroVector;
 			Movement.SetRagdollMovementIssue(EIMGRagdollIssue::TargetPathBlocked);
+			Movement.PublishRagdollBodyReference(FVector::ZeroVector, EIMGRagdollIssue::TargetPathBlocked);
 #if ENABLE_DRAW_DEBUG
 			IMGRagdoll::DrawFollowIssue(Movement, TargetLocation, EIMGRagdollIssue::TargetPathBlocked);
 #endif
@@ -229,6 +239,9 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	if (!Movement.HasValidData() || !Movement.IsRagdollMovementMode() || Movement.GetRagdollMovementState().Revision != Revision) { return; }
 	Movement.Velocity = (Movement.UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
 	Movement.bJustTeleported = false;
+	// Preserve the body-to-capsule offset after speed/plane constraints; never publish an unreachable raw target.
+	Movement.PublishRagdollBodyReference(PelvisLocation + Movement.UpdatedComponent->GetComponentLocation() - TargetLocation,
+		EIMGRagdollIssue::None);
 }
 
 bool FIMGCustomMovementMode_Ragdoll::FindRecoveryTransform(const UIMGCharacterMovementComponent& Movement,
@@ -261,6 +274,12 @@ bool FIMGCustomMovementMode_Ragdoll::ValidateExitTransform(const UIMGCharacterMo
 	if (Movement.HasValidData() && !Transform.ContainsNaN()) { IMGRagdoll::DrawPlacement(Movement, Transform, OutIssue); }
 #endif
 	return bValid;
+}
+
+bool FIMGCustomMovementMode_Ragdoll::ValidateTransitionTransform(const UIMGCharacterMovementComponent& Movement,
+	const FTransform& Transform, bool bRequireFloor, EIMGRagdollIssue& OutIssue, const FVector& BodyLocalOffset) const
+{
+	return ValidatePlacement(Movement, Transform, bRequireFloor, OutIssue, BodyLocalOffset);
 }
 
 bool FIMGCustomMovementMode_Ragdoll::GetBodyLocation(const UIMGCharacterMovementComponent& Movement,

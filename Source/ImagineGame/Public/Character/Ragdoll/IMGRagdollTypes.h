@@ -20,7 +20,8 @@ enum class EIMGRagdollEndReason : uint8
 	Recovered,
 	Interrupted,
 	MovementChanged,
-	Unavailable
+	Unavailable,
+	Transferred
 };
 
 UENUM(BlueprintType)
@@ -133,6 +134,47 @@ struct TStructOpsTypeTraits<FIMGRagdollMovementInput> : TStructOpsTypeTraitsBase
 	enum { WithNetSerializer = true };
 };
 
+/** Accepted movement anchor for body presentation. Wire positions use zero origin; the CMC getter returns local-world positions. */
+USTRUCT(BlueprintType)
+struct IMAGINEGAME_API FIMGRagdollBodyReference
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	uint16 Session = 0;
+	UPROPERTY()
+	uint16 MovementRevision = 0;
+	UPROPERTY()
+	uint32 Sequence = 0;
+	UPROPERTY(BlueprintReadOnly)
+	float ServerTime = 0.f;
+	/** Native move correlation only; negative for server-controlled movement. */
+	UPROPERTY(BlueprintReadOnly)
+	float ClientTimeStamp = -1.f;
+	UPROPERTY(BlueprintReadOnly)
+	FVector_NetQuantize10 PelvisLocation = FVector::ZeroVector;
+	UPROPERTY(BlueprintReadOnly)
+	FVector_NetQuantize10 CapsuleLocation = FVector::ZeroVector;
+	/** Approved capsule-follow velocity, not a measurement of physical body stability. */
+	UPROPERTY(BlueprintReadOnly)
+	FVector_NetQuantize10 Velocity = FVector::ZeroVector;
+	UPROPERTY(BlueprintReadOnly)
+	float FacingYaw = 0.f;
+	UPROPERTY(BlueprintReadOnly)
+	bool bFaceUp = false;
+	UPROPERTY(BlueprintReadOnly)
+	EIMGRagdollIssue Issue = EIMGRagdollIssue::MissingTarget;
+
+	bool IsValid() const;
+	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
+};
+
+template <>
+struct TStructOpsTypeTraits<FIMGRagdollBodyReference> : TStructOpsTypeTraitsBase2<FIMGRagdollBodyReference>
+{
+	enum { WithNetSerializer = true };
+};
+
 /** Ordered movement contract; capsule transforms continue to use CMC replication. */
 USTRUCT()
 struct IMAGINEGAME_API FIMGRagdollRepState
@@ -160,6 +202,10 @@ struct IMAGINEGAME_API FIMGRagdollRepState
 	UPROPERTY()
 	FVector_NetQuantize10 InitialVelocity = FVector::ZeroVector;
 
+	/** Server clock of this session's launch; late resource binding must not replay an old launch velocity. */
+	UPROPERTY()
+	float StartServerTime = 0.f;
+
 	UPROPERTY()
 	uint16 FacingYaw = 0;
 
@@ -169,6 +215,16 @@ struct IMAGINEGAME_API FIMGRagdollRepState
 	/** Retain approved recovery/exit placement when lifecycle updates coalesce in replication. */
 	UPROPERTY()
 	bool bHasRecovery = false;
+
+	/** Retained completed transfer; late cleanup of the ragdoll session cannot own the receiving action. */
+	UPROPERTY()
+	bool bExternalTransition = false;
+	UPROPERTY()
+	TEnumAsByte<EMovementMode> TransitionMode = MOVE_None;
+	UPROPERTY()
+	uint8 TransitionCustomMode = 0;
+	UPROPERTY()
+	FVector_NetQuantize10 TransitionVelocity = FVector::ZeroVector;
 
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 };

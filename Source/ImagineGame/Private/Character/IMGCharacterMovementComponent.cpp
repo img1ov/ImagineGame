@@ -7,8 +7,11 @@
 #include "Engine/ScopedMovementUpdate.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/GameStateBase.h"
 #include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
+#include "Serialization/BitWriter.h"
 #include "Templates/UnrealTemplate.h"
 #include "IMGLogChannels.h"
 
@@ -108,6 +111,12 @@ public:
 			|| SavedMovementContext.Revision != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementContext.Revision
 			|| !SavedMovementContext.HasSameParameters(static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedMovementContext)
 			|| SavedInputMagnitude != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedInputMagnitude
+			|| SavedRagdollInput.Session != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedRagdollInput.Session
+			|| SavedRagdollInput.Status != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedRagdollInput.Status
+			|| (SavedRagdollInput.IsValid() &&
+				(SavedRagdollInput.PelvisLocation != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedRagdollInput.PelvisLocation
+					|| SavedRagdollInput.FacingYaw != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedRagdollInput.FacingYaw
+					|| SavedRagdollInput.bFaceUp != static_cast<const FSavedMove_IMG*>(LastAckedMove.Get())->SavedRagdollInput.bFaceUp))
 			|| FSavedMove_Character::IsImportantMove(LastAckedMove);
 	}
 
@@ -237,6 +246,10 @@ void FIMGCharacterMoveResponseDataContainer::ServerFillResponseData(const UChara
 	MovementContextGeneration = bHasMovementContext ? Movement.MovementAdjustmentGeneration : 0;
 	RagdollState = Movement.GetRagdollMovementState();
 	bHasRagdollState = RagdollState.Revision != 0;
+	RagdollBodyReference = Movement.ActiveRagdollBodyReference;
+	bHasRagdollBodyReference = bHasRagdollState && RagdollBodyReference.Sequence != 0
+		&& RagdollBodyReference.Session == RagdollState.Session
+		&& RagdollBodyReference.MovementRevision == RagdollState.Revision;
 	bRagdollPlacementReflected = bHasRagdollState && RagdollState.bHasRecovery
 		&& (!PendingAdjustment.bAckGoodMove || !Movement.bIgnoreClientMovementErrorChecksAndCorrection)
 		&& Movement.RagdollAdjustmentTimeStamp == PendingAdjustment.TimeStamp
@@ -279,6 +292,14 @@ bool FIMGCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompone
 		else if (Ar.IsLoading()) { bRagdollPlacementReflected = false; }
 	}
 	else if (Ar.IsLoading()) { bRagdollPlacementReflected = false; }
+	Ar.SerializeBits(&bHasRagdollBodyReference, 1);
+	if (bHasRagdollBodyReference)
+	{
+		bool bReferenceSuccess = true;
+		RagdollBodyReference.NetSerialize(Ar, PackageMap, bReferenceSuccess);
+		bSuccess &= bReferenceSuccess;
+	}
+	else if (Ar.IsLoading()) { RagdollBodyReference = FIMGRagdollBodyReference(); }
 	return bBaseSuccess && bSuccess && !Ar.IsError();
 }
 
@@ -1164,7 +1185,7 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 		FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
 	}
 	if (!HasValidData()) { return; }
-	if (!CharacterOwner->bClientUpdating && (bWasRagdoll != bIsRagdoll || IsRagdollRecovering())) { OnRagdollMovementUpdated.Broadcast(); }
+	if (!CharacterOwner->bClientUpdating && (bWasRagdoll != bIsRagdoll || IsRagdollRecovering() || ActiveRagdollState.bExternalTransition)) { OnRagdollMovementUpdated.Broadcast(); }
 	if (!HasValidData()) { return; }
 }
 
@@ -1200,6 +1221,7 @@ void UIMGCharacterMovementComponent::MoveAutonomous(float ClientTimeStamp, float
 	if (RequestData) { MovementInputMagnitude = RequestData->InputMagnitude; }
 	if (RequestData && CharacterOwner && CharacterOwner->HasAuthority())
 	{
+		RagdollInputMoveTimeStamp = ClientTimeStamp;
 		RagdollMode.Input = RequestData->RagdollInput;
 		if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && RagdollMode.Input.Session == ActiveRagdollState.Session)
 		{
@@ -1207,6 +1229,7 @@ void UIMGCharacterMovementComponent::MoveAutonomous(float ClientTimeStamp, float
 		}
 	}
 	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAccel);
+	RagdollInputMoveTimeStamp = -1.f;
 	if (CharacterOwner && CharacterOwner->HasAuthority() && bMovementContextApplied
 		&& Generation == MovementRequestGeneration && HasMovementRequestProvider())
 	{
@@ -1216,6 +1239,10 @@ void UIMGCharacterMovementComponent::MoveAutonomous(float ClientTimeStamp, float
 
 bool UIMGCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 {
+	const TOptional<FVector> RagdollCorrectionOrigin = RagdollPreCorrectionLocation;
+	const uint16 CorrectionSession = RagdollCorrectionSession;
+	RagdollPreCorrectionLocation.Reset();
+	RagdollCorrectionSession = 0;
 	const bool bFinishingMeshCorrection = AutonomousPreCorrectionLocation.IsSet() && HasPredictionData_Client()
 		&& GetPredictionData_Client_Character()->bUpdatePosition;
 	const uint32 Generation = MovementRequestGeneration;
@@ -1248,6 +1275,13 @@ bool UIMGCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 	if (bFinishingMeshCorrection)
 	{
 		FinishAutonomousMeshCorrection();
+	}
+	if (RagdollCorrectionOrigin.IsSet() && HasValidData() && IsActive() && IsRegistered()
+		&& CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy && IsRagdollMovementMode()
+		&& ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && ActiveRagdollState.Session == CorrectionSession)
+	{
+		const FVector Delta = UpdatedComponent->GetComponentLocation() - RagdollCorrectionOrigin.GetValue();
+		if (!Delta.IsNearlyZero()) { RagdollCapsuleCorrection.Broadcast(CorrectionSession, Delta); }
 	}
 	return bResult;
 }
@@ -1402,6 +1436,8 @@ void UIMGCharacterMovementComponent::OnTeleported()
 
 void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
 {
+	const FVector PreResponseLocation = UpdatedComponent ? UpdatedComponent->GetComponentLocation() : FVector::ZeroVector;
+	const uint16 PreResponseSession = ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating ? ActiveRagdollState.Session : 0;
 	const FIMGCharacterMoveResponseDataContainer& Response = static_cast<const FIMGCharacterMoveResponseDataContainer&>(MoveResponse);
 	const FNetworkPredictionData_Client_Character* PreviousClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
 	const FSavedMovePtr PreviousAckedMove = PreviousClientData ? PreviousClientData->LastAckedMove : FSavedMovePtr();
@@ -1434,6 +1470,12 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 	    ClientData->LastAckedMove->TimeStamp == Response.ClientAdjustment.TimeStamp)
 	{
 		const FSavedMovePtr AcceptedMove = ClientData->LastAckedMove;
+		if (PreResponseSession != 0 && PreResponseSession == ActiveRagdollState.Session && IsRagdollMovementMode()
+			&& ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !RagdollPreCorrectionLocation.IsSet())
+		{
+			RagdollPreCorrectionLocation = PreResponseLocation;
+			RagdollCorrectionSession = PreResponseSession;
+		}
 		ClientCorrectionApplied.Broadcast(MoveResponse, *AcceptedMove);
 		ClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
 	}
@@ -1481,6 +1523,16 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 	{
 		// This accepted ACK/correction was evaluated after the approved placement, not merely packed after it.
 		RagdollRecoveryAppliedSession = ActiveRagdollState.Session;
+		RagdollLocalPlacementSession = ActiveRagdollState.Session;
+		OnRagdollMovementUpdated.Broadcast();
+		ClientData = HasPredictionData_Client() ? GetPredictionData_Client_Character() : nullptr;
+	}
+	if (HasValidData() && !bDiscardCorrection && (!Response.IsCorrection() || !bClientIgnoreMovementCorrections)
+		&& Response.bHasRagdollBodyReference && ClientData && ClientData->LastAckedMove.IsValid()
+		&& ClientData->LastAckedMove != PreviousAckedMove
+		&& ClientData->LastAckedMove->TimeStamp == Response.ClientAdjustment.TimeStamp)
+	{
+		ReceiveRagdollBodyReference(Response.RagdollBodyReference);
 	}
 }
 
@@ -1546,7 +1598,8 @@ void UIMGCharacterMovementComponent::SetRagdollMovementIssue(EIMGRagdollIssue Is
 void UIMGCharacterMovementComponent::ApplyRagdollRecoveryTransform(const FTransform& Transform)
 {
 	if (!HasValidData() || (!IsRagdollMovementMode() && !IsWalking() && !IsFalling()) || Transform.ContainsNaN()) { return; }
-	RagdollRecoveryAppliedSession = ActiveRagdollState.Session;
+	RagdollLocalPlacementSession = ActiveRagdollState.Session;
+	if (CharacterOwner->HasAuthority()) { RagdollRecoveryAppliedSession = ActiveRagdollState.Session; }
 	RagdollMode.ApplyRecoveryTransform(*this, Transform);
 }
 
@@ -1554,11 +1607,97 @@ void UIMGCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UIMGCharacterMovementComponent, ReplicatedRagdollState);
+	DOREPLIFETIME(UIMGCharacterMovementComponent, ReplicatedRagdollBodyReference);
 }
 
 const FIMGRagdollRepState& UIMGCharacterMovementComponent::GetRagdollMovementState() const
 {
 	return ActiveRagdollState;
+}
+
+bool UIMGCharacterMovementComponent::GetRagdollBodyReference(int32 ExpectedSession, FIMGRagdollBodyReference& OutReference) const
+{
+	OutReference = FIMGRagdollBodyReference();
+	if (!HasValidData() || !IsRegistered() || !IsActive() || IsBeingDestroyed() || CharacterOwner->bClientUpdating
+		|| ExpectedSession == 0 || ExpectedSession != ActiveRagdollState.Session
+		|| ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating || !IsRagdollMovementMode()
+		|| ActiveRagdollBodyReference.Session != ExpectedSession
+		|| ActiveRagdollBodyReference.MovementRevision != ActiveRagdollState.Revision) { return false; }
+	OutReference = ActiveRagdollBodyReference;
+	if (!OutReference.IsValid()) { return false; }
+	const UWorld* World = GetWorld();
+	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
+	if (!World || (!CharacterOwner->HasAuthority() && !GameState)) { return false; }
+	const double Now = CharacterOwner->HasAuthority() ? World->GetTimeSeconds() : GameState->GetServerWorldTimeSeconds();
+	if (!FMath::IsFinite(Now) || FMath::Abs(Now - OutReference.ServerTime) > ActiveRagdollState.Settings.MaxTargetAge)
+	{
+		OutReference.Issue = EIMGRagdollIssue::ExpiredTarget;
+		return false;
+	}
+	OutReference.PelvisLocation = FRepMovement::RebaseOntoLocalOrigin(OutReference.PelvisLocation, this);
+	OutReference.CapsuleLocation = FRepMovement::RebaseOntoLocalOrigin(OutReference.CapsuleLocation, this);
+	return true;
+}
+
+void UIMGCharacterMovementComponent::PublishRagdollBodyReference(const FVector& PelvisLocation, EIMGRagdollIssue Issue)
+{
+	if (!HasValidData() || !CharacterOwner->HasAuthority() || CharacterOwner->bClientUpdating
+		|| ActiveRagdollState.Session == 0 || ActiveRagdollState.Revision == 0 || !GetWorld()) { return; }
+	if (Issue == EIMGRagdollIssue::None && (ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating
+		|| !IsRagdollMovementMode() || !RagdollMode.Input.IsValid() || RagdollMode.Input.Session != ActiveRagdollState.Session
+		|| PelvisLocation.ContainsNaN() || Velocity.ContainsNaN())) { return; }
+	const double Now = GetWorld()->GetTimeSeconds();
+	const bool bStateChanged = ActiveRagdollBodyReference.Session != ActiveRagdollState.Session
+		|| ActiveRagdollBodyReference.MovementRevision != ActiveRagdollState.Revision
+		|| ActiveRagdollBodyReference.Issue != Issue;
+	FIMGRagdollBodyReference Reference;
+	Reference.Session = ActiveRagdollState.Session;
+	Reference.MovementRevision = ActiveRagdollState.Revision;
+	if (++RagdollBodyReferenceSequence == 0) { ++RagdollBodyReferenceSequence; }
+	Reference.Sequence = RagdollBodyReferenceSequence;
+	Reference.ServerTime = static_cast<float>(Now);
+	Reference.ClientTimeStamp = RagdollInputMoveTimeStamp;
+	Reference.Issue = Issue;
+	if (Issue == EIMGRagdollIssue::None)
+	{
+		Reference.PelvisLocation = FRepMovement::RebaseOntoZeroOrigin(PelvisLocation, this);
+		Reference.CapsuleLocation = FRepMovement::RebaseOntoZeroOrigin(UpdatedComponent->GetComponentLocation(), this);
+		Reference.Velocity = Velocity;
+		Reference.FacingYaw = FRotator::DecompressAxisFromShort(RagdollMode.Input.FacingYaw);
+		Reference.bFaceUp = RagdollMode.Input.bFaceUp;
+	}
+	ActiveRagdollBodyReference = Reference;
+	// Keep the current result for move responses; property replication has a bounded heartbeat, including at rest.
+	const double PublishInterval = FMath::Min(0.05, static_cast<double>(ActiveRagdollState.Settings.MaxTargetAge) * 0.5);
+	if (bStateChanged || RagdollBodyReferencePublishTime < 0.0 || Now - RagdollBodyReferencePublishTime >= PublishInterval)
+	{
+		ReplicatedRagdollBodyReference = Reference;
+		RagdollBodyReferencePublishTime = Now;
+		CharacterOwner->ForceNetUpdate();
+	}
+}
+
+void UIMGCharacterMovementComponent::OnRep_RagdollBodyReference()
+{
+	ReceiveRagdollBodyReference(ReplicatedRagdollBodyReference);
+}
+
+void UIMGCharacterMovementComponent::ReceiveRagdollBodyReference(const FIMGRagdollBodyReference& Reference)
+{
+	if (Reference.Session == 0 || Reference.MovementRevision == 0 || Reference.Sequence == 0
+		|| !FMath::IsFinite(Reference.ServerTime) || Reference.ServerTime < 0.f || !FMath::IsFinite(Reference.ClientTimeStamp)
+		|| static_cast<uint8>(Reference.Issue) > static_cast<uint8>(EIMGRagdollIssue::ExitBlocked)
+		|| (Reference.Issue == EIMGRagdollIssue::None && !Reference.IsValid())) { return; }
+	if (ActiveRagdollBodyReference.Sequence != 0)
+	{
+		if (Reference.MovementRevision != ActiveRagdollBodyReference.MovementRevision)
+		{
+			if (static_cast<int16>(Reference.MovementRevision - ActiveRagdollBodyReference.MovementRevision) <= 0) { return; }
+		}
+		else if (static_cast<int32>(Reference.Sequence - ActiveRagdollBodyReference.Sequence) <= 0) { return; }
+	}
+	// Cache early references without changing lifecycle or movement; the getter gates them on the matching phase.
+	ActiveRagdollBodyReference = Reference;
 }
 
 bool UIMGCharacterMovementComponent::IsRagdollRecovering() const
@@ -1593,14 +1732,17 @@ bool UIMGCharacterMovementComponent::StartRagdollMovement(const FIMGRagdollSetti
 	ActiveRagdollState.Session = Session;
 	ActiveRagdollState.Settings = Settings;
 	ActiveRagdollState.Phase = EIMGRagdollPhase::Simulating;
+	RagdollMovementController = CharacterOwner->GetController();
 	ActiveRagdollState.AnchorLocation = FRepMovement::RebaseOntoZeroOrigin(CharacterOwner->GetActorLocation(), this);
 	ActiveRagdollState.InitialVelocity = Velocity + AdditionalVelocity;
+	ActiveRagdollState.StartServerTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 	ActiveRagdollState.FacingYaw = FRotator::CompressAxisToShort(CharacterOwner->GetActorRotation().Yaw);
 	SubmittedRagdollInput = FIMGRagdollMovementInput();
 	RagdollInputSource.Reset();
 	RagdollInputSampleTime = -1.0;
 	RagdollRemoteInputTime = -1.0;
 	RagdollRecoveryAppliedSession = 0;
+	RagdollLocalPlacementSession = 0;
 	RagdollAdjustmentTimeStamp = -1.0f;
 	RagdollAdjustmentPlacementSession = 0;
 	SetRagdollMovementIssue(EIMGRagdollIssue::None);
@@ -1615,7 +1757,8 @@ bool UIMGCharacterMovementComponent::SubmitRagdollFollowTarget(const FTransform&
 {
 	if (!HasValidData() || !IsRegistered() || !IsActive() || IsBeingDestroyed() || CharacterOwner->bClientUpdating
 		|| ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating
-		|| (CharacterOwner->GetLocalRole() != ROLE_AutonomousProxy && !CharacterOwner->HasAuthority()))
+		|| (CharacterOwner->GetLocalRole() != ROLE_AutonomousProxy && !(CharacterOwner->HasAuthority()
+			&& (CharacterOwner->IsLocallyControlled() || CharacterOwner->GetRemoteRole() != ROLE_AutonomousProxy))))
 	{
 		SetRagdollMovementIssue(EIMGRagdollIssue::Unavailable);
 		return false;
@@ -1697,17 +1840,10 @@ bool UIMGCharacterMovementComponent::RecoverRagdollMovementAt(int32 ExpectedSess
 		return false;
 	}
 	EIMGRagdollIssue Issue;
-	if (!RagdollMode.ValidateRecoveryTransform(*this, Transform, Issue, BodyLocalOffset)) { SetRagdollMovementIssue(Issue); return false; }
-	// Validate the quantized placement that the owner will actually receive.
-	const FVector Position = FRepMovement::RebaseOntoZeroOrigin(Transform.GetLocation(), this);
-	const FVector QuantizedPosition(FMath::RoundToDouble(Position.X * 100.0) / 100.0,
-		FMath::RoundToDouble(Position.Y * 100.0) / 100.0, FMath::RoundToDouble(Position.Z * 100.0) / 100.0);
+	FTransform RecoveryTransform;
+	if (!BuildRagdollPlacement(Transform, true, BodyLocalOffset, RecoveryTransform, Issue)) { SetRagdollMovementIssue(Issue); return false; }
+	const FVector QuantizedPosition = FRepMovement::RebaseOntoZeroOrigin(RecoveryTransform.GetLocation(), this);
 	const uint16 FacingYaw = FRotator::CompressAxisToShort(Transform.Rotator().Yaw);
-	const FVector Up = -GetGravityDirection();
-	const FVector Facing = FVector::VectorPlaneProject(FRotator(0.0f, FRotator::DecompressAxisFromShort(FacingYaw), 0.0f).Vector(), Up).GetSafeNormal();
-	if (Facing.IsNearlyZero()) { SetRagdollMovementIssue(EIMGRagdollIssue::InvalidTarget); return false; }
-	const FTransform RecoveryTransform(FRotationMatrix::MakeFromXZ(Facing, Up).ToQuat(), FRepMovement::RebaseOntoLocalOrigin(QuantizedPosition, this));
-	if (!RagdollMode.ValidateRecoveryTransform(*this, RecoveryTransform, Issue, BodyLocalOffset)) { SetRagdollMovementIssue(Issue); return false; }
 	const bool bFaceUp = GetRagdollMovementInput().bFaceUp;
 	TGuardValue<bool> Transition(bRagdollTransitioning, true);
 	ActiveRagdollState.Phase = EIMGRagdollPhase::Recovering;
@@ -1729,6 +1865,165 @@ bool UIMGCharacterMovementComponent::RecoverRagdollMovementAt(int32 ExpectedSess
 			|| (ActiveRagdollState.Phase == EIMGRagdollPhase::Inactive && ActiveRagdollState.EndReason == EIMGRagdollEndReason::Recovered));
 }
 
+bool UIMGCharacterMovementComponent::SupportsRagdollTransitionMode(EMovementMode TargetMode, uint8 TargetCustomMode) const
+{
+	return TargetCustomMode == 0 && (TargetMode == MOVE_Walking || TargetMode == MOVE_Falling
+		|| TargetMode == MOVE_Flying || TargetMode == MOVE_Swimming);
+}
+
+bool UIMGCharacterMovementComponent::BuildRagdollPlacement(const FTransform& Transform, bool bRequireFloor, FVector BodyLocalOffset,
+	FTransform& OutTransform, EIMGRagdollIssue& OutIssue) const
+{
+	OutTransform = FTransform::Identity;
+	if (!RagdollMode.ValidateTransitionTransform(*this, Transform, bRequireFloor, OutIssue, BodyLocalOffset)) { return false; }
+	const FVector Position = FRepMovement::RebaseOntoZeroOrigin(Transform.GetLocation(), this);
+	const FVector QuantizedPosition(FMath::RoundToDouble(Position.X * 100.0) / 100.0,
+		FMath::RoundToDouble(Position.Y * 100.0) / 100.0, FMath::RoundToDouble(Position.Z * 100.0) / 100.0);
+	const uint16 Yaw = FRotator::CompressAxisToShort(Transform.Rotator().Yaw);
+	const FVector Up = -GetGravityDirection();
+	const FVector Facing = FVector::VectorPlaneProject(FRotator(0.f, FRotator::DecompressAxisFromShort(Yaw), 0.f).Vector(), Up).GetSafeNormal();
+	OutIssue = EIMGRagdollIssue::InvalidTarget;
+	if (Facing.IsNearlyZero()) { return false; }
+	OutTransform = FTransform(FRotationMatrix::MakeFromXZ(Facing, Up).ToQuat(), FRepMovement::RebaseOntoLocalOrigin(QuantizedPosition, this));
+	return RagdollMode.ValidateTransitionTransform(*this, OutTransform, bRequireFloor, OutIssue, BodyLocalOffset);
+}
+
+bool UIMGCharacterMovementComponent::QueryRagdollTransition(int32 ExpectedSession, const FTransform& Transform,
+	EMovementMode TargetMode, uint8 TargetCustomMode, EIMGRagdollIssue& OutIssue, FVector BodyLocalOffset) const
+{
+	OutIssue = EIMGRagdollIssue::Unavailable;
+	if (!HasValidData() || !IsRegistered() || !IsActive() || IsBeingDestroyed() || CharacterOwner->IsActorBeingDestroyed()
+		|| CharacterOwner->bClientUpdating || CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy || !IsRagdollMovementMode()
+		|| UpdatedComponent != CharacterOwner->GetCapsuleComponent() || ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating
+		|| TargetMode <= MOVE_None || TargetMode >= MOVE_MAX || (TargetMode != MOVE_Custom && TargetCustomMode != 0)
+		|| (TargetMode == MOVE_Custom && TargetCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll))
+		|| !SupportsRagdollTransitionMode(TargetMode, TargetCustomMode)) { return false; }
+	OutIssue = EIMGRagdollIssue::SessionMismatch;
+	if (ExpectedSession == 0 || ExpectedSession != ActiveRagdollState.Session) { return false; }
+	const FIMGRagdollMovementInput Input = GetRagdollMovementInput();
+	OutIssue = Input.Status == EIMGRagdollTargetStatus::Expired ? EIMGRagdollIssue::ExpiredTarget : EIMGRagdollIssue::MissingTarget;
+	if (!Input.IsValid() || Input.Session != ExpectedSession) { return false; }
+	FTransform Placement;
+	return BuildRagdollPlacement(Transform, TargetMode == MOVE_Walking, BodyLocalOffset, Placement, OutIssue);
+}
+
+bool UIMGCharacterMovementComponent::TransitionRagdollMovementAt(int32 ExpectedSession, const FTransform& Transform,
+	EMovementMode TargetMode, uint8 TargetCustomMode, FVector CarryVelocity, int32& OutTransitionRevision, FVector BodyLocalOffset)
+{
+	OutTransitionRevision = 0;
+	if (bRagdollTransitioning || !HasValidData() || !CharacterOwner->HasAuthority()) { return false; }
+	EIMGRagdollIssue Issue;
+	if (!QueryRagdollTransition(ExpectedSession, Transform, TargetMode, TargetCustomMode, Issue, BodyLocalOffset))
+	{
+		SetRagdollMovementIssue(Issue);
+		return false;
+	}
+	if (CarryVelocity.ContainsNaN()) { SetRagdollMovementIssue(EIMGRagdollIssue::InvalidTarget); return false; }
+	FTransform Placement;
+	if (!BuildRagdollPlacement(Transform, TargetMode == MOVE_Walking, BodyLocalOffset, Placement, Issue))
+	{
+		SetRagdollMovementIssue(Issue);
+		return false;
+	}
+	const FVector QuantizedVelocity(FMath::RoundToDouble(CarryVelocity.X * 10.0) / 10.0,
+		FMath::RoundToDouble(CarryVelocity.Y * 10.0) / 10.0, FMath::RoundToDouble(CarryVelocity.Z * 10.0) / 10.0);
+	if (QuantizedVelocity.ContainsNaN()) { SetRagdollMovementIssue(EIMGRagdollIssue::InvalidTarget); return false; }
+	FVector_NetQuantize10 WireVelocity(QuantizedVelocity);
+	FBitWriter VelocityWriter(128, true);
+	bool bVelocitySuccess = true;
+	WireVelocity.NetSerialize(VelocityWriter, nullptr, bVelocitySuccess);
+	if (!bVelocitySuccess || VelocityWriter.IsError()) { SetRagdollMovementIssue(EIMGRagdollIssue::InvalidTarget); return false; }
+	const uint16 Revision = ActiveRagdollState.Revision;
+	const FVector PreviousVelocity = Velocity;
+	const FTransform PreviousTransform = UpdatedComponent->GetComponentTransform();
+	const bool bFaceUp = GetRagdollMovementInput().bFaceUp;
+	TGuardValue<bool> Transition(bRagdollTransitioning, true);
+	{
+		FScopedMovementUpdate ScopedPlacement(UpdatedComponent, EScopedUpdate::DeferredUpdates);
+		FHitResult Hit;
+		MoveUpdatedComponent(Placement.GetLocation() - UpdatedComponent->GetComponentLocation(), Placement.GetRotation(), false, &Hit, ETeleportType::TeleportPhysics);
+		if (!HasValidData() || ActiveRagdollState.Revision != Revision) { return false; }
+		if (!IsRagdollMovementMode())
+		{
+			FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
+			return false;
+		}
+		if (!UpdatedComponent->GetComponentLocation().Equals(Placement.GetLocation(), 0.1f))
+		{
+			ScopedPlacement.RevertMove();
+			Velocity = PreviousVelocity;
+			SetRagdollMovementIssue(EIMGRagdollIssue::PlacementBlocked);
+			return false;
+		}
+		Velocity = QuantizedVelocity;
+		RagdollMode.ReleaseOrientation(*this);
+		SetMovementMode(TargetMode, TargetCustomMode);
+		if (!HasValidData() || ActiveRagdollState.Revision != Revision) { return false; }
+		if (MovementMode != TargetMode || (TargetMode == MOVE_Custom && CustomMovementMode != TargetCustomMode))
+		{
+			if (IsRagdollMovementMode())
+			{
+				ScopedPlacement.RevertMove();
+				Velocity = PreviousVelocity;
+				RagdollMode.AcquireOrientation(*this);
+				SetRagdollMovementIssue(EIMGRagdollIssue::Unavailable);
+				return false;
+			}
+			// A different execution took over during the mode callback; never roll it back to ragdoll.
+			FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
+			return false;
+		}
+	} // Resolve deferred overlap/volume callbacks before publishing a successful transfer.
+	if (!HasValidData() || ActiveRagdollState.Revision != Revision) { return false; }
+	if (MovementMode != TargetMode || (TargetMode == MOVE_Custom && CustomMovementMode != TargetCustomMode))
+	{
+		if (IsRagdollMovementMode())
+		{
+			FHitResult RollbackHit;
+			MoveUpdatedComponent(PreviousTransform.GetLocation() - UpdatedComponent->GetComponentLocation(), PreviousTransform.GetRotation(),
+				false, &RollbackHit, ETeleportType::TeleportPhysics);
+			Velocity = PreviousVelocity;
+			RagdollMode.AcquireOrientation(*this);
+			SetRagdollMovementIssue(EIMGRagdollIssue::Unavailable);
+			return false;
+		}
+		FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
+		return false;
+	}
+	bJustTeleported = true;
+	ActiveRagdollState.Phase = EIMGRagdollPhase::Inactive;
+	ActiveRagdollState.EndReason = EIMGRagdollEndReason::Transferred;
+	ActiveRagdollState.bHasRecovery = true;
+	ActiveRagdollState.bExternalTransition = true;
+	ActiveRagdollState.TransitionMode = TargetMode;
+	ActiveRagdollState.TransitionCustomMode = TargetCustomMode;
+	ActiveRagdollState.TransitionVelocity = QuantizedVelocity;
+	ActiveRagdollState.AnchorLocation = FRepMovement::RebaseOntoZeroOrigin(UpdatedComponent->GetComponentLocation(), this);
+	ActiveRagdollState.FacingYaw = FRotator::CompressAxisToShort(UpdatedComponent->GetComponentRotation().Yaw);
+	ActiveRagdollState.bFaceUp = bFaceUp;
+	SubmittedRagdollInput = FIMGRagdollMovementInput();
+	RagdollInputSource.Reset();
+	RagdollInputSampleTime = RagdollRemoteInputTime = -1.0;
+	RagdollRecoveryAppliedSession = ActiveRagdollState.Session;
+	SetRagdollMovementIssue(EIMGRagdollIssue::None);
+	PublishRagdollMovementState();
+	OutTransitionRevision = ActiveRagdollState.Revision;
+	OnRagdollMovementUpdated.Broadcast();
+	return true;
+}
+
+bool UIMGCharacterMovementComponent::IsRagdollTransitionReady(int32 ExpectedSession, int32 ExpectedRevision) const
+{
+	return HasValidData() && IsRegistered() && IsActive() && !CharacterOwner->bClientUpdating
+		&& ExpectedSession != 0 && ExpectedSession == ActiveRagdollState.Session
+		&& ExpectedRevision != 0 && ExpectedRevision == ActiveRagdollState.Revision && ActiveRagdollState.bExternalTransition
+		&& ActiveRagdollState.Phase == EIMGRagdollPhase::Inactive && ActiveRagdollState.EndReason == EIMGRagdollEndReason::Transferred
+		&& MovementMode == ActiveRagdollState.TransitionMode
+		&& (MovementMode != MOVE_Custom || CustomMovementMode == ActiveRagdollState.TransitionCustomMode)
+		&& !IsRagdollMovementMode()
+		&& (CharacterOwner->HasAuthority() || CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy || RagdollRecoveryAppliedSession == ExpectedSession);
+}
+
 bool UIMGCharacterMovementComponent::StopRagdollMovement(EIMGRagdollEndReason Reason, int32 ExpectedSession)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority()) { return false; }
@@ -1739,6 +2034,7 @@ bool UIMGCharacterMovementComponent::StopRagdollMovement(EIMGRagdollEndReason Re
 	}
 	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Inactive)
 	{
+		if (ActiveRagdollState.bExternalTransition) { return true; }
 		if (!bRagdollTransitioning && HasValidData() && IsRagdollMovementMode()) { SetMovementMode(MOVE_Falling); }
 		return !IsRagdollMovementMode();
 	}
@@ -1851,6 +2147,8 @@ void UIMGCharacterMovementComponent::PublishRagdollMovementState()
 	++ActiveRagdollState.Revision;
 	if (ActiveRagdollState.Revision == 0) { ++ActiveRagdollState.Revision; }
 	ReplicatedRagdollState = ActiveRagdollState;
+	PublishRagdollBodyReference(FVector::ZeroVector, ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating
+		? EIMGRagdollIssue::MissingTarget : EIMGRagdollIssue::Unavailable);
 	UE_LOG(LogIMG, Verbose, TEXT("[Ragdoll][State] %s Role=%d Session=%u Revision=%u Phase=%d End=%d Placement=%d"),
 		*GetNameSafe(GetOwner()), CharacterOwner ? static_cast<int32>(CharacterOwner->GetLocalRole()) : -1,
 		ActiveRagdollState.Session, ActiveRagdollState.Revision, static_cast<int32>(ActiveRagdollState.Phase),
@@ -1867,6 +2165,11 @@ void UIMGCharacterMovementComponent::OnRep_RagdollMovementState()
 void UIMGCharacterMovementComponent::ReceiveRagdollMovementState(const FIMGRagdollRepState& State)
 {
 	if (!State.Settings.IsValid() || State.AnchorLocation.ContainsNaN() || State.InitialVelocity.ContainsNaN()
+		|| (State.bExternalTransition && (!State.bHasRecovery || State.Phase != EIMGRagdollPhase::Inactive
+			|| State.EndReason != EIMGRagdollEndReason::Transferred || State.TransitionVelocity.ContainsNaN()
+			|| (State.TransitionMode != MOVE_Custom && State.TransitionCustomMode != 0)
+			|| (State.TransitionMode == MOVE_Custom && State.TransitionCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll))
+			|| !SupportsRagdollTransitionMode(State.TransitionMode, State.TransitionCustomMode)))
 		|| static_cast<uint8>(State.Phase) > static_cast<uint8>(EIMGRagdollPhase::Recovering)
 		|| (State.Session == 0 && State.Phase != EIMGRagdollPhase::Inactive)) { return; }
 	if (State.Revision == 0 || (ActiveRagdollState.Revision != 0 && State.Revision != ActiveRagdollState.Revision
@@ -1874,12 +2177,17 @@ void UIMGCharacterMovementComponent::ReceiveRagdollMovementState(const FIMGRagdo
 	if (State.Revision == ActiveRagdollState.Revision) { return; }
 	if (State.Session != ActiveRagdollState.Session || State.Phase != EIMGRagdollPhase::Simulating)
 	{
+		RagdollPreCorrectionLocation.Reset();
+		RagdollCorrectionSession = 0;
 		SubmittedRagdollInput = FIMGRagdollMovementInput();
 		RagdollInputSource.Reset();
 		RagdollInputSampleTime = -1.0;
 		RagdollRemoteInputTime = -1.0;
 	}
-	if (State.Session != ActiveRagdollState.Session) { RagdollRecoveryAppliedSession = 0; }
+	if (State.Session != ActiveRagdollState.Session || State.bExternalTransition)
+	{
+		RagdollRecoveryAppliedSession = RagdollLocalPlacementSession = 0;
+	}
 	ActiveRagdollState = State;
 	if (State.Phase != EIMGRagdollPhase::Inactive || (State.bHasRecovery && RagdollRecoveryAppliedSession != State.Session))
 	{
@@ -1901,6 +2209,15 @@ void UIMGCharacterMovementComponent::UpdateRagdollMovementState()
 		{
 			StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
 		}
+		else if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode())
+		{
+			FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
+		}
+		else if (RagdollMovementController.IsStale() || CharacterOwner->GetController() != RagdollMovementController.Get())
+		{
+			// A new movement owner must start its own session instead of inheriting the previous owner's body samples.
+			StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
+		}
 		else if (IsRagdollRecovering() && MovementMode != MOVE_Walking) { FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false); }
 	}
 	if (!HasValidData()) { return; }
@@ -1909,12 +2226,13 @@ void UIMGCharacterMovementComponent::UpdateRagdollMovementState()
 		if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating) { SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll)); }
 		else if (ActiveRagdollState.Revision != 0)
 		{
-			if (ActiveRagdollState.bHasRecovery && RagdollRecoveryAppliedSession != ActiveRagdollState.Session
+			if (!ActiveRagdollState.bExternalTransition && ActiveRagdollState.bHasRecovery && RagdollLocalPlacementSession != ActiveRagdollState.Session
+				&& (IsRagdollRecovering() || IsRagdollMovementMode())
 				&& (IsRagdollMovementMode() || IsWalking() || IsFalling()))
 			{
 				ApplyRagdollRecoveryTransform(GetRagdollPlacementTransform());
 			}
-			else if (IsRagdollMovementMode())
+			else if (IsRagdollMovementMode() && !ActiveRagdollState.bExternalTransition)
 			{
 				SetMovementMode(ActiveRagdollState.EndReason == EIMGRagdollEndReason::Unavailable ? MOVE_None : MOVE_Falling);
 			}
@@ -1945,6 +2263,7 @@ void UIMGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick T
 				RagdollMode.Input.Status = EIMGRagdollTargetStatus::Expired;
 				Velocity = FVector::ZeroVector;
 				SetRagdollMovementIssue(EIMGRagdollIssue::ExpiredTarget);
+				PublishRagdollBodyReference(FVector::ZeroVector, EIMGRagdollIssue::ExpiredTarget);
 				CharacterOwner->ForceNetUpdate();
 				ForceReplicationUpdate();
 			}
@@ -2000,6 +2319,12 @@ void UIMGCharacterMovementComponent::ClearRagdollMovementResources()
 	RagdollRemoteInputTime = -1.0;
 	RagdollAdjustmentTimeStamp = -1.0f;
 	RagdollAdjustmentPlacementSession = 0;
+	ActiveRagdollBodyReference = FIMGRagdollBodyReference();
+	RagdollBodyReferencePublishTime = -1.0;
+	RagdollInputMoveTimeStamp = -1.f;
+	RagdollPreCorrectionLocation.Reset();
+	RagdollCorrectionSession = 0;
+	RagdollMovementController.Reset();
 }
 
 void UIMGCharacterMovementComponent::OnRep_IsActive()
