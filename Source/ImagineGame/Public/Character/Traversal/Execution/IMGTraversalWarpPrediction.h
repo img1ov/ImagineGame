@@ -34,10 +34,16 @@ private:
 	FQuat BaseRotation;
 	FVector MeshScale;
 	FTransform MeshRelative;
+	FTransform MeshRelativeInverse;
 	bool bEnabled;
 	bool bVerboseDiagnostics;
 	FString& PredictionUnavailableReason;
 	TFunctionRef<void(const TCHAR*, const FString&, bool)> LogEvent;
-	TMap<const FIMGTraversalWarpWindow*, FTransform> RootOffsets;
-	TMap<const FIMGTraversalWarpWindow*, FTransform> NativeTails;
+	struct FWindowCache
+	{
+		FTransform RootOffset = FTransform::Identity;
+		FTransform NativeTail = FTransform::Identity;
+		bool bHasTranslation = false;
+	};
+	TMap<const FIMGTraversalWarpWindow*, FWindowCache> WindowCaches;
 };

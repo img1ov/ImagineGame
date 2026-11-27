@@ -89,6 +89,27 @@ private:
 	bool PrepareWarpTargets(FIMGTraversalCandidate& Candidate, const FIMGTraversalAnimationSelection& Selection,
 	    TArray<FIMGTraversalWarpTarget>& OutTargets, float& OutGroundHandoffTime) const;
 	void CheckActiveTarget();
+	/** Abnormal exits (death, lost support, carrier motion) end as cancelled, like the other failure paths. */
+	void AbortTraversal(const TCHAR* Reason);
+
+	/** Preflight result reused by the activation that immediately follows it in the same frame. */
+	struct FPreflightCache
+	{
+		uint64 Frame = MAX_uint64;
+		TWeakObjectPtr<const AActor> Avatar;
+		FVector Location = FVector::ZeroVector;
+		FQuat Rotation = FQuat::Identity;
+		FVector Direction = FVector::ZeroVector;
+		FVector Intent = FVector::ZeroVector;
+		EIMGTraversalRequestSource Source = EIMGTraversalRequestSource::Manual;
+		FIMGTraversalCandidate Candidate;
+	};
+	struct FTrackedObstacle
+	{
+		TWeakObjectPtr<UPrimitiveComponent> Component;
+		FTransform PreviousTransform = FTransform::Identity;
+	};
+	mutable FPreflightCache PreflightCache;
 	void OnTargetDataTimedOut();
 	void OnTraversalUnavailable();
 	void OnGroundHandoffFailed();
@@ -131,8 +152,7 @@ private:
 	FIMGTraversalCandidate LocalCandidate;
 	TWeakObjectPtr<UIMGTraversalComponent> ActiveComponent;
 	uint32 ActiveExecutionId = 0;
-	TArray<TWeakObjectPtr<UPrimitiveComponent>> ActiveObstacleComponents;
-	TArray<FTransform> PreviousObstacleTransforms;
+	TArray<FTrackedObstacle> TrackedObstacles;
 	float PreviousTargetCheckTime = 0.f;
 	uint32 TrackedTargetsRevision = 0;
 	// Do not reuse this per-actor instance while a previous activation/request is still unwinding.

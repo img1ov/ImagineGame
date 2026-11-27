@@ -439,11 +439,11 @@ bool UIMGTraversalComponent::BeginTraversal(const FIMGTraversalCandidate& Candid
 	ActiveState.WarpTargets = WarpTargets;
 	ActiveState.bActive = true;
 	bLocallyPredictedTraversal = Character->GetLocalRole() == ROLE_AutonomousProxy;
-	ReplaySessionValid = bLocallyPredictedTraversal ? MakeShared<bool>(true) : TSharedPtr<bool>();
+	if (bLocallyPredictedTraversal) { BeginReplaySession(); }
+	else { ResetReplaySession(); }
 	ReplayMoveExecutions.Reset();
 	GroundHandoffIgnores.Reset();
 	bMontageCompletionPending = false;
-	ReplayGroundReleased = bLocallyPredictedTraversal ? MakeShared<bool>(false) : TSharedPtr<bool>();
 	bAuthorityTargetsApplied = false;
 	++TraversalTargetsRevision;
 	if (const UMotionWarpingComponent* Warping = GetMotionWarpingComponent())
@@ -509,7 +509,7 @@ void UIMGTraversalComponent::InvalidateTraversal()
 {
 	if (bInvalidatingTraversal) { return; }
 	TGuardValue<bool> Invalidating(bInvalidatingTraversal, true);
-	if (ReplaySessionValid) { *ReplaySessionValid = false; }
+	InvalidateReplaySession();
 	OnTraversalUnavailable.Broadcast();
 	// Unavailable or destroyed owners may no longer be able to run the GA's end path.
 	ReleaseExecution();
@@ -658,15 +658,20 @@ void UIMGTraversalComponent::ReconcilePredictedTargets()
 #endif
 		return;
 	}
-	for (const UPrimitiveComponent* Obstacle : ReplicatedState.ObstacleComponents)
+	// Floor-only carriers select floor rules during GA revalidation; a late reference must not fall back to climb rules.
+	for (const TArray<TObjectPtr<UPrimitiveComponent>>* Components :
+	    {&ReplicatedState.ObstacleComponents, &ReplicatedState.FloorOnlyComponents})
 	{
-		if (!IsValid(Obstacle))
+		for (const UPrimitiveComponent* Component : *Components)
 		{
+			if (!IsValid(Component))
+			{
 #if IMG_TRAVERSAL_DEBUG_ENABLED
-			IMGTraversalDebug::State(
-				GetOwner(), TEXT("PredictedTargetsWaiting"), ReplicatedState, TEXT("Obstacle reference"));
+				IMGTraversalDebug::State(
+					GetOwner(), TEXT("PredictedTargetsWaiting"), ReplicatedState, TEXT("Obstacle reference"));
 #endif
-			return;
+				return;
+			}
 		}
 	}
 	for (const FIMGTraversalWarpTarget& Target : ReplicatedState.WarpTargets)
@@ -853,6 +858,13 @@ void UIMGTraversalComponent::HandleAbilitySystemUninitialized()
 #endif
 }
 
+bool UIMGTraversalComponent::MatchesActiveReplicatedMontage() const
+{
+	const UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get();
+	return ActiveState.bActive && IsValid(GetOwner()) && ASC && ASC->GetAvatarActor() == GetOwner() &&
+	    ASC->MatchesReplicatedMontageInstance(ActiveState.Montage, ActiveState.MontagePlayInstanceId);
+}
+
 bool UIMGTraversalComponent::HasReplicatedMontageBinding() const
 {
 	const UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get();
@@ -900,6 +912,8 @@ FIMGReplicatedMontagePrerequisiteResult UIMGTraversalComponent::CheckReplicatedM
 		}
 
 		if (!ReplicatedMontages.IsEmpty()) { return {}; }
+		// Traversal montages always carry root motion; skip the notify scan for every other montage.
+		if (!Montage->HasRootMotion()) { return {}; }
 		TArray<FIMGTraversalWarpWindow> Windows;
 		const UMotionWarpingComponent* Warping = GetMotionWarpingComponent();
 		IMGTraversalWarpWindows::Collect(Montage, Warping && Warping->bSearchForWindowsInAnimsWithinMontages, Windows);
@@ -1061,13 +1075,19 @@ void UIMGTraversalComponent::TickComponent(
 	}
 	if (ActiveState.bActive)
 	{
-		ReconcilePredictedTargets();
+		if (bLocallyPredictedTraversal)
+		{
+			ReconcilePredictedTargets();
+		}
 		if (ActiveState.GroundHandoffTime >= 0.f && GroundPlayback.GetRanges().IsEmpty()) { BuildGroundPlayback(); }
 		RefreshWarpTargets();
 		// A replicated component reference may resolve after the snapshot's first OnRep.
-		if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
+		if (bSimulated)
 		{
-			ASC->RetryReplicatedMontage();
+			if (UIMGAbilitySystemComponent* ASC = BoundAbilitySystemComponent.Get())
+			{
+				ASC->RetryReplicatedMontage();
+			}
 		}
 	}
 }
@@ -1116,7 +1136,7 @@ void UIMGTraversalComponent::ReleaseBindings()
 	GroundHandoffIgnores.Reset();
 	RecordWarpContext = nullptr;
 	bCaptureTraversalExit = false;
-	ReplaySessionValid.Reset();
+	ResetReplaySession();
 	ReleaseExecution();
 	BoundMovement.Reset();
 	BoundMotionWarpingComponent.Reset();
@@ -1228,7 +1248,7 @@ void UIMGTraversalComponent::HandleMovementUpdated(float DeltaSeconds, FVector O
 	}
 	if (!OwnsExecution(ExpectedExecution) || BoundMovement.Get() != Movement || !Movement->IsFlying()) { return; }
 	ActiveState.MovementPhase = bGrounded ? EIMGTraversalMovementPhase::GroundExit : EIMGTraversalMovementPhase::Falling;
-	if (ReplayGroundReleased) { *ReplayGroundReleased = true; }
+	MarkReplayGroundReleased();
 	Movement->SetMovementMode(bGrounded ? MOVE_Walking : MOVE_Falling);
 	if (!OwnsExecution(ExpectedExecution) || BoundMovement.Get() != Movement) { return; }
 	bGrounded &= Movement->IsMovingOnGround();

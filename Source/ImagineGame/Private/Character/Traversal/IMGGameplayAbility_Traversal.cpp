@@ -23,6 +23,17 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGGameplayAbility_Traversal)
 
+namespace
+{
+bool CanUseTrackedSurface(const UPrimitiveComponent* Surface, const FIMGTraversalCandidate& Candidate,
+    const FIMGTraversalDetectorSettings& Settings)
+{
+	return Candidate.FloorOnlyComponents.Contains(Surface)
+	    ? FIMGTraversalDetector::CanUseFloor(Surface, Settings)
+	    : FIMGTraversalDetector::CanUseSurface(Surface, Settings, Candidate.RequestSource);
+}
+} // namespace
+
 UIMGGameplayAbility_Traversal::UIMGGameplayAbility_Traversal(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
@@ -139,6 +150,8 @@ bool UIMGGameplayAbility_Traversal::CanActivateAbility(const FGameplayAbilitySpe
 		{
 			return false;
 		}
+		PreflightCache = {GFrameCounter, Character, Character->GetActorLocation(), Character->GetActorQuat(),
+		    SearchDirection, Intent, Source, Candidate};
 	}
 	return true;
 }
@@ -158,8 +171,7 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	bMontageCompleted = false;
 	bTargetDataSent = false;
 	bTargetDataCancellationSent = false;
-	ActiveObstacleComponents.Reset();
-	PreviousObstacleTransforms.Reset();
+	TrackedObstacles.Reset();
 	LocalCandidate = FIMGTraversalCandidate();
 	ClearNetworkTracking();
 	NetworkRequestAvatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
@@ -221,12 +233,21 @@ void UIMGGameplayAbility_Traversal::ActivateAbility(const FGameplayAbilitySpecHa
 	const EIMGTraversalRequestSource Source = bServerControlledAI ? EIMGTraversalRequestSource::AI : RequestSource;
 	const FVector Intent = Component->GetMovementIntent(Source);
 	const FVector SearchDirection = Source == EIMGTraversalRequestSource::AI ? Intent : FVector::ZeroVector;
-	if (!Component->Detect(LocalCandidate, Failure, SearchDirection, Source))
+	// CanActivateAbility already ran this exact query this frame; reuse it instead of repeating the sweeps.
+	const FPreflightCache& Cache = PreflightCache;
+	if (Cache.Frame == GFrameCounter && Cache.Avatar.Get() == Character && Cache.Source == Source &&
+	    Cache.Direction.Equals(SearchDirection) && Cache.Intent.Equals(Intent) &&
+	    Cache.Location.Equals(Character->GetActorLocation()) && Cache.Rotation.Equals(Character->GetActorQuat()))
+	{
+		LocalCandidate = Cache.Candidate;
+	}
+	else if (!Component->Detect(LocalCandidate, Failure, SearchDirection, Source))
 	{
 		LogTraversalEvent(TEXT("LocalDetectionRejected"), UEnum::GetValueAsString(Failure));
 		CancelPendingTargetData();
 		return;
 	}
+	PreflightCache = FPreflightCache();
 	if (!Component->CanInitiate(LocalCandidate, Intent))
 	{
 		LogTraversalEvent(TEXT("LocalInitiationRejected"), FString::Printf(TEXT("Source=%d DistanceXY=%.2f"),
@@ -396,14 +417,14 @@ bool UIMGGameplayAbility_Traversal::ResolveTraversalRequest(const FIMGTraversalT
 			return false;
 		}
 		if (Request.Direction.ContainsNaN() || Request.MovementIntent.ContainsNaN() ||
-		    !Request.Direction.IsNormalized() || !FMath::IsNearlyZero(Request.Direction.Z) ||
+		    !Request.Direction.IsNormalized() || !FMath::IsNearlyZero(Request.Direction.Z, KINDA_SMALL_NUMBER) ||
 		    (!Request.MovementIntent.IsZero() &&
-		        (!Request.MovementIntent.IsNormalized() || !FMath::IsNearlyZero(Request.MovementIntent.Z))))
+		        (!Request.MovementIntent.IsNormalized() || !FMath::IsNearlyZero(Request.MovementIntent.Z, KINDA_SMALL_NUMBER))))
 		{
 			LogTraversalEvent(TEXT("ServerRequestRejected"), TEXT("Invalid planar request direction or movement intent"), true);
 			return false;
 		}
-		if (!Component->Detect(OutCandidate, Failure, Request.Direction, RequestSource))
+		if (!Component->Detect(OutCandidate, Failure, Request.Direction.GetSafeNormal2D(), RequestSource))
 		{
 			LogTraversalEvent(TEXT("ServerDetectionRejected"), FString::Printf(TEXT("%s Direction=%s Intent=%s"),
 			    *UEnum::GetValueAsString(Failure), *Request.Direction.ToCompactString(), *Request.MovementIntent.ToCompactString()), true);
@@ -479,17 +500,15 @@ bool UIMGGameplayAbility_Traversal::StartTraversalExecution(FIMGTraversalCandida
 		LogTraversalEvent(TEXT("PostCommitPlacementChanged"), TEXT("Commit changed the placement entry pose or capsule/mesh"), true);
 		return false;
 	}
-	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
+	for (const FTrackedObstacle& Tracked : TrackedObstacles)
 	{
-		const UPrimitiveComponent* Surface = ActiveObstacleComponents[Index].Get();
-		if (!(Candidate.FloorOnlyComponents.Contains(Surface)
-		        ? FIMGTraversalDetector::CanUseFloor(Surface, Component->GetDetectorSettings())
-		        : FIMGTraversalDetector::CanUseSurface(Surface, Component->GetDetectorSettings(), Candidate.RequestSource)))
+		const UPrimitiveComponent* Surface = Tracked.Component.Get();
+		if (!CanUseTrackedSurface(Surface, Candidate, Component->GetDetectorSettings()))
 		{
 			LogTraversalEvent(TEXT("PostCommitSurfaceRejected"), GetNameSafe(Surface), true);
 			return false;
 		}
-		if (!Surface->GetComponentTransform().Equals(PreviousObstacleTransforms[Index]))
+		if (!Surface->GetComponentTransform().Equals(Tracked.PreviousTransform))
 		{
 			LogTraversalEvent(TEXT("PostCommitPlacementChanged"), TEXT("Commit moved a placement surface"), true);
 			return false;
@@ -564,30 +583,27 @@ bool UIMGGameplayAbility_Traversal::IsTraversalExecutionValid() const
 void UIMGGameplayAbility_Traversal::TrackActiveTargets(
     const FIMGTraversalCandidate& Candidate, const TArray<FIMGTraversalWarpTarget>& WarpTargets)
 {
-	ActiveObstacleComponents.Reset();
-	PreviousObstacleTransforms.Reset();
+	TrackedObstacles.Reset();
+	auto Track = [this](UPrimitiveComponent* Component)
+	{
+		if (!TrackedObstacles.ContainsByPredicate(
+		        [Component](const FTrackedObstacle& Entry) { return Entry.Component == Component; }))
+		{
+			TrackedObstacles.Add(
+			    {Component, IsValid(Component) ? Component->GetComponentTransform() : FTransform::Identity});
+		}
+	};
 	for (UPrimitiveComponent* ObstacleComponent : Candidate.ObstacleComponents)
 	{
-		if (!ActiveObstacleComponents.Contains(ObstacleComponent))
-		{
-			ActiveObstacleComponents.Add(ObstacleComponent);
-			PreviousObstacleTransforms.Add(IsValid(ObstacleComponent)
-			    ? ObstacleComponent->GetComponentTransform() : FTransform::Identity);
-		}
+		Track(ObstacleComponent);
 	}
-	if (ActiveObstacleComponents.IsEmpty() && IsValid(Candidate.HitComponent))
+	if (TrackedObstacles.IsEmpty() && IsValid(Candidate.HitComponent))
 	{
-		ActiveObstacleComponents.Add(Candidate.HitComponent);
-		PreviousObstacleTransforms.Add(Candidate.HitComponent->GetComponentTransform());
+		Track(Candidate.HitComponent);
 	}
 	for (const FIMGTraversalWarpTarget& Target : WarpTargets)
 	{
-		if (!ActiveObstacleComponents.Contains(Target.Component.Get()))
-		{
-			ActiveObstacleComponents.Add(Target.Component.Get());
-			PreviousObstacleTransforms.Add(IsValid(Target.Component)
-			    ? Target.Component->GetComponentTransform() : FTransform::Identity);
-		}
+		Track(Target.Component.Get());
 	}
 	PreviousTargetCheckTime = GetWorld()->GetTimeSeconds();
 }
@@ -633,9 +649,7 @@ bool UIMGGameplayAbility_Traversal::IsSelectionValid(const FIMGTraversalAnimatio
 	}
 	for (const UPrimitiveComponent* Obstacle : Candidate.ObstacleComponents)
 	{
-		if (!(Candidate.FloorOnlyComponents.Contains(Obstacle)
-		        ? FIMGTraversalDetector::CanUseFloor(Obstacle, Traversal->GetDetectorSettings())
-		        : FIMGTraversalDetector::CanUseSurface(Obstacle, Traversal->GetDetectorSettings(), Candidate.RequestSource)))
+		if (!CanUseTrackedSurface(Obstacle, Candidate, Traversal->GetDetectorSettings()))
 		{
 			return Reject(FString::Printf(TEXT("Obstacle surface is no longer usable: %s"), *GetNameSafe(Obstacle)));
 		}
@@ -862,6 +876,7 @@ void UIMGGameplayAbility_Traversal::ClearNetworkTracking()
 
 void UIMGGameplayAbility_Traversal::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
+	PreflightCache = FPreflightCache();
 	if (IsActive()) { EndAbility(CurrentSpecHandle, ActorInfo, CurrentActivationInfo, true, true); }
 	ClearNetworkTracking();
 	Super::OnRemoveAbility(ActorInfo, Spec);
@@ -869,6 +884,7 @@ void UIMGGameplayAbility_Traversal::OnRemoveAbility(const FGameplayAbilityActorI
 
 void UIMGGameplayAbility_Traversal::OnPawnAvatarSet()
 {
+	PreflightCache = FPreflightCache();
 	const bool bOwnsPreviousExecution = ActiveComponent.IsValid() && ActiveComponent->OwnsExecution(ActiveExecutionId);
 	const AIMGCharacter* PreviousCharacter = bOwnsPreviousExecution
 	    ? Cast<AIMGCharacter>(ActiveComponent->GetOwner()) : nullptr;
@@ -896,6 +912,13 @@ void UIMGGameplayAbility_Traversal::OnPawnAvatarSet()
 	Super::OnPawnAvatarSet();
 }
 
+void UIMGGameplayAbility_Traversal::AbortTraversal(const TCHAR* Reason)
+{
+	if (!IsActive() || bIsAbilityEnding || !CurrentActorInfo) { return; }
+	LogTraversalEvent(TEXT("TraversalAborted"), Reason, true);
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+}
+
 void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 {
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -907,8 +930,7 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 	const UIMGHealthComponent* Health = UIMGHealthComponent::FindHealthComponent(Character);
 	if (Health && Health->IsDeadOrDying())
 	{
-		LogTraversalEvent(TEXT("TraversalAborted"), TEXT("Character died"), true);
-		K2_EndAbility();
+		AbortTraversal(TEXT("Character died"));
 		return;
 	}
 	if (Component && Component->OwnsExecution(ActiveExecutionId) &&
@@ -931,52 +953,47 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 		TrackActiveTargets(LocalCandidate, State.WarpTargets);
 		TrackedTargetsRevision = Component->GetTraversalTargetsRevision();
 	}
-	if (!IsTraversalExecutionValid() || !World || ActiveObstacleComponents.IsEmpty() ||
-	    ActiveObstacleComponents.Num() != PreviousObstacleTransforms.Num())
+	if (!IsTraversalExecutionValid() || !World || TrackedObstacles.IsEmpty())
 	{
 		const UIMGCharacterMovementComponent* Movement = Character ? Character->GetIMGMovementComponent() : nullptr;
-		LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(
+		AbortTraversal(*FString::Printf(
 		    TEXT("Execution binding, Flying or obstacle set lost: Mode=%u Custom=%u"),
 		    Movement ? static_cast<uint8>(Movement->MovementMode) : static_cast<uint8>(MOVE_None),
-		    Movement ? Movement->CustomMovementMode : 0), true);
-		K2_EndAbility();
+		    Movement ? Movement->CustomMovementMode : 0));
 		return;
 	}
 	const FIMGTraversalDetectorSettings& Settings = Component->GetDetectorSettings();
 	const float DeltaTime = FMath::Max(World->GetTimeSeconds() - PreviousTargetCheckTime, KINDA_SMALL_NUMBER);
-	auto IsMovingTooFast = [&Settings, DeltaTime](const UPrimitiveComponent& Component,
-	                           const FTransform& CurrentTransform, const FTransform& PreviousTransform)
+	auto IsMovingTooFast = [&Settings, DeltaTime](const UPrimitiveComponent& Surface,
+	                           const FTransform& CurrentTransform, const FTransform& PreviousTransform,
+	                           float& OutSpeed, float& OutAngularSpeed)
 	{
-		const float Speed = FVector::Dist(CurrentTransform.GetLocation(), PreviousTransform.GetLocation()) / DeltaTime;
-		const float AngularSpeed =
+		OutSpeed = FVector::Dist(CurrentTransform.GetLocation(), PreviousTransform.GetLocation()) / DeltaTime;
+		OutAngularSpeed =
 		    FMath::RadiansToDegrees(CurrentTransform.GetRotation().AngularDistance(PreviousTransform.GetRotation())) /
 		    DeltaTime;
-		return CurrentTransform.ContainsNaN() || !FMath::IsFinite(Speed) || !FMath::IsFinite(AngularSpeed) ||
-		    (Component.IsSimulatingPhysics() && !Settings.bAllowSimulatingPhysics) || Speed > Settings.MaxMovingSpeed ||
-		    AngularSpeed > Settings.MaxAngularSpeedDegrees;
+		return CurrentTransform.ContainsNaN() || !FMath::IsFinite(OutSpeed) || !FMath::IsFinite(OutAngularSpeed) ||
+		    (Surface.IsSimulatingPhysics() && !Settings.bAllowSimulatingPhysics) ||
+		    OutSpeed > Settings.MaxMovingSpeed || OutAngularSpeed > Settings.MaxAngularSpeedDegrees;
 	};
-	for (int32 Index = 0; Index < ActiveObstacleComponents.Num(); ++Index)
+	for (FTrackedObstacle& Tracked : TrackedObstacles)
 	{
-		UPrimitiveComponent* Target = ActiveObstacleComponents[Index].Get();
-		if (!(LocalCandidate.FloorOnlyComponents.Contains(Target)
-		        ? FIMGTraversalDetector::CanUseFloor(Target, Settings)
-		        : FIMGTraversalDetector::CanUseSurface(Target, Settings, LocalCandidate.RequestSource)))
+		UPrimitiveComponent* Target = Tracked.Component.Get();
+		if (!CanUseTrackedSurface(Target, LocalCandidate, Settings))
 		{
-			LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(TEXT("Obstacle lost or surface policy changed: %s"),
-			    *GetNameSafe(Target)), true);
-			K2_EndAbility();
+			AbortTraversal(*FString::Printf(TEXT("Obstacle lost or surface policy changed: %s"), *GetNameSafe(Target)));
 			return;
 		}
 		const FTransform Current = Target->GetComponentTransform();
-		if (IsMovingTooFast(*Target, Current, PreviousObstacleTransforms[Index]))
+		float Speed = 0.f;
+		float AngularSpeed = 0.f;
+		if (IsMovingTooFast(*Target, Current, Tracked.PreviousTransform, Speed, AngularSpeed))
 		{
-			const float Speed = FVector::Dist(Current.GetLocation(), PreviousObstacleTransforms[Index].GetLocation()) / DeltaTime;
-			const float AngularSpeed = FMath::RadiansToDegrees(
-			    Current.GetRotation().AngularDistance(PreviousObstacleTransforms[Index].GetRotation())) / DeltaTime;
 			LogTraversalEvent(TEXT("TraversalAborted"), FString::Printf(
 			    TEXT("Obstacle=%s invalid transform, forbidden physics or excessive motion: Speed=%.2f Max=%.2f AngularSpeed=%.2f Max=%.2f SimPhysics=%d AllowPhysics=%d"),
 			    *GetNameSafe(Target), Speed, Settings.MaxMovingSpeed, AngularSpeed, Settings.MaxAngularSpeedDegrees,
 			    Target->IsSimulatingPhysics(), Settings.bAllowSimulatingPhysics), true);
+			// Reported through the same cancel path as every other abnormal exit.
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 			if (IMGTraversalDebug::IsEnabled())
 			{
@@ -986,10 +1003,10 @@ void UIMGGameplayAbility_Traversal::CheckActiveTarget()
 					IMGTraversalDebug::EStage::Execution);
 			}
 #endif
-			K2_EndAbility();
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 			return;
 		}
-		PreviousObstacleTransforms[Index] = Current;
+		Tracked.PreviousTransform = Current;
 	}
 	PreviousTargetCheckTime = World->GetTimeSeconds();
 }
@@ -1127,10 +1144,10 @@ void UIMGGameplayAbility_Traversal::EndAbility(const FGameplayAbilitySpecHandle 
 		bLocalRequest = false;
 		ActiveExecutionId = 0;
 		ActiveComponent.Reset();
-		ActiveObstacleComponents.Reset();
-		PreviousObstacleTransforms.Reset();
+		TrackedObstacles.Reset();
 		TrackedTargetsRevision = 0;
 		LocalCandidate = FIMGTraversalCandidate();
+		PreflightCache = FPreflightCache();
 		if (bNotifyEndedHook)
 		{
 			OnTraversalEnded(bCompleted);

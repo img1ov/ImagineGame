@@ -5,6 +5,10 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGTraversalTargetData)
 
+// Source and Action are packed into two bits each; extending either enum must widen the packing below.
+static_assert(static_cast<uint8>(EIMGTraversalRequestSource::AI) < 4, "Widen FIMGTraversalTargetData Source packing");
+static_assert(static_cast<uint8>(EIMGTraversalAction::Mantle) < 4, "Widen FIMGTraversalTargetData Action packing");
+
 bool FIMGTraversalTargetData::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
 {
 	bOutSuccess = Map != nullptr;
@@ -36,5 +40,6 @@ bool FIMGTraversalTargetData::NetSerialize(FArchive& Ar, UPackageMap* Map, bool&
 	}
 	Ar << StartTime;
 	Ar << PlayRate;
+	bOutSuccess &= !Ar.IsError();
 	return true;
 }

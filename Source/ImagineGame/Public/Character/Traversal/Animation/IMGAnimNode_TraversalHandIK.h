@@ -121,6 +121,15 @@ protected:
 	    FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms) override;
 
 private:
+	struct FArmCorrection
+	{
+		FQuat Shoulder = FQuat::Identity;
+		FQuat Elbow = FQuat::Identity;
+		FQuat Wrist = FQuat::Identity;
+
+		void Reset() { Shoulder = Elbow = Wrist = FQuat::Identity; }
+	};
+
 	class FHandState
 	{
 	public:
@@ -139,8 +148,8 @@ private:
 			bHasIKCorrection = bHadContact = bDetaching = false;
 			DetachElapsedTime = 0.f;
 			LastDetachUpdateCounter = MAX_uint64;
-			LastShoulderCorrection = LastElbowCorrection = LastWristCorrection = FQuat::Identity;
-			DetachShoulderCorrection = DetachElbowCorrection = DetachWristCorrection = FQuat::Identity;
+			LastCorrection.Reset();
+			DetachCorrection.Reset();
 		}
 
 		void ResetPositionSmoothing()
@@ -162,12 +171,8 @@ private:
 		float AttachElapsedTime = 0.f;
 		uint64 LastPositionUpdateCounter = MAX_uint64;
 		// Unweighted local rotation deltas preserve current animation and bone lengths during recovery.
-		FQuat LastShoulderCorrection = FQuat::Identity;
-		FQuat LastElbowCorrection = FQuat::Identity;
-		FQuat LastWristCorrection = FQuat::Identity;
-		FQuat DetachShoulderCorrection = FQuat::Identity;
-		FQuat DetachElbowCorrection = FQuat::Identity;
-		FQuat DetachWristCorrection = FQuat::Identity;
+		FArmCorrection LastCorrection;
+		FArmCorrection DetachCorrection;
 		float DetachElapsedTime = 0.f;
 		uint64 LastDetachUpdateCounter = MAX_uint64;
 		bool bHasIKCorrection = false;
@@ -183,9 +188,15 @@ private:
 	};
 
 	void Reset();
+	FIMGTraversalHandContactSettings MakeContactSettings() const;
 	float EvaluateHandAlpha(const FComponentSpacePoseContext& Output, FHandState& Hand, EAnimAlphaInputType InputType,
 	    float InputAlpha, FName CurveName, const FInputScaleBias& ScaleBias, FInputScaleBiasClamp& ScaleBiasClamp);
 	FVector InterpolatePalmTarget(FHandState& Hand, const FVector& PalmWorld);
+	bool SolveArmTwoBoneIK(FHandState& Hand, const FTransform& ComponentToWorld, const FVector& Sample,
+	    const FVector& Palm, FTransform& Shoulder, FTransform& Elbow, FTransform& Wrist);
+	bool ApplyDetachRecovery(FHandState& Hand, bool bHasContact, const FTransform& InputShoulderLocal,
+	    const FTransform& InputElbowLocal, const FTransform& InputWristLocal, FTransform& ShoulderLocal,
+	    FTransform& ElbowLocal, FTransform& WristLocal);
 	void EvaluateHandIK(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms,
 	    FHandState& Hand, const FBoneReference& Bone, float HandAlpha);
 

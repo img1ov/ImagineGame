@@ -14,6 +14,7 @@ class UIMGAbilitySystemComponent;
 class UIMGPawnExtensionComponent;
 class UIMGCharacterMovementComponent;
 struct FIMGReplicatedMontagePrerequisiteResult;
+struct FIMGTraversalReplaySession;
 class FSavedMove_Character;
 struct FCharacterMoveResponseDataContainer;
 
@@ -28,6 +29,7 @@ class IMAGINEGAME_API UIMGTraversalComponent : public UPawnComponent
 
 public:
 	UIMGTraversalComponent(const FObjectInitializer& ObjectInitializer);
+	virtual ~UIMGTraversalComponent() override;
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Traversal", meta = (DefaultToSelf = "Actor"))
 	static UIMGTraversalComponent* Get(const AActor* Actor);
@@ -75,6 +77,8 @@ public:
 		return ActiveState.bActive;
 	}
 	const FIMGTraversalRepState& GetActiveTraversalState() const { return ActiveState; }
+	/** True when the bound ASC's replicated montage matches ActiveState (simulated proxy presentation check). */
+	bool MatchesActiveReplicatedMontage() const;
 	/** Explicit names override anchor lookup; otherwise exactly one resolved anchor binding is required. */
 	const FIMGTraversalWarpTarget* FindWarpTarget(EIMGTraversalAnchor Anchor, FName TargetName = NAME_None) const;
 	uint32 GetTraversalTargetsRevision() const { return TraversalTargetsRevision; }
@@ -155,6 +159,10 @@ private:
 	UFUNCTION()
 	void HandleMovementUpdated(float DeltaSeconds, FVector OldLocation, FVector OldVelocity);
 	void HandleClientCorrectionApplied(const FCharacterMoveResponseDataContainer& Response, const FSavedMove_Character& Move);
+	void BeginReplaySession();
+	void InvalidateReplaySession();
+	void MarkReplayGroundReleased();
+	void ResetReplaySession();
 	bool BuildGroundPlayback();
 	void RefreshWarpTargets();
 	void ReconcilePredictedTargets();
@@ -182,12 +190,8 @@ private:
 	UPROPERTY(Transient)
 	FIMGTraversalRepState ActiveState;
 
-	TArray<TWeakObjectPtr<UPrimitiveComponent>> AddedMovementIgnores;
-	TArray<TWeakObjectPtr<UPrimitiveComponent>> GroundHandoffIgnores;
+	// Bound infrastructure
 	TWeakObjectPtr<UMotionWarpingComponent> BoundMotionWarpingComponent;
-
-	TSet<TWeakObjectPtr<UPrimitiveComponent>> TargetTickPrerequisites;
-
 	TWeakObjectPtr<UIMGAbilitySystemComponent> BoundAbilitySystemComponent;
 	FDelegateHandle MontagePrerequisiteHandle;
 	TWeakObjectPtr<UIMGPawnExtensionComponent> BoundPawnExtension;
@@ -195,17 +199,26 @@ private:
 	FDelegateHandle MovementReplayCaptureHandle;
 	FDelegateHandle ClientCorrectionAppliedHandle;
 	TWeakObjectPtr<ACharacter> MovementEventCharacter;
+
+	// Collision ignores & tick dependencies
+	TArray<TWeakObjectPtr<UPrimitiveComponent>> AddedMovementIgnores;
+	TArray<TWeakObjectPtr<UPrimitiveComponent>> GroundHandoffIgnores;
+	TSet<TWeakObjectPtr<UPrimitiveComponent>> TargetTickPrerequisites;
+
+	// Ground handoff & playback path
 	FIMGTraversalPlaybackPath GroundPlayback;
-	TSharedPtr<bool> ReplayGroundReleased;
+	bool bMontageCompletionPending = false;
+	uint32 GroundHandoffExecutionId = 0;
+
+	// Autonomous prediction & SavedMove replay
+	TSharedPtr<FIMGTraversalReplaySession> ReplaySession;
 	TMap<const FSavedMove_Character*, uint32> ReplayMoveExecutions;
 	TFunction<void()> ReplayPostMovement;
 	TFunction<void()> RecordWarpContext;
 	TFunction<void()> RecordGroundHandoff;
-	bool bMontageCompletionPending = false;
-	uint32 GroundHandoffExecutionId = 0;
-	TSharedPtr<bool> ReplaySessionValid;
 	bool bReplayingTraversalMove = false;
 	bool bCaptureTraversalExit = false;
+
 	// Local resource ownership is independent of replicated sequence and target revisions.
 	uint32 ExecutionId = 0;
 	uint32 TraversalTargetsRevision = 0;

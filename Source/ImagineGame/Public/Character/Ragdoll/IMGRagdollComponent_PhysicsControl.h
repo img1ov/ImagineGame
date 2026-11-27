@@ -54,11 +54,14 @@ protected:
 	virtual void ReleaseBodyResources() override;
 
 private:
+	bool HasExplicitControlComponent() const;
 	bool ResolveControlComponent();
 	void ClearControls();
 	bool ValidateCreatedControls() const;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UPhysicsControlComponent> RuntimeControlComponent;
+
 	TSoftObjectPtr<UPhysicsControlAsset> PreviousControlAsset;
 	TSoftObjectPtr<UPhysicsControlAsset> ActiveControlAsset;
 	TArray<FName> OwnedControls;

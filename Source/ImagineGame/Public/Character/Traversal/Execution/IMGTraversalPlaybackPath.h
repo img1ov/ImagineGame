@@ -17,6 +17,8 @@ public:
 	const TMap<const FIMGTraversalWarpWindow*, FVector2f>& GetWindowTimes() const { return WindowPlaybackTimes; }
 	const TArray<const FIMGTraversalWarpWindow*>& GetReachableWindows() const { return ReachableWindows; }
 	bool GetPlaybackPosition(float MontagePosition, float& OutPosition) const;
+	/** Visits each authored montage interval overlapping [From, To] in monotonic playback order. */
+	bool ForEachInterval(float From, float To, TFunctionRef<bool(float AssetFrom, float AssetTo)> Callback) const;
 	float GetStartTime() const { return PlaybackStart; }
 	float GetPlacementTime() const { return PlacementTime; }
 	const FIMGTraversalWarpWindow* SelectTranslationWindow(TConstArrayView<FIMGTraversalWarpWindow> Windows,

@@ -2,8 +2,6 @@
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "AbilitySystem/IMGAbilitySystemComponent.h"
-#include "Character/IMGPawnExtensionComponent.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Character/IMGCharacter.h"
 #include "Character/Traversal/IMGTraversalComponent.h"
@@ -48,12 +46,9 @@ const FIMGTraversalWarpTarget* ResolveContactReference(const UIMGTraversalCompon
 	{
 		return nullptr;
 	}
-	if (Owner->GetLocalRole() == ROLE_SimulatedProxy)
+	if (Owner->GetLocalRole() == ROLE_SimulatedProxy && !Traversal.MatchesActiveReplicatedMontage())
 	{
-		const UIMGPawnExtensionComponent* Extension = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Owner);
-		const UIMGAbilitySystemComponent* ASC = Extension ? Extension->GetIMGAbilitySystemComponent() : nullptr;
-		if (!ASC || ASC->GetAvatarActor() != Owner ||
-		    !ASC->MatchesReplicatedMontageInstance(State.Montage, State.MontagePlayInstanceId)) { return nullptr; }
+		return nullptr;
 	}
 	const FAnimMontageInstance* Instance = AnimInstance->GetActiveInstanceForMontage(State.Montage);
 	if (!Instance) { Instance = AnimInstance->GetInstanceForMontage(State.Montage); }
@@ -138,9 +133,15 @@ bool FIMGAnimNode_TraversalHandIK::IsValidToEvaluate(const USkeleton* Skeleton, 
 	    (IsSupportedHandAlphaInput(RightAlphaInputType) && RightHand.IsValidToEvaluate(RequiredBones));
 }
 
+FIMGTraversalHandContactSettings FIMGAnimNode_TraversalHandIK::MakeContactSettings() const
+{
+	return {VerticalTraceHalfHeight, VerticalTraceRadius, FrontEdgeTraceDistance, FrontEdgeTraceRadius,
+	    MaxHandCorrectionDistance, ContactBreakDistance};
+}
+
 void FIMGAnimNode_TraversalHandIK::PreUpdate(const UAnimInstance* InAnimInstance)
 {
-	if (!IsSupportedHandAlphaInput(LeftAlphaInputType) && !IsSupportedHandAlphaInput(RightAlphaInputType))
+	if (!InAnimInstance || (!IsSupportedHandAlphaInput(LeftAlphaInputType) && !IsSupportedHandAlphaInput(RightAlphaInputType)))
 	{
 		Reset();
 		return;
@@ -220,8 +221,8 @@ void FIMGAnimNode_TraversalHandIK::PreUpdate(const UAnimInstance* InAnimInstance
 		Hand.PalmTargetWorld.Reset();
 		if (!Hand.PreIKPalmWorld)
 		{
+			// Do not reinitialize ScaleBiasClamp here: alpha may be 0 and waiting to interpolate up smoothly.
 			Hand.ResetContact();
-			ScaleBiasClamp.Reinitialize();
 			return;
 		}
 		const FVector Sample = Hand.PreIKPalmWorld.GetValue();
@@ -229,9 +230,8 @@ void FIMGAnimNode_TraversalHandIK::PreUpdate(const UAnimInstance* InAnimInstance
 		FVector Target;
 		bool bNewContact = false;
 		if (!Hand.Contact.UpdateContact(*World, Params, DetectorSettings.TraceChannel, Surfaces, FrontEdge,
-		        Sample, DetectorSettings.HandholdMinNormalZ, VerticalTraceHalfHeight, VerticalTraceRadius,
-		        FrontEdgeTraceDistance, FrontEdgeTraceRadius, MaxHandCorrectionDistance, ContactBreakDistance,
-		        bRefineFrontEdge, Target, bNewContact))
+		        Sample, DetectorSettings.HandholdMinNormalZ, MakeContactSettings(), bRefineFrontEdge, Target,
+		        bNewContact))
 		{
 			// Preserve the detector's break state, but never keep smoothing an invalid contact.
 			Hand.ResetPositionSmoothing();
@@ -331,6 +331,112 @@ FVector FIMGAnimNode_TraversalHandIK::InterpolatePalmTarget(FHandState& Hand, co
 	    FMath::Lerp(Hand.AttachStartLocal.GetValue(), Hand.SmoothedTargetLocal, AttachWeight));
 }
 
+bool FIMGAnimNode_TraversalHandIK::SolveArmTwoBoneIK(FHandState& Hand, const FTransform& ComponentToWorld,
+    const FVector& Sample, const FVector& Palm, FTransform& Shoulder, FTransform& Elbow, FTransform& Wrist)
+{
+	const FVector Root = Shoulder.GetLocation();
+	const FVector Joint = Elbow.GetLocation();
+	const FVector End = Wrist.GetLocation();
+	const double UpperLength = FVector::Distance(Root, Joint);
+	const double LowerLength = FVector::Distance(Joint, End);
+	if (!Hand.PalmTargetWorld || !Hand.ContactSurfaceToWorld.IsValid() ||
+	    FVector::DistSquared(Sample, Hand.PalmTargetWorld.GetValue()) >= FMath::Square(MaxHandCorrectionDistance))
+	{
+		return false;
+	}
+	const FVector SmoothedPalmWorld = InterpolatePalmTarget(Hand, Sample);
+	if (SmoothedPalmWorld.ContainsNaN() ||
+	    FVector::DistSquared(Sample, SmoothedPalmWorld) >= FMath::Square(MaxHandCorrectionDistance))
+	{
+		return false;
+	}
+	const FVector PalmTarget = ComponentToWorld.InverseTransformPosition(SmoothedPalmWorld);
+	const FVector WristTarget = End + (PalmTarget - Palm);
+	const FVector TargetOffset = WristTarget - Root;
+	if (TargetOffset.ContainsNaN() || TargetOffset.IsNearlyZero())
+	{
+		return false;
+	}
+	const FVector GoalDirection = TargetOffset.GetSafeNormal();
+	const FVector RefDirection = (End - Root).GetSafeNormal();
+	FVector Bend = FVector::VectorPlaneProject(Joint - Root, RefDirection).GetSafeNormal();
+	if (!RefDirection.IsNearlyZero() && !Bend.IsNearlyZero())
+	{
+		Bend = FQuat::FindBetweenNormals(RefDirection, GoalDirection).RotateVector(Bend);
+	}
+	else
+	{
+		Bend = FVector::VectorPlaneProject(Shoulder.GetUnitAxis(EAxis::Y), GoalDirection).GetSafeNormal();
+		if (Bend.IsNearlyZero())
+		{
+			FVector UnusedAxis;
+			GoalDirection.FindBestAxisVectors(Bend, UnusedAxis);
+		}
+	}
+	const FVector Pole = Root + Bend * (UpperLength + LowerLength);
+	const FVector Goal = Root + TargetOffset.GetClampedToMaxSize((UpperLength + LowerLength) * MaxArmReachRatio);
+	AnimationCore::SolveTwoBoneIK(Shoulder, Elbow, Wrist, Pole, Goal, UpperLength, LowerLength, false, 1.0, 1.0);
+	return Shoulder.IsValid() && Elbow.IsValid() && Wrist.IsValid();
+}
+
+bool FIMGAnimNode_TraversalHandIK::ApplyDetachRecovery(FHandState& Hand, bool bHasContact,
+    const FTransform& InputShoulderLocal, const FTransform& InputElbowLocal, const FTransform& InputWristLocal,
+    FTransform& ShoulderLocal, FTransform& ElbowLocal, FTransform& WristLocal)
+{
+	if (!bHasContact)
+	{
+		Hand.ResetPositionSmoothing();
+		if (!Hand.bHasIKCorrection || DetachBlendTime <= 0.f)
+		{
+			Hand.ResetRecovery();
+			return false;
+		}
+		if (Hand.bHadContact)
+		{
+			Hand.DetachCorrection = Hand.LastCorrection;
+			Hand.DetachElapsedTime = 0.f;
+			Hand.LastDetachUpdateCounter = AnimationUpdateCounter;
+			Hand.bDetaching = true;
+		}
+	}
+	if (!Hand.bDetaching)
+	{
+		return true;
+	}
+	const float DeltaTime = Hand.LastDetachUpdateCounter != AnimationUpdateCounter ? UpdateDeltaTime : 0.f;
+	Hand.LastDetachUpdateCounter = AnimationUpdateCounter;
+	Hand.DetachElapsedTime = FMath::Min(Hand.DetachElapsedTime + DeltaTime, DetachBlendTime);
+	const float DetachWeight = DetachBlendTime > 0.f
+	    ? 1.f - FMath::SmoothStep(0.f, 1.f, Hand.DetachElapsedTime / DetachBlendTime)
+	    : 0.f;
+	if (!bHasContact && DetachWeight <= 0.f)
+	{
+		Hand.ResetRecovery();
+		return false;
+	}
+	FTransform RecoveryShoulder = InputShoulderLocal;
+	FTransform RecoveryElbow = InputElbowLocal;
+	FTransform RecoveryWrist = InputWristLocal;
+	RecoveryShoulder.SetRotation(Hand.DetachCorrection.Shoulder * InputShoulderLocal.GetRotation());
+	RecoveryElbow.SetRotation(Hand.DetachCorrection.Elbow * InputElbowLocal.GetRotation());
+	RecoveryWrist.SetRotation(Hand.DetachCorrection.Wrist * InputWristLocal.GetRotation());
+	RecoveryShoulder.BlendWith(InputShoulderLocal, 1.f - DetachWeight);
+	RecoveryElbow.BlendWith(InputElbowLocal, 1.f - DetachWeight);
+	RecoveryWrist.BlendWith(InputWristLocal, 1.f - DetachWeight);
+	// Reacquisition blends from the outgoing correction instead of snapping back to the input palm.
+	const float AttachWeight = bHasContact
+	    ? (AttachBlendTime > 0.f ? FMath::SmoothStep(0.f, 1.f, Hand.AttachElapsedTime / AttachBlendTime) : 1.f)
+	    : 0.f;
+	RecoveryShoulder.BlendWith(ShoulderLocal, AttachWeight);
+	RecoveryElbow.BlendWith(ElbowLocal, AttachWeight);
+	RecoveryWrist.BlendWith(WristLocal, AttachWeight);
+	ShoulderLocal = RecoveryShoulder;
+	ElbowLocal = RecoveryElbow;
+	WristLocal = RecoveryWrist;
+	Hand.bDetaching = bHasContact ? AttachWeight < 1.f : DetachWeight > 0.f;
+	return true;
+}
+
 void FIMGAnimNode_TraversalHandIK::EvaluateHandIK(FComponentSpacePoseContext& Output,
     TArray<FBoneTransform>& OutBoneTransforms, FHandState& Hand, const FBoneReference& Bone, float HandAlpha)
 {
@@ -380,10 +486,8 @@ void FIMGAnimNode_TraversalHandIK::EvaluateHandIK(FComponentSpacePoseContext& Ou
 		return;
 	}
 	Hand.PreIKPalmWorld = Sample;
-	if (OutBoneTransforms.ContainsByPredicate([&](const FBoneTransform& Transform) {
-		    return Transform.BoneIndex == WristIndex || Transform.BoneIndex == ElbowIndex ||
-		        Transform.BoneIndex == ShoulderIndex;
-	    }))
+	if (OutBoneTransforms.ContainsByPredicate([&](const FBoneTransform& Transform)
+	        { return Transform.BoneIndex == WristIndex || Transform.BoneIndex == ElbowIndex || Transform.BoneIndex == ShoulderIndex; }))
 	{
 		Hand.ResetPositionSmoothing();
 		Hand.ResetRecovery();
@@ -392,134 +496,46 @@ void FIMGAnimNode_TraversalHandIK::EvaluateHandIK(FComponentSpacePoseContext& Ou
 
 	FTransform Shoulder = Output.Pose.GetComponentSpaceTransform(ShoulderIndex);
 	FTransform Elbow = Output.Pose.GetComponentSpaceTransform(ElbowIndex);
-	const FVector Root = Shoulder.GetLocation();
-	const FVector Joint = Elbow.GetLocation();
-	const FVector End = Wrist.GetLocation();
-	const double UpperLength = FVector::Distance(Root, Joint);
-	const double LowerLength = FVector::Distance(Joint, End);
-	if (!Shoulder.IsValid() || !Elbow.IsValid() || UpperLength <= UE_SMALL_NUMBER || LowerLength <= UE_SMALL_NUMBER)
+	if (!Shoulder.IsValid() || !Elbow.IsValid() ||
+	    FVector::Distance(Shoulder.GetLocation(), Elbow.GetLocation()) <= UE_SMALL_NUMBER ||
+	    FVector::Distance(Elbow.GetLocation(), Wrist.GetLocation()) <= UE_SMALL_NUMBER)
 	{
 		Hand.ResetPositionSmoothing();
 		Hand.ResetRecovery();
 		return;
 	}
 
-	const bool bHasContact = [&]() {
-		if (!Hand.PalmTargetWorld || !Hand.ContactSurfaceToWorld.IsValid() ||
-		    FVector::DistSquared(Sample, Hand.PalmTargetWorld.GetValue()) >= FMath::Square(MaxHandCorrectionDistance))
-		{
-			return false;
-		}
-		const FVector SmoothedPalmWorld = InterpolatePalmTarget(Hand, Sample);
-		if (SmoothedPalmWorld.ContainsNaN() ||
-		    FVector::DistSquared(Sample, SmoothedPalmWorld) >= FMath::Square(MaxHandCorrectionDistance))
-		{
-			return false;
-		}
-		const FVector PalmTarget = ComponentToWorld.InverseTransformPosition(SmoothedPalmWorld);
-		const FVector WristTarget = End + (PalmTarget - Palm);
-		const FVector TargetOffset = WristTarget - Root;
-		if (TargetOffset.ContainsNaN() || TargetOffset.IsNearlyZero())
-		{
-			return false;
-		}
-		const FVector GoalDirection = TargetOffset.GetSafeNormal();
-		const FVector RefDirection = (End - Root).GetSafeNormal();
-		FVector Bend = FVector::VectorPlaneProject(Joint - Root, RefDirection).GetSafeNormal();
-		if (!RefDirection.IsNearlyZero() && !Bend.IsNearlyZero())
-		{
-			Bend = FQuat::FindBetweenNormals(RefDirection, GoalDirection).RotateVector(Bend);
-		}
-		else
-		{
-			Bend = FVector::VectorPlaneProject(Shoulder.GetUnitAxis(EAxis::Y), GoalDirection).GetSafeNormal();
-			if (Bend.IsNearlyZero())
-			{
-				FVector UnusedAxis;
-				GoalDirection.FindBestAxisVectors(Bend, UnusedAxis);
-			}
-		}
-		const FVector Pole = Root + Bend * (UpperLength + LowerLength);
-		const FVector Goal = Root + TargetOffset.GetClampedToMaxSize((UpperLength + LowerLength) * MaxArmReachRatio);
-		AnimationCore::SolveTwoBoneIK(Shoulder, Elbow, Wrist, Pole, Goal, UpperLength, LowerLength, false, 1.0, 1.0);
-		return Shoulder.IsValid() && Elbow.IsValid() && Wrist.IsValid();
-	}();
+	const bool bHasContact = SolveArmTwoBoneIK(Hand, ComponentToWorld, Sample, Palm, Shoulder, Elbow, Wrist);
 
 	const FTransform& InputShoulder = Output.Pose.GetComponentSpaceTransform(ShoulderIndex);
 	const FTransform& InputElbow = Output.Pose.GetComponentSpaceTransform(ElbowIndex);
 	const FTransform& InputWrist = Output.Pose.GetComponentSpaceTransform(WristIndex);
 	const FCompactPoseBoneIndex ParentIndex = Bones.GetParentBoneIndex(ShoulderIndex);
-	const FTransform Parent = ParentIndex.IsValid()
-	    ? Output.Pose.GetComponentSpaceTransform(ParentIndex) : FTransform::Identity;
+	const FTransform Parent =
+	    ParentIndex.IsValid() ? Output.Pose.GetComponentSpaceTransform(ParentIndex) : FTransform::Identity;
 	const FTransform InputShoulderLocal = InputShoulder.GetRelativeTransform(Parent);
 	const FTransform InputElbowLocal = InputElbow.GetRelativeTransform(InputShoulder);
 	const FTransform InputWristLocal = InputWrist.GetRelativeTransform(InputElbow);
-	FTransform ShoulderLocal = InputShoulderLocal;
-	FTransform ElbowLocal = InputElbowLocal;
-	FTransform WristLocal = InputWristLocal;
-	if (bHasContact)
+	FTransform ShoulderLocal = bHasContact ? Shoulder.GetRelativeTransform(Parent) : InputShoulderLocal;
+	FTransform ElbowLocal = bHasContact ? Elbow.GetRelativeTransform(Shoulder) : InputElbowLocal;
+	FTransform WristLocal = bHasContact ? Wrist.GetRelativeTransform(Elbow) : InputWristLocal;
+
+	if (!ApplyDetachRecovery(Hand, bHasContact, InputShoulderLocal, InputElbowLocal, InputWristLocal, ShoulderLocal,
+	        ElbowLocal, WristLocal))
 	{
-		ShoulderLocal = Shoulder.GetRelativeTransform(Parent);
-		ElbowLocal = Elbow.GetRelativeTransform(Shoulder);
-		WristLocal = Wrist.GetRelativeTransform(Elbow);
+		return;
 	}
-	else
-	{
-		Hand.ResetPositionSmoothing();
-		if (!Hand.bHasIKCorrection || DetachBlendTime <= 0.f)
-		{
-			Hand.ResetRecovery();
-			return;
-		}
-		if (Hand.bHadContact)
-		{
-			Hand.DetachShoulderCorrection = Hand.LastShoulderCorrection;
-			Hand.DetachElbowCorrection = Hand.LastElbowCorrection;
-			Hand.DetachWristCorrection = Hand.LastWristCorrection;
-			Hand.DetachElapsedTime = 0.f;
-			Hand.LastDetachUpdateCounter = AnimationUpdateCounter;
-			Hand.bDetaching = true;
-		}
-	}
-	if (Hand.bDetaching)
-	{
-		const float DeltaTime = Hand.LastDetachUpdateCounter != AnimationUpdateCounter ? UpdateDeltaTime : 0.f;
-		Hand.LastDetachUpdateCounter = AnimationUpdateCounter;
-		Hand.DetachElapsedTime = FMath::Min(Hand.DetachElapsedTime + DeltaTime, DetachBlendTime);
-		const float DetachWeight = DetachBlendTime > 0.f
-		    ? 1.f - FMath::SmoothStep(0.f, 1.f, Hand.DetachElapsedTime / DetachBlendTime) : 0.f;
-		if (!bHasContact && DetachWeight <= 0.f)
-		{
-			Hand.ResetRecovery();
-			return;
-		}
-		FTransform RecoveryShoulder = InputShoulderLocal;
-		FTransform RecoveryElbow = InputElbowLocal;
-		FTransform RecoveryWrist = InputWristLocal;
-		RecoveryShoulder.SetRotation(Hand.DetachShoulderCorrection * InputShoulderLocal.GetRotation());
-		RecoveryElbow.SetRotation(Hand.DetachElbowCorrection * InputElbowLocal.GetRotation());
-		RecoveryWrist.SetRotation(Hand.DetachWristCorrection * InputWristLocal.GetRotation());
-		RecoveryShoulder.BlendWith(InputShoulderLocal, 1.f - DetachWeight);
-		RecoveryElbow.BlendWith(InputElbowLocal, 1.f - DetachWeight);
-		RecoveryWrist.BlendWith(InputWristLocal, 1.f - DetachWeight);
-		// Reacquisition blends from the outgoing correction instead of snapping back to the input palm.
-		const float AttachWeight = bHasContact
-		    ? (AttachBlendTime > 0.f ? FMath::SmoothStep(0.f, 1.f, Hand.AttachElapsedTime / AttachBlendTime) : 1.f) : 0.f;
-		RecoveryShoulder.BlendWith(ShoulderLocal, AttachWeight);
-		RecoveryElbow.BlendWith(ElbowLocal, AttachWeight);
-		RecoveryWrist.BlendWith(WristLocal, AttachWeight);
-		ShoulderLocal = RecoveryShoulder;
-		ElbowLocal = RecoveryElbow;
-		WristLocal = RecoveryWrist;
-		Hand.bDetaching = bHasContact ? AttachWeight < 1.f : DetachWeight > 0.f;
-	}
+
 	Hand.bHadContact = bHasContact;
 	if (bHasContact)
 	{
 		// Cache before alpha so recovery continues to honor the current curve without applying it twice.
-		Hand.LastShoulderCorrection = (ShoulderLocal.GetRotation() * InputShoulderLocal.GetRotation().Inverse()).GetNormalized();
-		Hand.LastElbowCorrection = (ElbowLocal.GetRotation() * InputElbowLocal.GetRotation().Inverse()).GetNormalized();
-		Hand.LastWristCorrection = (WristLocal.GetRotation() * InputWristLocal.GetRotation().Inverse()).GetNormalized();
+		Hand.LastCorrection.Shoulder =
+		    (ShoulderLocal.GetRotation() * InputShoulderLocal.GetRotation().Inverse()).GetNormalized();
+		Hand.LastCorrection.Elbow =
+		    (ElbowLocal.GetRotation() * InputElbowLocal.GetRotation().Inverse()).GetNormalized();
+		Hand.LastCorrection.Wrist =
+		    (WristLocal.GetRotation() * InputWristLocal.GetRotation().Inverse()).GetNormalized();
 		Hand.bHasIKCorrection = true;
 	}
 	if (HandAlpha < 1.f)

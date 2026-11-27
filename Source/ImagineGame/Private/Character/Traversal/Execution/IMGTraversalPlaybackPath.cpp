@@ -175,16 +175,39 @@ bool FIMGTraversalPlaybackPath::GetPlaybackPosition(float MontagePosition, float
 	for (int32 Index = 0; Index < PlaybackRanges.Num(); ++Index)
 	{
 		const FVector2f& Range = PlaybackRanges[Index];
-		if (MontagePosition >= Range.X && MontagePosition < Range.Y)
+		if (MontagePosition >= Range.X &&
+		    (MontagePosition < Range.Y || FMath::IsNearlyEqual(MontagePosition, Range.Y)))
 		{
-			OutPosition = PlaybackOffsets[Index] + MontagePosition - Range.X;
+			OutPosition = PlaybackOffsets[Index] + FMath::Min(MontagePosition, Range.Y) - Range.X;
 			return true;
 		}
 	}
-	if (!PlaybackRanges.IsEmpty() && FMath::IsNearlyEqual(MontagePosition, PlaybackRanges.Last().Y))
+	return false;
+}
+
+bool FIMGTraversalPlaybackPath::ForEachInterval(
+    float From, float To, TFunctionRef<bool(float AssetFrom, float AssetTo)> Callback) const
+{
+	if (To <= From)
 	{
-		OutPosition = PlaybackEnd;
 		return true;
 	}
-	return false;
+	for (int32 RangeIndex = 0; RangeIndex < PlaybackRanges.Num(); ++RangeIndex)
+	{
+		const FVector2f& Range = PlaybackRanges[RangeIndex];
+		const float Offset = PlaybackOffsets[RangeIndex];
+		const float Start = FMath::Max(From, Offset);
+		const float End = FMath::Min(To, Offset + Range.Y - Range.X);
+		if (End <= Start)
+		{
+			continue;
+		}
+		const float AssetFrom = FMath::Clamp(Range.X + Start - Offset, Range.X, Range.Y);
+		const float AssetTo = FMath::Clamp(Range.X + End - Offset, Range.X, Range.Y);
+		if (!Callback(AssetFrom, AssetTo))
+		{
+			return false;
+		}
+	}
+	return true;
 }

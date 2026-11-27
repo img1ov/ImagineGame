@@ -13,7 +13,7 @@ constexpr double FrontEdgeRefinementDuration = 0.50;
 constexpr double ContactMissGracePeriod = 0.10;
 constexpr double MaxContactUpdateInterval = 0.15;
 constexpr double MaxContactHeightSpeed = 60.0;
-}
+} // namespace
 
 void FIMGTraversalHandContact::Reset()
 {
@@ -28,9 +28,8 @@ const UPrimitiveComponent* FIMGTraversalHandContact::GetContactSurface() const
 
 bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisionQueryParams& QueryParams,
     ECollisionChannel Channel, TConstArrayView<TObjectPtr<UPrimitiveComponent>> Surfaces,
-    const FTransform& FrontEdge, const FVector& Palm, float MinNormalZ, float InVerticalTraceHalfHeight,
-    float InVerticalTraceRadius, float InFrontEdgeTraceDistance, float InFrontEdgeTraceRadius, float InMaxHandCorrectionDistance,
-    float InContactBreakDistance, bool bRefineFrontEdge, FVector& OutTarget, bool& bOutNewContact)
+    const FTransform& FrontEdge, const FVector& Palm, float MinNormalZ, FIMGTraversalHandContactSettings InSettings,
+    bool bRefineFrontEdge, FVector& OutTarget, bool& bOutNewContact)
 {
 	OutTarget = FVector::ZeroVector;
 	bOutNewContact = false;
@@ -41,31 +40,20 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 	const FVector Forward = FrontEdge.GetUnitAxis(EAxis::X).GetSafeNormal2D();
 	const FVector Edge = FrontEdge.GetLocation();
 	const double Now = World.GetTimeSeconds();
-	if (!FrontEdge.IsValid() || Forward.IsNearlyZero() || Palm.ContainsNaN() ||
-	    Surfaces.IsEmpty() || !FMath::IsFinite(Now) || !FMath::IsFinite(MinNormalZ) ||
-	    !FMath::IsFinite(InVerticalTraceHalfHeight) || InVerticalTraceHalfHeight <= 0.f ||
-	    !FMath::IsFinite(InVerticalTraceRadius) || InVerticalTraceRadius < 0.f ||
-	    !FMath::IsFinite(InFrontEdgeTraceDistance) || InFrontEdgeTraceDistance <= 0.f ||
-	    !FMath::IsFinite(InFrontEdgeTraceRadius) || InFrontEdgeTraceRadius < 0.f ||
-	    !FMath::IsFinite(InMaxHandCorrectionDistance) || InMaxHandCorrectionDistance <= 0.f ||
-	    !FMath::IsFinite(InContactBreakDistance) || InContactBreakDistance <= 0.f)
+	if (!FrontEdge.IsValid() || Forward.IsNearlyZero() || Palm.ContainsNaN() || Surfaces.IsEmpty() ||
+	    !FMath::IsFinite(Now) || !FMath::IsFinite(MinNormalZ) || !InSettings.IsValid())
 	{
 		Reset();
 		return false;
 	}
-	if (VerticalTraceHalfHeight != InVerticalTraceHalfHeight || VerticalTraceRadius != InVerticalTraceRadius ||
-	    FrontEdgeTraceDistance != InFrontEdgeTraceDistance || FrontEdgeTraceRadius != InFrontEdgeTraceRadius ||
-	    MaxHandCorrectionDistance != InMaxHandCorrectionDistance || ContactBreakDistance != InContactBreakDistance ||
-	    (LastContactUpdateTime >= 0.0 && (Now < LastContactUpdateTime || Now - LastContactUpdateTime > MaxContactUpdateInterval)))
+	InSettings.ContactBreakDistance = FMath::Max(InSettings.ContactBreakDistance, InSettings.MaxHandCorrectionDistance);
+	if (CachedSettings != InSettings ||
+	    (LastContactUpdateTime >= 0.0 &&
+	        (Now < LastContactUpdateTime || Now - LastContactUpdateTime > MaxContactUpdateInterval)))
 	{
 		Reset();
 	}
-	VerticalTraceHalfHeight = InVerticalTraceHalfHeight;
-	VerticalTraceRadius = InVerticalTraceRadius;
-	FrontEdgeTraceDistance = InFrontEdgeTraceDistance;
-	FrontEdgeTraceRadius = InFrontEdgeTraceRadius;
-	MaxHandCorrectionDistance = InMaxHandCorrectionDistance;
-	ContactBreakDistance = InContactBreakDistance;
+	CachedSettings = InSettings;
 	const double DeltaTime = LastContactUpdateTime >= 0.0 ? Now - LastContactUpdateTime : 0.0;
 	LastContactUpdateTime = Now;
 	if (bContactBroken)
@@ -73,37 +61,40 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 		return false;
 	}
 
-	const auto IsAllowedSurface = [&](const UPrimitiveComponent* Component) {
+	const auto IsAllowedSurface = [&](const UPrimitiveComponent* Component)
+	{
 		return IsValid(Component) && Component->IsRegistered() && Component->GetWorld() == &World &&
 		    Surfaces.ContainsByPredicate([Component](const auto& Entry) { return Entry.Get() == Component; }) &&
 		    Component->GetComponentTransform().IsValid();
 	};
-	const auto IsNearFrontEdge = [&](const FVector& Point) {
+	const auto IsNearFrontEdge = [&](const FVector& Point)
+	{
 		const double Depth = FVector::DotProduct(Point - Edge, Forward);
-		return Depth >= -VerticalTraceRadius && Depth <= FrontEdgeTraceDistance &&
-		    FMath::Abs(Point.Z - Edge.Z) <= VerticalTraceHalfHeight + VerticalTraceRadius;
+		return Depth >= -InSettings.VerticalTraceRadius && Depth <= InSettings.FrontEdgeTraceDistance &&
+		    FMath::Abs(Point.Z - Edge.Z) <= InSettings.VerticalTraceHalfHeight + InSettings.VerticalTraceRadius;
 	};
 
 	const UPrimitiveComponent* PreviousSurface = ContactSurface.Get();
 	bool bHasTarget = IsAllowedSurface(PreviousSurface);
 	const FVector PreviousTarget = bHasTarget
-	    ? PreviousSurface->GetComponentTransform().TransformPosition(ContactPointLocal) : FVector::ZeroVector;
+	    ? PreviousSurface->GetComponentTransform().TransformPosition(ContactPointLocal)
+	    : FVector::ZeroVector;
 	bHasTarget = bHasTarget && IsNearFrontEdge(PreviousTarget);
-	if (bHasTarget && FVector::DistSquared(PreviousTarget, Palm) > FMath::Square(ContactBreakDistance))
+	if (bHasTarget && FVector::DistSquared(PreviousTarget, Palm) > FMath::Square(InSettings.ContactBreakDistance))
 	{
 		bContactBroken = true;
 		return false;
 	}
 
 	const FVector ProbeCenter(Palm.X, Palm.Y, Edge.Z);
-	const FVector ProbeOffset = FVector::UpVector * VerticalTraceHalfHeight;
+	const FVector ProbeOffset = FVector::UpVector * InSettings.VerticalTraceHalfHeight;
 	FHitResult Hit;
 	// The directed GTA capsule probe corresponds to a sphere sweep.
 	const bool bHit = World.SweepSingleByChannel(Hit, ProbeCenter + ProbeOffset, ProbeCenter - ProbeOffset,
-	    FQuat::Identity, Channel, FCollisionShape::MakeSphere(VerticalTraceRadius), QueryParams);
+	    FQuat::Identity, Channel, FCollisionShape::MakeSphere(InSettings.VerticalTraceRadius), QueryParams);
 	const UPrimitiveComponent* HitSurface = Hit.GetComponent();
-	if (bHit && Hit.IsValidBlockingHit() && Hit.ImpactNormal.Z >= MinNormalZ &&
-	    IsAllowedSurface(HitSurface) && IsNearFrontEdge(Hit.ImpactPoint))
+	if (bHit && Hit.IsValidBlockingHit() && Hit.ImpactNormal.Z >= MinNormalZ && IsAllowedSurface(HitSurface) &&
+	    IsNearFrontEdge(Hit.ImpactPoint))
 	{
 		FVector Candidate = Hit.ImpactPoint;
 		const bool bSameSurface = bHasTarget && HitSurface == PreviousSurface;
@@ -111,14 +102,15 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 		if (bRefineFrontEdge && ContactTime < FrontEdgeRefinementDuration)
 		{
 			FHitResult FrontHit;
-			const FVector FrontStart = Candidate - Forward * FrontEdgeTraceDistance;
+			const FVector FrontStart = Candidate - Forward * InSettings.FrontEdgeTraceDistance;
 			if (World.SweepSingleByChannel(FrontHit, FrontStart, Candidate, FQuat::Identity, Channel,
-			        FCollisionShape::MakeSphere(FrontEdgeTraceRadius), QueryParams) &&
+			        FCollisionShape::MakeSphere(InSettings.FrontEdgeTraceRadius), QueryParams) &&
 			    FrontHit.IsValidBlockingHit() && FrontHit.GetComponent() == HitSurface)
 			{
 				FVector Refined = FMath::Lerp(FrontHit.ImpactPoint, Candidate, ContactTime / FrontEdgeRefinementDuration);
 				Refined.Z = FMath::Max(Candidate.Z, FrontHit.ImpactPoint.Z);
-				if (IsNearFrontEdge(Refined) && FVector::DistSquared(Refined, Palm) < FMath::Square(MaxHandCorrectionDistance))
+				if (IsNearFrontEdge(Refined) &&
+				    FVector::DistSquared(Refined, Palm) < FMath::Square(InSettings.MaxHandCorrectionDistance))
 				{
 					Candidate = Refined;
 				}
@@ -130,7 +122,7 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 			const double MaxStep = MaxContactHeightSpeed * DeltaTime;
 			Candidate.Z = PreviousTarget.Z + FMath::Clamp(Candidate.Z - PreviousTarget.Z, -MaxStep, MaxStep);
 		}
-		if (FVector::DistSquared(Candidate, Palm) < FMath::Square(MaxHandCorrectionDistance))
+		if (FVector::DistSquared(Candidate, Palm) < FMath::Square(InSettings.MaxHandCorrectionDistance))
 		{
 			const FVector LocalCandidate = HitSurface->GetComponentTransform().InverseTransformPosition(Candidate);
 			if (!LocalCandidate.ContainsNaN())
@@ -151,7 +143,7 @@ bool FIMGTraversalHandContact::UpdateContact(const UWorld& World, const FCollisi
 
 	// Bridge a short miss on a thin ledge, while the last verified surface and target are still usable.
 	if (bHasTarget && Now - LastValidHitTime <= ContactMissGracePeriod &&
-	    FVector::DistSquared(PreviousTarget, Palm) < FMath::Square(MaxHandCorrectionDistance))
+	    FVector::DistSquared(PreviousTarget, Palm) < FMath::Square(InSettings.MaxHandCorrectionDistance))
 	{
 		OutTarget = PreviousTarget;
 		return true;

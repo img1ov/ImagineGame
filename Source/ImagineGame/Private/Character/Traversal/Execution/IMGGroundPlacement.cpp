@@ -39,10 +39,11 @@ bool IMGGroundPlacement::FindGround(UCharacterMovementComponent& Movement, doubl
 	};
 	const ACharacter* Character = Movement.GetCharacterOwner();
 	const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
-	if (!Capsule || Movement.UpdatedComponent != Capsule || !FMath::IsFinite(MaxAdjustment) || MaxAdjustment < 0.0 ||
+	UWorld* World = Movement.GetWorld();
+	if (!World || !Capsule || Movement.UpdatedComponent != Capsule || !FMath::IsFinite(MaxAdjustment) || MaxAdjustment < 0.0 ||
 	    !Capsule->GetUpVector().Equals(FVector::UpVector, 1.e-3))
 	{
-		return Fail(TEXT("Invalid capsule, gravity orientation or recovery limit"));
+		return Fail(TEXT("Invalid world, capsule, gravity orientation or recovery limit"));
 	}
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGGroundPlacement), false, Character);
 	FCollisionResponseParams Responses;

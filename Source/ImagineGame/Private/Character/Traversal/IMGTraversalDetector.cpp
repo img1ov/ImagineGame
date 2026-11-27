@@ -17,6 +17,8 @@ using IMGTraversalDebug::EStage;
 namespace
 {
 constexpr int32 MaxCandidateHits = 12;
+constexpr int32 MaxHitsPerSearchLayer = 4;
+constexpr float MaxFaceNormalZ = 0.9f;
 constexpr float WalkableSlopeBaseOffset = 25.f;
 constexpr float WalkableSlopeProjectionLength = 1000.f;
 constexpr float HighOpenApproachMinHeight = 180.f;
@@ -78,7 +80,10 @@ void GatherSurfaceHits(UWorld& World, const FVector& Start, const FVector& End, 
 		    return !IsValid(Hit.GetComponent()) ||
 		        Hit.GetComponent()->GetCollisionResponseToChannel(Channel) != ECR_Block;
 	    });
-	Hits.StableSort([](const FHitResult& A, const FHitResult& B) { return A.Time < B.Time; });
+	if (Hits.Num() > 1)
+	{
+		Hits.StableSort([](const FHitResult& A, const FHitResult& B) { return A.Time < B.Time; });
+	}
 }
 
 const FHitResult* GetSupportingGroundHit(const UIMGCharacterMovementComponent& Movement)
@@ -301,15 +306,15 @@ bool MatchesCrossingRecommendation(const FIMGTraversalCandidate& Candidate, bool
 }
 
 bool TraceTop(UWorld& World, const FVector& Point, float StartZ, float EndZ, float ProbeRadius,
-    ECollisionChannel TraceChannel, const FCollisionQueryParams& Params, FHitResult& OutHit, float MinNormalZ = 0.1f,
-    const TCHAR* ProbeName = TEXT("Top"))
+    ECollisionChannel TraceChannel, const FCollisionQueryParams& Params, TArray<FHitResult>& ScratchHits,
+    FHitResult& OutHit, float MinNormalZ = 0.1f, const TCHAR* ProbeName = TEXT("Top"))
 {
 	const FVector Start(Point.X, Point.Y, StartZ);
 	const FVector End(Point.X, Point.Y, EndZ);
-	TArray<FHitResult> Hits;
-	GatherSurfaceHits(World, Start, End, ProbeRadius, TraceChannel, Params, Hits);
+	ScratchHits.Reset();
+	GatherSurfaceHits(World, Start, End, ProbeRadius, TraceChannel, Params, ScratchHits);
 	bool bHit = false;
-	for (const FHitResult& Hit : Hits)
+	for (const FHitResult& Hit : ScratchHits)
 	{
 		const bool bValid = !Hit.bStartPenetrating && (Hit.ImpactNormal.Z + Hit.Normal.Z) * 0.5f > MinNormalZ;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -331,7 +336,7 @@ bool TraceTop(UWorld& World, const FVector& Point, float StartZ, float EndZ, flo
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 	if (IMGTraversalDebug::IsEnabled())
 	{
-		const FHitResult* DebugHit = bHit ? &OutHit : Hits.IsEmpty() ? nullptr : &Hits[0];
+		const FHitResult* DebugHit = bHit ? &OutHit : ScratchHits.IsEmpty() ? nullptr : &ScratchHits[0];
 		IMGTraversalDebug::SweepSphere(&World, Start, End, ProbeRadius, DebugHit,
 			bHit ? FString(ProbeName) : FString::Printf(TEXT("%s (no usable top)"), ProbeName), FColor::Yellow,
 			EStage::Compute);
@@ -366,7 +371,7 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 	const float MinFacingDot = Query.Source == EIMGTraversalRequestSource::Automatic
 	    ? Settings.AutomaticMinFacingDot : Settings.MinFacingDot;
 	if (!IsSurfaceAllowed(FaceComponent, Query.Settings, Query.Source) || !World || FacingDot < MinFacingDot ||
-	    Face.ImpactNormal.Z > 0.9f || SurfaceForward.IsNearlyZero() || Right.IsNearlyZero())
+	    Face.ImpactNormal.Z > MaxFaceNormalZ || SurfaceForward.IsNearlyZero() || Right.IsNearlyZero())
 	{
 		Failure = EIMGTraversalFailure::InvalidSurface;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -399,12 +404,13 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 		IMGTraversalDebug::ELifetime::Snapshot, EStage::Compute);
 #endif
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalTop), false, Character);
+	TArray<FHitResult> ScratchHits;
 	// Keep the probe over the detected face; its contact point follows inset and curved tops.
 	const FVector ProbeOrigin = Face.ImpactPoint;
 	FHitResult CenterTop;
 	if (!TraceTop(*World, ProbeOrigin, Face.ImpactPoint.Z + TopProbeStartOffset,
 	        Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength, TopProbeRadius, Settings.TraceChannel, Params,
-	        CenterTop, Settings.HandholdMinNormalZ, TEXT("Center")))
+	        ScratchHits, CenterTop, Settings.HandholdMinNormalZ, TEXT("Center")))
 	{
 		Failure = EIMGTraversalFailure::NoFrontLedge;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -414,8 +420,12 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 		return false;
 	}
 	UPrimitiveComponent* TopComponent = CenterTop.GetComponent();
-	if (!IsSurfaceAllowed(TopComponent, Query.Settings, Query.Source) ||
-	    !AddObstacleComponent(Out, TopComponent, Settings))
+	if (!IsSurfaceAllowed(TopComponent, Query.Settings, Query.Source))
+	{
+		Failure = EIMGTraversalFailure::InvalidSurface;
+		return false;
+	}
+	if (!AddObstacleComponent(Out, TopComponent, Settings))
 	{
 		Failure = EIMGTraversalFailure::MovingTarget;
 		return false;
@@ -448,7 +458,7 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 		const float Offset = Index == 0 ? -SideOffset : SideOffset;
 		bSideValid[Index] = TraceTop(*World, ProbeOrigin + Right * Offset, Face.ImpactPoint.Z + TopProbeStartOffset,
 		                        Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength, TopProbeRadius,
-		                        Settings.TraceChannel, Params, SideTop[Index], Settings.HandholdMinNormalZ,
+		                        Settings.TraceChannel, Params, ScratchHits, SideTop[Index], Settings.HandholdMinNormalZ,
 		                        Index == 0 ? TEXT("Left") : TEXT("Right")) &&
 		    FMath::Abs(SideTop[Index].ImpactPoint.Z - CenterTop.ImpactPoint.Z) <= TopHeightTolerance &&
 		    IsSurfaceAllowed(SideTop[Index].GetComponent(), Query.Settings, Query.Source);
@@ -476,7 +486,7 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 		FHitResult Outer;
 		if (!TraceTop(*World, ProbeOrigin + Right * (SideOffset * 2.f * Sign), Face.ImpactPoint.Z + TopProbeStartOffset,
 		        Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength, TopProbeRadius, Settings.TraceChannel,
-		        Params, Outer, Settings.HandholdMinNormalZ, TEXT("Single-side outer")) ||
+		        Params, ScratchHits, Outer, Settings.HandholdMinNormalZ, TEXT("Single-side outer")) ||
 		    FMath::Abs(Outer.ImpactPoint.Z - CenterTop.ImpactPoint.Z) > TopHeightTolerance ||
 		    !IsSurfaceAllowed(Outer.GetComponent(), Query.Settings, Query.Source) ||
 		    !AddObstacleComponent(Out, Outer.GetComponent(), Settings))
@@ -505,7 +515,7 @@ bool SampleHandhold(const FIMGTraversalQuery& Query, const FHitResult& Face, con
 		FHitResult Additional;
 		if (!TraceTop(*World, ProbeOrigin + Right * (TopProbeRadius * 3.f * Sign),
 		        Face.ImpactPoint.Z + TopProbeStartOffset, Face.ImpactPoint.Z + TopProbeStartOffset - TopProbeLength,
-		        TopProbeRadius, Settings.TraceChannel, Params, Additional, Settings.HandholdMinNormalZ, TEXT("Narrow extra")) ||
+		        TopProbeRadius, Settings.TraceChannel, Params, ScratchHits, Additional, Settings.HandholdMinNormalZ, TEXT("Narrow extra")) ||
 		    FMath::Abs(Additional.ImpactPoint.Z - CenterTop.ImpactPoint.Z) > TopHeightTolerance ||
 		    !IsSurfaceAllowed(Additional.GetComponent(), Query.Settings, Query.Source) ||
 		    !AddObstacleComponent(Out, Additional.GetComponent(), Settings))
@@ -925,10 +935,14 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 		{
 			LastTopPoint = Hit.ImpactPoint;
 			LastTopComponent = Hit.GetComponent();
-			if (!IsSurfaceAllowed(LastTopComponent, Query.Settings, Query.Source) ||
-			    !AddObstacleComponent(Out, LastTopComponent, Settings))
+			if (!IsSurfaceAllowed(LastTopComponent, Query.Settings, Query.Source))
 			{
 				Failure = EIMGTraversalFailure::InvalidSurface;
+				return false;
+			}
+			if (!AddObstacleComponent(Out, LastTopComponent, Settings))
+			{
+				Failure = EIMGTraversalFailure::MovingTarget;
 				return false;
 			}
 			IncludeTopHeight(LastTopPoint.Z);
@@ -943,18 +957,24 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 	{
 		FVector ValidPoint = LastTopPoint;
 		FVector InvalidPoint = FirstInvalidPoint;
+		TArray<FHitResult> RefineScratchHits;
 		for (int32 Iteration = 0; Iteration < Settings.BackLedgeRefinementSteps; ++Iteration)
 		{
 			const FVector Probe = FMath::Lerp(ValidPoint, InvalidPoint, 0.5f);
 			FHitResult RefineHit;
 			const float RefineRange = DepthHeightTolerance + TopProbeRadius;
 			if (TraceTop(*World, Probe, LastTopPoint.Z + RefineRange, LastTopPoint.Z - RefineRange,
-			        TopProbeRadius, Settings.TraceChannel, Params, RefineHit, Settings.HandholdMinNormalZ, TEXT("Back refine")) &&
+			        TopProbeRadius, Settings.TraceChannel, Params, RefineScratchHits, RefineHit,
+			        Settings.HandholdMinNormalZ, TEXT("Back refine")) &&
 			    FMath::Abs(RefineHit.ImpactPoint.Z - LastTopPoint.Z) <= DepthHeightTolerance)
 			{
 				ValidPoint = RefineHit.ImpactPoint;
-				if (!IsSurfaceAllowed(RefineHit.GetComponent(), Query.Settings, Query.Source) ||
-				    !AddObstacleComponent(Out, RefineHit.GetComponent(), Settings))
+				if (!IsSurfaceAllowed(RefineHit.GetComponent(), Query.Settings, Query.Source))
+				{
+					Failure = EIMGTraversalFailure::InvalidSurface;
+					return false;
+				}
+				if (!AddObstacleComponent(Out, RefineHit.GetComponent(), Settings))
 				{
 					Failure = EIMGTraversalFailure::MovingTarget;
 					return false;
@@ -1076,7 +1096,9 @@ bool ValidateCandidateDirection(const FIMGTraversalQuery& Query, const FIMGTrave
 	IMGTraversalDebug::MessageAt(
 		HighestTop + Up * 12.f, TEXT("Highest depth support / sampled mean normal"), EStage::Validate);
 #endif
+	// Keep the slope in the (SurfaceForward, Up) plane; a laterally offset sample must not yaw the clearance probe.
 	FVector TopSlope = HighestTop - FrontPoint;
+	TopSlope = SurfaceForward * FVector::DotProduct(TopSlope, SurfaceForward) + Up * TopSlope.Z;
 	if (TopSlope.IsNearlyZero())
 	{
 		TopSlope = FVector::VectorPlaneProject(SurfaceForward, Out.GroundNormal);
@@ -1354,27 +1376,34 @@ bool FIMGTraversalDetector::Detect(
 			EStage::Search);
 	}
 #endif
+	struct FDetectedEdgeCluster
+	{
+		FHitResult TopHit;
+		FVector MidPoint = FVector::ZeroVector;
+		FVector NormalSum = FVector::ZeroVector;
+		FVector AverageNormal2D = FVector::ZeroVector;
+		FVector2D HeightRange = FVector2D::ZeroVector;
+		FVector LowestPoint = FVector::ZeroVector;
+		FVector HighestPoint = FVector::ZeroVector;
+		float Score = 0.f;
+		int32 HitCount = 0;
+	};
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(IMGTraversalCandidates), false, Character);
-	TArray<FHitResult> EdgeHits;
-	TArray<FVector> EdgeMidPoints;
-	TArray<FVector> EdgeNormalSums;
-	TArray<FVector2D> EdgeHeightRanges;
-	TArray<FVector> EdgeLowestPoints;
-	TArray<FVector> EdgeHighestPoints;
-	TArray<float> EdgeScores;
+	TArray<FDetectedEdgeCluster, TInlineAllocator<12>> Edges;
 	const float FootZ = Origin.Z - HalfHeight;
 	const float SearchBaseZ = Origin.Z + SearchStartHeightOffset;
 	const float HighestProbeZ = FootZ + Settings.MaxHeight + 25.f;
 	const int32 ProbeLayerCount = FMath::Clamp(
 	    FMath::RoundToInt((HighestProbeZ - SearchBaseZ) / SearchProbeSeparation), 1, Settings.MaxSearchLayers);
-	TArray<FHitResult> FirstLayerHits;
+	TArray<FHitResult, TInlineAllocator<16>> FirstLayerHits;
 	FirstLayerHits.SetNum(ProbeLayerCount);
-	TArray<float> SearchLayerDistances;
+	TArray<float, TInlineAllocator<16>> SearchLayerDistances;
 	SearchLayerDistances.SetNumUninitialized(ProbeLayerCount);
 	TArray<FHitResult> SearchHits;
 	TArray<bool> SecondaryHits;
 	FVector ApproachNormalSum = FVector::ZeroVector;
 	bool bGatherApproachNormals = true;
+	TArray<FHitResult> ProbeHits;
 	for (int32 LayerIndex = 0; LayerIndex < ProbeLayerCount; ++LayerIndex)
 	{
 		float LayerMaxDistance = Settings.SearchDistance;
@@ -1387,7 +1416,7 @@ bool FIMGTraversalDetector::Detect(
 		const float LayerDistance = LayerMaxDistance * SearchScale;
 		// A miss proves clearance only as far as this layer was actually swept.
 		SearchLayerDistances[LayerIndex] = LayerDistance;
-		TArray<FHitResult> ProbeHits;
+		ProbeHits.Reset();
 		const FVector Start(Origin.X, Origin.Y, SearchBaseZ + SearchProbeRadius + SearchProbeSeparation * LayerIndex);
 		const FVector End = Start + Forward * LayerDistance;
 		GatherSurfaceHits(
@@ -1400,14 +1429,15 @@ bool FIMGTraversalDetector::Detect(
 				break;
 			}
 		}
-		if (ProbeHits.Num() > 4)
+		if (ProbeHits.Num() > MaxHitsPerSearchLayer)
 		{
-			ProbeHits.SetNum(4);
+			ProbeHits.SetNum(MaxHitsPerSearchLayer);
 		}
 		if (!ProbeHits.IsEmpty())
 		{
 			FirstLayerHits[LayerIndex] = ProbeHits[0];
-			if (bGatherApproachNormals && ProbeHits[0].ImpactNormal.Z < 0.9f)
+			if (bGatherApproachNormals && ProbeHits[0].bBlockingHit && !ProbeHits[0].bStartPenetrating &&
+			    ProbeHits[0].ImpactNormal.Z < MaxFaceNormalZ)
 			{
 				ApproachNormalSum += ProbeHits[0].ImpactNormal;
 			}
@@ -1451,101 +1481,106 @@ bool FIMGTraversalDetector::Detect(
 		const bool bAllowedSurface = IsSurfaceAllowed(Hit.GetComponent(), Query.Settings, Query.Source);
 		const bool bGroundSlope = IsIntersectionOnGroundSlope(Hit, GroundLocation, GroundNormal, ApproachNormal);
 		const bool bUsableHit = Hit.bBlockingHit && bAllowedSurface && !Hit.bStartPenetrating &&
-		    Hit.ImpactNormal.Z <= 0.9f && !bGroundSlope;
+		    Hit.ImpactNormal.Z <= MaxFaceNormalZ && !bGroundSlope;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		if (IMGTraversalDebug::IsEnabled())
 		{
 			IMGTraversalDebug::Intersection(Character->GetWorld(), Hit, bUsableHit,
 				FString::Printf(TEXT("Hit %d %s | %s"), HitIndex,
 					SecondaryHits[HitIndex] ? TEXT("secondary") : TEXT("first"),
-					!Hit.bBlockingHit				? TEXT("nonblocking")
-						: !bAllowedSurface			? TEXT("surface policy")
-						: Hit.bStartPenetrating		? TEXT("penetration")
-						: Hit.ImpactNormal.Z > 0.9f ? TEXT("horizontal face")
-						: bGroundSlope				? TEXT("ground slope")
-													: TEXT("edge input")));
+					!Hit.bBlockingHit							? TEXT("nonblocking")
+						: !bAllowedSurface						? TEXT("surface policy")
+						: Hit.bStartPenetrating					? TEXT("penetration")
+						: Hit.ImpactNormal.Z > MaxFaceNormalZ	? TEXT("horizontal face")
+						: bGroundSlope							? TEXT("ground slope")
+																: TEXT("edge input")));
 		}
 #endif
 		if (!bUsableHit)
 		{
 			continue;
 		}
+		const FVector HitNormal2D = Hit.ImpactNormal.GetSafeNormal2D();
 		int32 EdgeIndex = INDEX_NONE;
-		for (int32 ExistingIndex = 0; ExistingIndex < EdgeHits.Num(); ++ExistingIndex)
+		for (int32 ExistingIndex = 0; ExistingIndex < Edges.Num(); ++ExistingIndex)
 		{
-			const FVector AverageNormal = EdgeNormalSums[ExistingIndex].GetSafeNormal();
-			const FVector2D HeightRange = EdgeHeightRanges[ExistingIndex];
-			if (FVector::DistSquared2D(EdgeMidPoints[ExistingIndex], Hit.ImpactPoint) <=
-			        FMath::Square(EdgePlanarTolerance) &&
-			    FVector::DotProduct(AverageNormal.GetSafeNormal2D(), Hit.ImpactNormal.GetSafeNormal2D()) >=
-			        EdgeHeadingToleranceDot &&
-			    Hit.ImpactPoint.Z >= HeightRange.X - EdgeVerticalContinuity &&
-			    Hit.ImpactPoint.Z <= HeightRange.Y + EdgeVerticalContinuity)
+			const FDetectedEdgeCluster& Cluster = Edges[ExistingIndex];
+			if (FVector::DistSquared2D(Cluster.MidPoint, Hit.ImpactPoint) <= FMath::Square(EdgePlanarTolerance) &&
+			    FVector::DotProduct(Cluster.AverageNormal2D, HitNormal2D) >= EdgeHeadingToleranceDot &&
+			    Hit.ImpactPoint.Z >= Cluster.HeightRange.X - EdgeVerticalContinuity &&
+			    Hit.ImpactPoint.Z <= Cluster.HeightRange.Y + EdgeVerticalContinuity)
 			{
 				EdgeIndex = ExistingIndex;
 				break;
 			}
 		}
+		const float HitScore = GetCandidateScore(Origin, Forward, Hit, Settings, SecondaryHits[HitIndex]);
 		if (EdgeIndex == INDEX_NONE)
 		{
-			EdgeHits.Add(Hit);
-			EdgeMidPoints.Add(Hit.ImpactPoint);
-			EdgeNormalSums.Add(Hit.ImpactNormal);
-			EdgeHeightRanges.Add(FVector2D(Hit.ImpactPoint.Z, Hit.ImpactPoint.Z));
-			EdgeLowestPoints.Add(Hit.ImpactPoint);
-			EdgeHighestPoints.Add(Hit.ImpactPoint);
-			EdgeScores.Add(GetCandidateScore(Origin, Forward, Hit, Settings, SecondaryHits[HitIndex]));
+			FDetectedEdgeCluster& Cluster = Edges.AddDefaulted_GetRef();
+			Cluster.TopHit = Hit;
+			Cluster.MidPoint = Hit.ImpactPoint;
+			Cluster.NormalSum = Hit.ImpactNormal;
+			Cluster.AverageNormal2D = HitNormal2D;
+			Cluster.HeightRange = FVector2D(Hit.ImpactPoint.Z, Hit.ImpactPoint.Z);
+			Cluster.LowestPoint = Hit.ImpactPoint;
+			Cluster.HighestPoint = Hit.ImpactPoint;
+			Cluster.Score = HitScore;
+			Cluster.HitCount = 1;
 		}
 		else
 		{
-			EdgeMidPoints[EdgeIndex] = (EdgeMidPoints[EdgeIndex] + Hit.ImpactPoint) * 0.5f;
-			EdgeNormalSums[EdgeIndex] += Hit.ImpactNormal;
-			if (Hit.ImpactPoint.Z < EdgeHeightRanges[EdgeIndex].X)
+			FDetectedEdgeCluster& Cluster = Edges[EdgeIndex];
+			// True running centroid; a halving average would weight later (higher) layers more.
+			const int32 Count = ++Cluster.HitCount;
+			Cluster.MidPoint += (Hit.ImpactPoint - Cluster.MidPoint) / static_cast<double>(Count);
+			Cluster.NormalSum += Hit.ImpactNormal;
+			Cluster.AverageNormal2D = Cluster.NormalSum.GetSafeNormal2D();
+			if (Hit.ImpactPoint.Z < Cluster.HeightRange.X)
 			{
-				EdgeLowestPoints[EdgeIndex] = Hit.ImpactPoint;
+				Cluster.LowestPoint = Hit.ImpactPoint;
+				Cluster.HeightRange.X = Hit.ImpactPoint.Z;
 			}
-			if (Hit.ImpactPoint.Z > EdgeHeightRanges[EdgeIndex].Y)
+			if (Hit.ImpactPoint.Z > Cluster.HeightRange.Y)
 			{
-				EdgeHighestPoints[EdgeIndex] = Hit.ImpactPoint;
+				Cluster.HighestPoint = Hit.ImpactPoint;
+				Cluster.HeightRange.Y = Hit.ImpactPoint.Z;
 			}
-			EdgeHeightRanges[EdgeIndex].X = FMath::Min(EdgeHeightRanges[EdgeIndex].X, Hit.ImpactPoint.Z);
-			EdgeHeightRanges[EdgeIndex].Y = FMath::Max(EdgeHeightRanges[EdgeIndex].Y, Hit.ImpactPoint.Z);
-			EdgeScores[EdgeIndex] =
-			    FMath::Min(EdgeScores[EdgeIndex], GetCandidateScore(Origin, Forward, Hit, Settings, SecondaryHits[HitIndex]));
-			if (Hit.ImpactPoint.Z > EdgeHits[EdgeIndex].ImpactPoint.Z)
+			Cluster.Score = FMath::Min(Cluster.Score, HitScore);
+			if (Hit.ImpactPoint.Z > Cluster.TopHit.ImpactPoint.Z)
 			{
-				EdgeHits[EdgeIndex] = Hit;
+				Cluster.TopHit = Hit;
 			}
 		}
 	}
-	TArray<int32> EdgeOrder;
-	EdgeOrder.Reserve(EdgeHits.Num());
-	for (int32 EdgeIndex = 0; EdgeIndex < EdgeHits.Num(); ++EdgeIndex)
+	TArray<int32, TInlineAllocator<12>> EdgeOrder;
+	EdgeOrder.Reserve(Edges.Num());
+	for (int32 EdgeIndex = 0; EdgeIndex < Edges.Num(); ++EdgeIndex)
 	{
-		const FVector AverageNormal = EdgeNormalSums[EdgeIndex].GetSafeNormal();
+		FDetectedEdgeCluster& Cluster = Edges[EdgeIndex];
+		const FVector AverageNormal = Cluster.NormalSum.GetSafeNormal();
 		if (!AverageNormal.IsNearlyZero())
 		{
-			EdgeHits[EdgeIndex].ImpactNormal = AverageNormal;
+			Cluster.TopHit.ImpactNormal = AverageNormal;
 		}
 		EdgeOrder.Add(EdgeIndex);
 #if IMG_TRAVERSAL_DEBUG_ENABLED
-		const FVector EdgeBottom = EdgeLowestPoints[EdgeIndex];
-		const FVector EdgeTop = EdgeHighestPoints[EdgeIndex];
-		IMGTraversalDebug::Line(Character->GetWorld(), EdgeBottom, EdgeTop, FColor::Purple, 1.5f,
+		IMGTraversalDebug::Line(Character->GetWorld(), Cluster.LowestPoint, Cluster.HighestPoint, FColor::Purple, 1.5f,
 			IMGTraversalDebug::ELifetime::Snapshot, EStage::Search);
-		IMGTraversalDebug::Arrow(Character->GetWorld(), EdgeTop, EdgeTop + EdgeHits[EdgeIndex].ImpactNormal * 30.f,
-			FColor::Purple, IMGTraversalDebug::ELifetime::Snapshot, EStage::Search);
+		IMGTraversalDebug::Arrow(Character->GetWorld(), Cluster.HighestPoint,
+			Cluster.HighestPoint + Cluster.TopHit.ImpactNormal * 30.f, FColor::Purple,
+			IMGTraversalDebug::ELifetime::Snapshot, EStage::Search);
 		if (IMGTraversalDebug::IsEnabled())
 		{
-			IMGTraversalDebug::MessageAt(EdgeTop + FVector::UpVector * 8.f,
-				FString::Printf(TEXT("Edge %d Score %.3f Span %.1f Drift %.1f"), EdgeIndex, EdgeScores[EdgeIndex],
-					EdgeHeightRanges[EdgeIndex].Y - EdgeHeightRanges[EdgeIndex].X,
-					FVector::Dist2D(EdgeBottom, EdgeTop)),
+			IMGTraversalDebug::MessageAt(Cluster.HighestPoint + FVector::UpVector * 8.f,
+				FString::Printf(TEXT("Edge %d Score %.3f Span %.1f Drift %.1f"), EdgeIndex, Cluster.Score,
+					Cluster.HeightRange.Y - Cluster.HeightRange.X,
+					FVector::Dist2D(Cluster.LowestPoint, Cluster.HighestPoint)),
 				EStage::Search);
 		}
 #endif
 	}
-	EdgeOrder.Sort([&EdgeScores](int32 A, int32 B) { return EdgeScores[A] < EdgeScores[B]; });
+	EdgeOrder.Sort([&Edges](int32 A, int32 B) { return Edges[A].Score < Edges[B].Score; });
 	float MidHeightApproachClearance = SearchDistance;
 	for (int32 LayerIndex = 1; LayerIndex < FMath::Min(ProbeLayerCount, 4); ++LayerIndex)
 	{
@@ -1559,8 +1594,9 @@ bool FIMGTraversalDetector::Detect(
 		{
 			break;
 		}
-		const FHitResult& Hit = EdgeHits[EdgeIndex];
-		const float EdgeVerticalSpan = EdgeHeightRanges[EdgeIndex].Y - EdgeHeightRanges[EdgeIndex].X;
+		const FDetectedEdgeCluster& Cluster = Edges[EdgeIndex];
+		const FHitResult& Hit = Cluster.TopHit;
+		const float EdgeVerticalSpan = Cluster.HeightRange.Y - Cluster.HeightRange.X;
 		FIMGTraversalCandidate Candidate;
 		EIMGTraversalFailure Failure = EIMGTraversalFailure::InvalidSurface;
 #if IMG_TRAVERSAL_DEBUG_ENABLED
@@ -1569,14 +1605,14 @@ bool FIMGTraversalDetector::Detect(
 		{
 			IMGTraversalDebug::MessageAt(Hit.ImpactPoint + FVector::UpVector * 20.f,
 				FString::Printf(TEXT("C%d/%d Score %.2f D%.0f Face %.2f Span %.0f Mid %.0f"), Tested,
-					FMath::Min(EdgeOrder.Num(), MaxCandidateHits), EdgeScores[EdgeIndex],
+					FMath::Min(EdgeOrder.Num(), MaxCandidateHits), Cluster.Score,
 					FVector::Dist2D(Origin, Hit.ImpactPoint),
 					-FVector::DotProduct(Hit.ImpactNormal.GetSafeNormal2D(), Forward), EdgeVerticalSpan,
 					MidHeightApproachClearance),
 				EStage::Compute);
 		}
 #endif
-		const float EdgePlanarDrift = FVector::Dist2D(EdgeLowestPoints[EdgeIndex], EdgeHighestPoints[EdgeIndex]);
+		const float EdgePlanarDrift = FVector::Dist2D(Cluster.LowestPoint, Cluster.HighestPoint);
 		const bool bValid = MakeCandidate(Query, Hit, Forward, EdgeVerticalSpan, EdgePlanarDrift, MidHeightApproachClearance,
 		    FirstLayerHits, Candidate, Failure);
 		if (bValid)
@@ -1607,7 +1643,11 @@ bool FIMGTraversalDetector::Detect(
 #endif
 			return true;
 		}
-		OutFailure = Failure;
+		// The best-scored edge explains the rejection; lower-ranked candidates must not mask it.
+		if (Tested == 1 || OutFailure == EIMGTraversalFailure::NoSurface)
+		{
+			OutFailure = Failure;
+		}
 #if IMG_TRAVERSAL_DEBUG_ENABLED
 		DrawFailure(*Character, Failure, Hit.ImpactPoint);
 		IMGTraversalDebug::Event(

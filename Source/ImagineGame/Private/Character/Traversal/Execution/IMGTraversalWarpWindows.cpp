@@ -14,7 +14,7 @@ void IMGTraversalWarpWindows::Collect(
 		return;
 	}
 	TArray<FVector2D> ModifierRanges;
-	auto Collect = [&OutWindows, &ModifierRanges](
+	auto Collect = [&OutWindows, &ModifierRanges, Montage](
 	                   const UAnimSequenceBase* Animation, float Offset, float RangeStart, float RangeEnd)
 	{
 		if (!Animation)
@@ -28,8 +28,12 @@ void IMGTraversalWarpWindows::Collect(
 			{
 				continue;
 			}
-			const float Start = FMath::Clamp(Event.GetTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset;
-			const float End = FMath::Clamp(Event.GetEndTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset;
+			// Trimmed segments can leave a notify overhanging the montage; keep the window inside its timeline.
+			const float MontageLength = Montage->GetPlayLength();
+			const float Start = FMath::Clamp(
+			    FMath::Clamp(Event.GetTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset, 0.f, MontageLength);
+			const float End = FMath::Clamp(
+			    FMath::Clamp(Event.GetEndTriggerTime(), 0.f, Animation->GetPlayLength()) + Offset, 0.f, MontageLength);
 			if (End <= RangeStart || Start >= RangeEnd)
 			{
 				continue;

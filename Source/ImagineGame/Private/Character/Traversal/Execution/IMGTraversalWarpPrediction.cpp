@@ -21,6 +21,7 @@ FIMGTraversalWarpPrediction::FIMGTraversalWarpPrediction(AIMGCharacter& InCharac
       InitialPose(InInitialPose), Mesh(InCharacter.GetMesh()), BaseRotation(InCharacter.GetBaseRotationOffset()),
       MeshScale(Mesh ? Mesh->GetComponentScale() : FVector::OneVector),
       MeshRelative(BaseRotation, InCharacter.GetBaseTranslationOffset(), Mesh ? Mesh->GetRelativeScale3D() : FVector::OneVector),
+      MeshRelativeInverse(MeshRelative.Inverse()),
       bEnabled(bInEnabled), bVerboseDiagnostics(bInVerboseDiagnostics), PredictionUnavailableReason(InFailureReason), LogEvent(InLogEvent)
 {
 }
@@ -32,24 +33,12 @@ FTransform FIMGTraversalWarpPrediction::ExtractMotion(float From, float To) cons
 
 void FIMGTraversalWarpPrediction::AdvanceRootMotion(float From, float To, FTransform& Pose) const
 {
-	const auto& PlaybackRanges = Playback.GetRanges();
-	const auto& PlaybackOffsets = Playback.GetOffsets();
-	for (int32 RangeIndex = 0; RangeIndex < PlaybackRanges.Num(); ++RangeIndex)
+	Playback.ForEachInterval(From, To, [this, &Pose](float AssetFrom, float AssetTo)
 	{
-		const FVector2f& Range = PlaybackRanges[RangeIndex];
-		const float Offset = PlaybackOffsets[RangeIndex];
-		const float Start = FMath::Max(From, Offset);
-		const float End = FMath::Min(To, Offset + Range.Y - Range.X);
-		if (End <= Start)
-		{
-			continue;
-		}
 		const FTransform MeshWorld = MeshRelative * Pose;
-		Pose = Pose.GetRelativeTransform(MeshWorld) *
-		    (ExtractMotion(FMath::Clamp(Range.X + Start - Offset, Range.X, Range.Y),
-		         FMath::Clamp(Range.X + End - Offset, Range.X, Range.Y)) *
-		        MeshWorld);
-	}
+		Pose = MeshRelativeInverse * (ExtractMotion(AssetFrom, AssetTo) * MeshWorld);
+		return true;
+	});
 }
 
 bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindow& Window,
@@ -61,10 +50,10 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 	const float MontageLength = Selection.Montage->GetPlayLength();
 	auto LogTraversalEvent = [this](const TCHAR* Event, const FString& Detail) { LogEvent(Event, Detail, false); };
 	const URootMotionModifier_Warp* Modifier = Window.Modifier;
-	const FTransform* CachedRootOffset = RootOffsets.Find(&Window);
-	if (!CachedRootOffset)
+	const FWindowCache* Cache = WindowCaches.Find(&Window);
+	if (!Cache)
 	{
-		FTransform RootOffset = FTransform::Identity;
+		FWindowCache NewCache;
 		if (Modifier->WarpPointAnimProvider == EWarpPointAnimProvider::Bone)
 		{
 			if (!Mesh || !Mesh->GetAnimInstance() ||
@@ -77,12 +66,12 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 				        *Modifier->WarpPointAnimBoneName.ToString());
 				return false;
 			}
-			RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
+			NewCache.RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
 			    *Character, Selection.Montage, Window.EndTime, Modifier->WarpPointAnimBoneName);
 		}
 		else if (Modifier->WarpPointAnimProvider == EWarpPointAnimProvider::Static)
 		{
-			RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
+			NewCache.RootOffset = UMotionWarpingUtilities::CalculateRootTransformRelativeToWarpPointAtTime(
 			    *Character, Selection.Montage, Window.EndTime, Modifier->WarpPointAnimTransform);
 		}
 		else if (Modifier->WarpPointAnimProvider != EWarpPointAnimProvider::None)
@@ -94,24 +83,18 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 		    IConsoleManager::Get().FindConsoleVariable(TEXT("a.MotionWarping.UseMeshScale"));
 		if (UseMeshScale && UseMeshScale->GetInt() != 0)
 		{
-			RootOffset.ScaleTranslation(MeshScale);
+			NewCache.RootOffset.ScaleTranslation(MeshScale);
 		}
-		CachedRootOffset = &RootOffsets.Add(&Window, RootOffset);
-	}
-	// FMotionWarpingTarget publishes only location and rotation.
-	const FTransform RootTarget =
-	    *CachedRootOffset * FTransform(WarpTarget.GetRotation(), WarpTarget.GetLocation());
-	if (!RootTarget.IsValid())
-	{
-		PredictionUnavailableReason = TEXT("Warp-point root transform is invalid");
-		return false;
-	}
-	const FTransform* CachedNativeTail = NativeTails.Find(&Window);
-	if (!CachedNativeTail)
-	{
-		CachedNativeTail = &NativeTails.Add(&Window,
-		    Modifier->bSubtractRemainingRootMotion ? ExtractMotion(Window.EndTime, MontageLength)
-		                                           : FTransform::Identity);
+		if (Modifier->bSubtractRemainingRootMotion)
+		{
+			NewCache.NativeTail = ExtractMotion(Window.EndTime, MontageLength);
+		}
+		if (Modifier->bWarpTranslation)
+		{
+			NewCache.bHasTranslation =
+			    !ExtractMotion(Window.StartTime, Window.EndTime).GetTranslation().IsNearlyZero(2e-4);
+		}
+		Cache = &WindowCaches.Add(&Window, NewCache);
 		if (bVerboseDiagnostics)
 		{
 			const FVector2f& Times = WindowPlaybackTimes.FindChecked(&Window);
@@ -125,13 +108,21 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 			        Window.EndTime, EntryTime,
 			        *ExtractMotion(EntryTime, Window.EndTime).GetTranslation().ToString(),
 			        Modifier->bSubtractRemainingRootMotion,
-			        *CachedNativeTail->GetTranslation().ToString(),
+			        *Cache->NativeTail.GetTranslation().ToString(),
 			        *UEnum::GetValueAsString(Modifier->WarpPointAnimProvider),
-			        *Modifier->WarpPointAnimBoneName.ToString(), *CachedRootOffset->ToString(),
+			        *Modifier->WarpPointAnimBoneName.ToString(), *Cache->RootOffset.ToString(),
 			        Modifier->bWarpTranslation, Modifier->bIgnoreZAxis, Modifier->bWarpToFeetLocation));
 		}
 	}
-	const FTransform& NativeTail = *CachedNativeTail;
+	// FMotionWarpingTarget publishes only location and rotation.
+	const FTransform RootTarget =
+	    Cache->RootOffset * FTransform(WarpTarget.GetRotation(), WarpTarget.GetLocation());
+	if (!RootTarget.IsValid())
+	{
+		PredictionUnavailableReason = TEXT("Warp-point root transform is invalid");
+		return false;
+	}
+	const FTransform& NativeTail = Cache->NativeTail;
 	FQuat EndRotation = EndPose.GetRotation();
 	if (Modifier->bWarpRotation)
 	{
@@ -139,7 +130,10 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 		if (Modifier->RotationType == EMotionWarpRotationType::Facing)
 		{
 			const FVector Facing = (RootTarget.GetLocation() - EntryPose.GetLocation()).GetSafeNormal2D();
-			EndRotation = FRotationMatrix::MakeFromXZ(Facing, FVector::UpVector).ToQuat();
+			if (!Facing.IsNearlyZero())
+			{
+				EndRotation = FRotationMatrix::MakeFromXZ(Facing, FVector::UpVector).ToQuat();
+			}
 		}
 		EndRotation = Modifier->AdditionalRotationOffset.Quaternion() * EndRotation;
 		if (Modifier->bSubtractRemainingRootMotion)
@@ -158,8 +152,7 @@ bool FIMGTraversalWarpPrediction::ResolveWindowPose(const FIMGTraversalWarpWindo
 		return EndPose.IsValid();
 	}
 
-	const bool bHasTranslation =
-	    !ExtractMotion(Window.StartTime, Window.EndTime).GetTranslation().IsNearlyZero(2e-4);
+	const bool bHasTranslation = Cache->bHasTranslation;
 	const FQuat MotionRotation = EndRotation * BaseRotation;
 	FVector Center = RootTarget.GetLocation();
 	if (bHasTranslation)

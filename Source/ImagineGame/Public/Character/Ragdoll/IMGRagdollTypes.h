@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/PoseSnapshot.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/NetSerialization.h"
 #include "IMGRagdollTypes.generated.h"
@@ -43,6 +44,33 @@ enum class EIMGRagdollIssue : uint8
 	PlacementPathBlocked,
 	ExitBlocked
 };
+
+UENUM(BlueprintType)
+enum class EIMGRagdollBodyIssue : uint8
+{
+	None,
+	WaitingForBodyReference,
+	BodyNotReady,
+	ExecutionUnavailable,
+	ExecutionNotReady,
+	BodyAttachmentTakenOver,
+	BodyResourcesChanged,
+	TransitionSuperseded,
+	MissingPelvisBody,
+	BodyStartFailed,
+	BodyHandedOff,
+	InvalidPhysicsControlComponent,
+	MissingPhysicsControlComponent,
+	PhysicsControlComponentBusy,
+	PhysicsControlSetupFailed,
+	PhysicsControlResourceLost
+};
+
+inline bool IsWaitingRagdollBodyIssue(EIMGRagdollBodyIssue Issue)
+{
+	return Issue == EIMGRagdollBodyIssue::WaitingForBodyReference
+		|| Issue == EIMGRagdollBodyIssue::BodyNotReady;
+}
 
 UENUM()
 enum class EIMGRagdollTargetStatus : uint8
@@ -101,6 +129,62 @@ struct IMAGINEGAME_API FIMGRagdollSettings
 
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 	bool IsValid() const;
+	float GetEffectiveFloorClearance(float MaxFloorDist) const;
+};
+
+/** Input parameters for transitioning out of free ragdoll into an approved external movement mode. */
+USTRUCT(BlueprintType)
+struct IMAGINEGAME_API FIMGRagdollTransitionRequest
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transition")
+	FTransform Transform = FTransform::Identity;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transition")
+	TEnumAsByte<EMovementMode> TargetMode = MOVE_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transition")
+	uint8 TargetCustomMode = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transition")
+	FVector CarryVelocity = FVector::ZeroVector;
+
+	/** Matched follow point in the proposed capsule's unit-scale space. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transition")
+	FVector BodyLocalOffset = FVector::ZeroVector;
+
+	bool IsValid() const;
+};
+
+/** Frozen local pose and spatial facts handed off to recovery or external-transition animation. */
+USTRUCT(BlueprintType)
+struct IMAGINEGAME_API FIMGRagdollPoseSnapshot
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Pose")
+	FPoseSnapshot Pose;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Pose")
+	FTransform MeshWorldTransform = FTransform::Identity;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Pose")
+	FVector PelvisWorldLocation = FVector::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Pose")
+	float FacingYaw = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Pose")
+	bool bFaceUp = false;
+
+	bool IsValid() const
+	{
+		return Pose.bIsValid
+			&& !MeshWorldTransform.ContainsNaN()
+			&& !PelvisWorldLocation.ContainsNaN()
+			&& FMath::IsFinite(FacingYaw);
+	}
 };
 
 /** A zero-origin body target, saved and replayed with the move that consumes it. */
@@ -124,7 +208,13 @@ struct IMAGINEGAME_API FIMGRagdollMovementInput
 	UPROPERTY()
 	EIMGRagdollTargetStatus Status = EIMGRagdollTargetStatus::Missing;
 
-	bool IsValid() const { return Session != 0 && Status == EIMGRagdollTargetStatus::Ready && !FVector(PelvisLocation).ContainsNaN(); }
+	bool IsValid() const
+	{
+		return Session != 0
+			&& Status == EIMGRagdollTargetStatus::Ready
+			&& !FVector(PelvisLocation).ContainsNaN();
+	}
+
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 };
 
@@ -142,26 +232,36 @@ struct IMAGINEGAME_API FIMGRagdollBodyReference
 
 	UPROPERTY()
 	uint16 Session = 0;
+
 	UPROPERTY()
 	uint16 MovementRevision = 0;
+
 	UPROPERTY()
 	uint32 Sequence = 0;
+
 	UPROPERTY(BlueprintReadOnly)
-	float ServerTime = 0.f;
+	double ServerTime = 0.0;
+
 	/** Native move correlation only; negative for server-controlled movement. */
 	UPROPERTY(BlueprintReadOnly)
 	float ClientTimeStamp = -1.f;
+
 	UPROPERTY(BlueprintReadOnly)
 	FVector_NetQuantize10 PelvisLocation = FVector::ZeroVector;
+
 	UPROPERTY(BlueprintReadOnly)
 	FVector_NetQuantize10 CapsuleLocation = FVector::ZeroVector;
+
 	/** Approved capsule-follow velocity, not a measurement of physical body stability. */
 	UPROPERTY(BlueprintReadOnly)
 	FVector_NetQuantize10 Velocity = FVector::ZeroVector;
+
 	UPROPERTY(BlueprintReadOnly)
 	float FacingYaw = 0.f;
+
 	UPROPERTY(BlueprintReadOnly)
 	bool bFaceUp = false;
+
 	UPROPERTY(BlueprintReadOnly)
 	EIMGRagdollIssue Issue = EIMGRagdollIssue::MissingTarget;
 
@@ -204,7 +304,7 @@ struct IMAGINEGAME_API FIMGRagdollRepState
 
 	/** Server clock of this session's launch; late resource binding must not replay an old launch velocity. */
 	UPROPERTY()
-	float StartServerTime = 0.f;
+	double StartServerTime = 0.0;
 
 	UPROPERTY()
 	uint16 FacingYaw = 0;
@@ -219,10 +319,13 @@ struct IMAGINEGAME_API FIMGRagdollRepState
 	/** Retained completed transfer; late cleanup of the ragdoll session cannot own the receiving action. */
 	UPROPERTY()
 	bool bExternalTransition = false;
+
 	UPROPERTY()
 	TEnumAsByte<EMovementMode> TransitionMode = MOVE_None;
+
 	UPROPERTY()
 	uint8 TransitionCustomMode = 0;
+
 	UPROPERTY()
 	FVector_NetQuantize10 TransitionVelocity = FVector::ZeroVector;
 
