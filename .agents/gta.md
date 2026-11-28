@@ -38,6 +38,8 @@
 - **Control｜手柄响应与短时意图。** GTA `ControlHelper.cpp` 对摇杆幅值加曲线、角速度加减速，`ThirdPersonAimCamera.cpp::ComputeLookAroundOrientationOffsets` 对自由瞄准按当前 FOV 缩放看向。IMG 已有可配死区、普通/瞄准灵敏度，原生 `HeroComponent::Input_LookStick` 以输入、角速度常量与帧时间求增量。候选是在 Enhanced Input/Hero 调整摇杆响应，按需接入瞄准倍率。GTA `TaskPlayer.cpp::Jump_OnUpdate/CanJumpOrVault` 保留短时按下时间，等待当前动作允许交接，并区分跳跃退出窗口与手动翻越检测窗口。IMG 的 `ProcessAbilityInput` 消费当轮 Pressed、另按 WhileInputActive 重试；若需缓存跳跃/翻越，仅为该业务保存一次有期限的意图，重新验证候选并按正常 GAS/CMC 路径发起，成功、超时、取消及换 Pawn 时清理。具体输入映射、资产行为及联机效果待验证。
 - 取舍：先用现有资源验证手柄普通视角至 ADS 的响应与画面焦点，以及一个 POI 优先级或 Bench 交互的完整退出。跨体型/FOV 自动取景已有 GTA FootRoom 参考，等出现具体构图需求再与手调模式比较。RAGE 的 MoVE、IK 调度器、任务树与 GameplayDirector 整套迁移不在当前候选内。
 
+- Ragdoll 当前执行、自动起身算法、玩家倒地输入的已核对路径与实施差距统一维护在 [Ragdoll](ragdoll.md) 的“GTA 对照与明确待做”；TaskNM 的显式输入控制标记、固定/随机稳定时长与载体相对速度须分别核对，不能从函数名称推断普通倒地默认可控或已完成同步。
+
 ## GTA 玩法系统参考与职责
 
 - 以下为本地 GTA 快照的源码导航与职责映射，不表示 ImagineGame 已具备对应玩法。共享事实/查询/资源合同可归 ImagineGame；具体反应策略、战斗、人口与警戒规则由对应 Game Feature 提供。现有 GAS、GameplayMessage、Team、Interaction、Equipment、Experience/GamePhase 保持原所有权。

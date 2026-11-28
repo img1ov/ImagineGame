@@ -47,7 +47,8 @@ bool FIMGStanceStateMachine::RequestTransition(UIMGCharacterMovementComponent& M
 {
 	if (!Movement.CharacterOwner
 		|| Movement.CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy
-		|| static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl))
+		|| static_cast<uint8>(NewStance) > static_cast<uint8>(EIMGStance::Crawl)
+		|| ((Movement.IsRagdollMovementMode() || Movement.IsRagdollRecovering()) && NewStance != EIMGStance::Stand))
 	{
 		return false;
 	}
@@ -317,6 +318,10 @@ void UIMGCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 
 void UIMGCharacterMovementComponent::SetDesiredStanceFromMove(EIMGStance NewStance)
 {
+	if (IsRagdollMovementMode() || IsRagdollRecovering())
+	{
+		NewStance = EIMGStance::Stand;
+	}
 	StanceMachine.SetDesiredStance(NewStance);
 	bWantsToCrouch = GetDesiredStance() == EIMGStance::Crouch;
 }
@@ -329,7 +334,7 @@ void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float De
 		return;
 	}
 
-	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating)
+	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !RagdollRuntime.bAwaitingInitialInput)
 	{
 		if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy && MovementMode != MOVE_None)
 		{
@@ -388,7 +393,8 @@ void UIMGCharacterMovementComponent::UpdateCharacterStateAfterMovement(float Del
 
 void UIMGCharacterMovementComponent::ApplyReplicatedStance(EIMGStance ReplicatedStance)
 {
-	StanceMachine.ApplyReplicatedStance(*this, ReplicatedStance);
+	StanceMachine.ApplyReplicatedStance(*this,
+		IsRagdollMovementMode() || IsRagdollRecovering() ? EIMGStance::Stand : ReplicatedStance);
 }
 
 void UIMGCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)

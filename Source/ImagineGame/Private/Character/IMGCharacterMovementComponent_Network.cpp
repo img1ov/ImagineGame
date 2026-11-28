@@ -1,6 +1,9 @@
 #include "Character/IMGCharacterMovementComponent.h"
 
 #include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/ReplicatedState.h"
+#include "Engine/World.h"
 #include "Templates/UnrealTemplate.h"
 
 namespace IMGMovementNet
@@ -116,6 +119,8 @@ public:
 			|| SavedRagdollInput.Status != LastMove->SavedRagdollInput.Status
 			|| (SavedRagdollInput.IsValid()
 				&& (SavedRagdollInput.PelvisLocation != LastMove->SavedRagdollInput.PelvisLocation
+					|| SavedRagdollInput.PelvisVelocity != LastMove->SavedRagdollInput.PelvisVelocity
+					|| SavedRagdollInput.CapsuleHeightOffset != LastMove->SavedRagdollInput.CapsuleHeightOffset
 					|| SavedRagdollInput.FacingYaw != LastMove->SavedRagdollInput.FacingYaw
 					|| SavedRagdollInput.bFaceUp != LastMove->SavedRagdollInput.bFaceUp))
 			|| FSavedMove_Character::IsImportantMove(LastAckedMove);
@@ -641,12 +646,33 @@ void UIMGCharacterMovementComponent::MoveAutonomous(
 		RagdollRuntime.InputMoveTimeStamp = ClientTimeStamp;
 		RagdollMode.Input = RequestData->RagdollInput;
 		if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating
-			&& RagdollMode.Input.Session == ActiveRagdollState.Session)
+			&& RagdollMode.Input.Session == ActiveRagdollState.Session && RagdollMode.Input.IsValid())
 		{
 			RagdollRuntime.RemoteInputTime = GetWorld()->GetTimeSeconds();
+			if (RagdollRuntime.bAwaitingInitialInput && (IsMovingOnGround() || IsFalling())
+				&& GetWorld()->GetTimeSeconds() - ActiveRagdollState.StartServerTime <= ActiveRagdollState.Settings.EntryInputTimeout
+				&& FMath::Abs(RagdollMode.Input.CapsuleHeightOffset) <= CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
+				&& FVector::DistSquared(FRepMovement::RebaseOntoLocalOrigin(RagdollMode.Input.PelvisLocation, this),
+					UpdatedComponent->GetComponentLocation()) <= FMath::Square(ActiveRagdollState.Settings.MaxTargetDistance))
+			{
+				if (GetMovementNetDiagnosticsLevel() >= 1)
+				{
+					UE_LOG(LogIMGMovementNet, Log, TEXT("[RagdollFirstMove] Actor=%s Session=%u Move=%.6f Capsule=%s Pelvis=%s HeightOffset=%.2f"),
+						*GetNameSafe(CharacterOwner.Get()), ActiveRagdollState.Session, ClientTimeStamp,
+						*UpdatedComponent->GetComponentLocation().ToCompactString(),
+						*FVector(RagdollMode.Input.PelvisLocation).ToCompactString(), RagdollMode.Input.CapsuleHeightOffset);
+				}
+				RagdollRuntime.bAwaitingInitialInput = false;
+				SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+			}
 		}
 	}
 
+	if (!HasValidData())
+	{
+		RagdollRuntime.InputMoveTimeStamp = -1.f;
+		return;
+	}
 	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAccel);
 	RagdollRuntime.InputMoveTimeStamp = -1.f;
 
@@ -814,6 +840,18 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 		&& CurrentClientData
 		&& CurrentClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp) != INDEX_NONE)
 	{
+		const FSavedMove_IMG* AckMove = static_cast<const FSavedMove_IMG*>(
+			CurrentClientData->SavedMoves[CurrentClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp)].Get());
+		TEnumAsByte<EMovementMode> ServerMode;
+		TEnumAsByte<EMovementMode> ServerGroundMode;
+		uint8 ServerCustomMode = 0;
+		UnpackNetworkMovementMode(Response.ClientAdjustment.MovementMode, ServerMode, ServerCustomMode, ServerGroundMode);
+		// Admission is current, but this position/mode was evaluated for a pre-entry locomotion move.
+		bDiscardCorrection = ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating
+			&& Response.bHasRagdollState && Response.RagdollState.Session == ActiveRagdollState.Session
+			&& Response.RagdollState.Phase == EIMGRagdollPhase::Simulating
+			&& AckMove->SavedRagdollInput.Session != ActiveRagdollState.Session
+			&& !(ServerMode == MOVE_Custom && ServerCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
 		ClientCorrectionFilter.Broadcast(MoveResponse, bDiscardCorrection);
 	}
 
@@ -863,8 +901,10 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 
 	if (GetMovementNetDiagnosticsLevel() >= 1 && Response.IsCorrection())
 	{
+		const FSavedMove_IMG* AckedMove = ClientData && ClientData->LastAckedMove.IsValid()
+			? static_cast<const FSavedMove_IMG*>(ClientData->LastAckedMove.Get()) : nullptr;
 		UE_LOG(LogIMGMovementNet, Log,
-			TEXT("[Correction] Actor=%s Move=%.6f Discarded=%d AckAdvanced=%d ServerPackedMode=%u CurrentPackedMode=%u ServerLocRaw=%s RelativeLoc=%d ServerVelRaw=%s RelativeVel=%d MontageCorrection=%d SourceCorrection=%d SavedMoves=%d"),
+			TEXT("[Correction] Actor=%s Move=%.6f Discarded=%d AckAdvanced=%d ServerPackedMode=%u CurrentPackedMode=%u ServerLocRaw=%s RelativeLoc=%d ServerVelRaw=%s RelativeVel=%d MontageCorrection=%d SourceCorrection=%d SavedMoves=%d RagdollSession=%u RagdollPhase=%u AckRagdollSession=%u"),
 			*GetPathNameSafe(CharacterOwner.Get()),
 			Response.ClientAdjustment.TimeStamp,
 			bDiscardCorrection,
@@ -877,7 +917,9 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 			Response.ClientAdjustment.bBaseRelativeVelocity,
 			Response.bRootMotionMontageCorrection,
 			Response.bRootMotionSourceCorrection,
-			ClientData ? ClientData->SavedMoves.Num() : 0);
+			ClientData ? ClientData->SavedMoves.Num() : 0,
+			ActiveRagdollState.Session, static_cast<uint8>(ActiveRagdollState.Phase),
+			AckedMove ? AckedMove->SavedRagdollInput.Session : 0);
 	}
 
 	HandleMoveResponse_Ragdoll(Response, bAcceptedResponse, ClientData);

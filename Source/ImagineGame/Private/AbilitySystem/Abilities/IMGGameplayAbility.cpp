@@ -1,4 +1,3 @@
-
 #include "AbilitySystem/Abilities/IMGGameplayAbility.h"
 
 #include "AbilitySystemLog.h"
@@ -220,11 +219,8 @@ bool UIMGGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystem
 	}
 
 	const UIMGAbilitySystemComponent* IMGASC = Cast<UIMGAbilitySystemComponent>(&AbilitySystemComponent);
-	static FGameplayTagContainer AllRequiredTags;
-	static FGameplayTagContainer AllBlockedTags;
-
-	AllRequiredTags = ActivationRequiredTags;
-	AllBlockedTags = ActivationBlockedTags;
+	FGameplayTagContainer AllRequiredTags = ActivationRequiredTags;
+	FGameplayTagContainer AllBlockedTags = ActivationBlockedTags;
 
 	if (IMGASC)
 	{
@@ -233,9 +229,7 @@ bool UIMGGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystem
 
 	if (AllBlockedTags.Num() || AllRequiredTags.Num())
 	{
-		static FGameplayTagContainer AbilitySystemComponentTags;
-
-		AbilitySystemComponentTags.Reset();
+		FGameplayTagContainer AbilitySystemComponentTags;
 		AbilitySystemComponent.GetOwnedGameplayTags(AbilitySystemComponentTags);
 
 		if (AbilitySystemComponentTags.HasAny(AllBlockedTags))

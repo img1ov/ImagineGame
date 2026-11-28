@@ -12,6 +12,11 @@ class USceneComponent;
 class USkeletalMesh;
 class UPhysicsAsset;
 class UIMGPawnComponent_CharacterParts;
+class UIMGAbilitySystemComponent;
+class UIMGPawnExtensionComponent;
+class UAnimInstance;
+class UAnimMontage;
+struct FIMGReplicatedMontagePrerequisiteResult;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FIMGRagdollEvent, int32, Session);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FIMGRagdollEndedEvent, int32, Session, EIMGRagdollEndReason, Reason);
@@ -116,7 +121,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll")
 	FVector GetBodyMovementOffset() const
 	{
-		return BodySessionState.OwnerCorrectionRemaining + BodySessionState.PendingPrePhysicsTranslation;
+		return BodySessionState.OwnerCorrectionRemaining;
 	}
 
 	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll")
@@ -144,6 +149,23 @@ public:
 	bool GetRagdollBodyMotion(FVector& OutLinearVelocity, FVector& OutAngularVelocityRadians) const;
 	virtual bool GetRagdollBodyMotion_Implementation(FVector& OutLinearVelocity, FVector& OutAngularVelocityRadians) const;
 
+	//~ Recovery presentation module (same component; abilities own decisions and completion)
+	const FIMGRagdollRecoveryRepState& GetRecoveryApproval() const { return RecoveryApproval; }
+	const TArray<FIMGRagdollRecoveryAnimation>& GetRecoveryAnimations() const { return RecoveryAnimations; }
+	bool BindRecoveryAbilitySystem(UIMGAbilitySystemComponent* ASC);
+	void BeginRecoverySession(uint16 Session, int16 ActivationKey, double EarliestServerTime);
+	void DelayRecoverySession(uint16 Session, double EarliestServerTime);
+	bool PublishApprovedRecovery(uint16 Session, uint32 Attempt, const FIMGRagdollRecoverySelection& Selection);
+	bool PublishRecoveryMontageInstance(uint16 Session, uint32 Attempt, uint8 PlayInstanceId);
+	void EndRecoverySession(uint16 Session);
+	bool PrepareRecoveryPresentation(uint16 Session, uint32 Attempt);
+	double GetRagdollServerTime() const;
+
+	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll|Recovery")
+	FName GetRecoveryPoseName() const { return RecoveryPoseName; }
+	UFUNCTION(BlueprintPure, Category = "IMG|Ragdoll|Recovery")
+	float GetRecoveryPoseWeight() const;
+
 	//~ Events
 	UPROPERTY(BlueprintAssignable, Category = "IMG|Ragdoll")
 	FIMGRagdollEvent OnRagdollStarted;
@@ -170,6 +192,14 @@ public:
 	virtual void OnRep_IsActive() override;
 
 protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Recovery", meta = (TitleProperty = "Montage"))
+	TArray<FIMGRagdollRecoveryAnimation> RecoveryAnimations;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Recovery")
+	FName RecoveryPoseName = TEXT("RagdollRecovery");
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Recovery", meta = (ClampMin = "0.01", ForceUnits = "s"))
+	float RecoveryPoseBlendTime = 0.2f;
+
 	//~ Configuration
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Movement")
 	FIMGRagdollSettings Settings;
@@ -255,9 +285,42 @@ protected:
 	virtual void RegisterComponentTickFunctions(bool bRegister) override;
 
 private:
+	struct FRecoveryPresentationState
+	{
+		TWeakObjectPtr<UIMGAbilitySystemComponent> ASC;
+		TWeakObjectPtr<UIMGPawnExtensionComponent> PawnExtension;
+		TWeakObjectPtr<UAnimInstance> AnimInstance;
+		TWeakObjectPtr<USkeletalMeshComponent> Mesh;
+		FDelegateHandle MontagePrerequisite;
+		uint16 PreparedSession = 0;
+		uint32 PreparedAttempt = 0;
+		double PoseBlendStartTime = -1.0;
+		EVisibilityBasedAnimTickOption SavedVisibilityTick = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+		bool bSavedMeshTick = false;
+		bool bHasPose = false;
+		bool bPreparing = false;
+		bool bReleasing = false;
+	};
+	void InitializeRecoveryPresentation();
+	void ReleaseRecoveryPresentation();
+	void ClearRecoveryPose();
+	void UpdateRecoveryPresentation();
+	void HandleRecoveryASCInitialized();
+	void HandleRecoveryASCUninitialized();
+	FIMGReplicatedMontagePrerequisiteResult CheckRecoveryMontagePrerequisite(const UAnimMontage* Montage, uint8 PlayInstanceId);
+	UFUNCTION()
+	void OnRep_RecoveryApproval();
+
+	UPROPERTY(ReplicatedUsing = OnRep_RecoveryApproval)
+	FIMGRagdollRecoveryRepState RecoveryApproval;
+	FRecoveryPresentationState RecoveryPresentation;
+
 	struct FSavedBodyInstanceState
 	{
 		FName BoneName;
+		FTransform WorldTransform = FTransform::Identity;
+		FVector LinearVelocity = FVector::ZeroVector;
+		FVector AngularVelocityRadians = FVector::ZeroVector;
 		bool bSimulatePhysics = false;
 		float PhysicsBlendWeight = 0.0f;
 		bool bUpdateKinematicFromSimulation = false;
@@ -298,7 +361,7 @@ private:
 		TWeakObjectPtr<USkeletalMesh> MeshAsset;
 		TWeakObjectPtr<UPhysicsAsset> PhysicsAsset;
 		FVector OwnerCorrectionRemaining = FVector::ZeroVector;
-		FVector PendingPrePhysicsTranslation = FVector::ZeroVector;
+		float CapsuleHeightOffset = 0.f;
 		FVector ApprovedPelvisOffset = FVector::ZeroVector;
 		uint16 Session = 0;
 		uint16 LastSession = 0;
@@ -328,7 +391,9 @@ private:
 		TWeakObjectPtr<UPhysicsAsset> PhysicsAsset;
 		TWeakObjectPtr<USkeletalMesh> MeshAsset;
 		FVector PelvisLocation = FVector::ZeroVector;
-		TMap<FName, FTransform> BodyTransforms;
+		FVector PelvisVelocity = FVector::ZeroVector;
+		float CapsuleHeightOffset = 0.f;
+		TArray<FSavedBodyInstanceState> Bodies;
 
 		bool Matches(const USkeletalMeshComponent& InMesh) const;
 		void Reset();
@@ -382,6 +447,8 @@ private:
 	void SetExecutionTickEnabled(bool bEnabled);
 	bool HasCurrentBody() const;
 	void CaptureRestartPose();
+	bool PrepareBodyMesh(USkeletalMeshComponent& Mesh, uint16 Session);
+	void InitializeBodyVelocity(USkeletalMeshComponent& Mesh, const FVector& LaunchVelocity, bool bHasRestartPose, bool bInputProducer);
 	void ComputePoseFacing(const USkeletalMeshComponent& Mesh, float& OutFacingYaw, bool& bOutFaceUp) const;
 
 	//~ Observed Movement State (CMC owns the single replicated contract)

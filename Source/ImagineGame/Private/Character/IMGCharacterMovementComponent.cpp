@@ -268,6 +268,13 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 	}
 	else if (!bWasRagdoll && bIsRagdoll)
 	{
+		// Capture once before Enter detaches the movement base; replay never re-launches a body.
+		if (HasValidData() && !CharacterOwner->bClientUpdating)
+		{
+			RagdollRuntime.LocalLaunchVelocity = Velocity + GetImpartedMovementBaseVelocity()
+				+ FVector(ActiveRagdollState.LaunchVelocityDelta);
+			RagdollRuntime.LocalLaunchSession = ActiveRagdollState.Session;
+		}
 		RagdollMode.Enter(*this);
 	}
 
@@ -285,7 +292,8 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 	if (!bWasTransitioning
 		&& CharacterOwner->HasAuthority()
 		&& ActiveRagdollState.Phase != EIMGRagdollPhase::Inactive
-		&& ((ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode())
+		&& ((ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode()
+			&& !(RagdollRuntime.bAwaitingInitialInput && (IsMovingOnGround() || IsFalling())))
 			|| (IsRagdollRecovering() && MovementMode != MOVE_Walking)))
 	{
 		FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);

@@ -12,6 +12,8 @@
 - **单向接合。** Locomotion 通过通用弱委托注册一个 CMC 提供者，CMC 只理解请求字节及 `IMGMovementSimulationContext.h` 中的通用上下文和参数，字段含义由提供者解释。Controller → PreCMC → CMC 的 Tick 依赖供本地输入与表现更新；蓝图覆写 PreCMC 须调用父实现。远端 RPC 按 Move 自带输入模拟，逐 Move 计算和重放不派发 PreCMC 蓝图事件。
 - **动态 Set。** GameplayReady、当前 ASC/Avatar、真实 Set 与提供者同时有效才 Ready。等待 Set 时关闭 Tick，CMC 按原生移动。AbilitySet/Game Feature 走 ASC 的 `AddRuntimeAttributeSet` / `RemoveRuntimeAttributeSet`，客户端在 `PostRepNotifies` 后重检。下一次 PreCMC 接合并读取已施加初始化 GE 的值。移除或换绑释放旧代次、恢复接管前参数；物理子步中的 Set 变化等当前 Move 结束再释放。授予方先结束依赖 Set 的 GE。停用、注销、EndPlay 精确退订，旧提供者不能覆盖新提供者。换 CMC 须重新注册。
 
+- Ragdoll 自由阶段独立使用历史身体目标，不将普通 Acceleration 当作身体施力；恢复阶段锁普通移动意图、跳跃及非 Stand 姿态，保留正常 CMC RootMotion。模拟端 Mesh 已脱离角色根时，蹲/爬姿态回调只维护基础偏移/Tag，不写世界 Mesh 的相对坐标。入口准入、旧 Move 过滤、身体平滑及待做的倒地方向输入统一见 [Ragdoll](ragdoll.md)，普通自主代理 MeshOffset 不替代身体纠偏。
+
 ## 移动表现来源与扩展边界
 
 - **当前职责归属：** `HeroLocomotionComponent` 可作为普通移动镜头表现的稳定来源，基于既有实际速度、步态、落地等事实，判定是否请求表现、幅度/频率及停止时机。基础 `LocomotionComponent` 保持移动接合、属性汇聚与参数计算职责，CMC 保持移动模拟职责；两者不增加镜头业务分支，不为表现另造移动事实或第二套移动权威。

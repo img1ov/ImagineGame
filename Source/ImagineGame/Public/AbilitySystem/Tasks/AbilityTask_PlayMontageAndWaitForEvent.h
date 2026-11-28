@@ -1,22 +1,17 @@
-
-
 #pragma once
 
 #include "Abilities/Tasks/AbilityTask.h"
-#include "AbilitySystem/IMGAbilitySystemComponent.h"
+#include "Animation/AnimMontage.h"
 #include "AbilityTask_PlayMontageAndWaitForEvent.generated.h"
 
-class URPGAbilitySystemComponent;
+class ACharacter;
+class UAnimInstance;
+struct FAnimMontageInstance;
 
 /** Delegate type used, EventTag and Payload may be empty if it came from the montage callbacks */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FPlayMontageAndWaitForEventDelegate, FGameplayTag, EventTag, FGameplayEventData, EventData);
 
-/**
- * This task combines PlayMontageAndWait and WaitForEvent into one task, so you can wait for multiple types of activations such as from a melee combo
- * Much of this code is copied from one of those two ability tasks
- * This is a good task to look at as an example when creating game-specific tasks
- * It is expected that each game will have a set of game-specific tasks to do what they want
- */
+/** Plays one montage instance while forwarding matching gameplay events. */
 UCLASS()
 class IMAGINEGAME_API UAbilityTask_PlayMontageAndWaitForEvent : public UAbilityTask
 {
@@ -63,6 +58,7 @@ public:
 	 * @param bStopWhenAbilityEnds If true, this montage will be aborted if the ability ends normally. It is always stopped when the ability is explicitly cancelled
 	 * @param AnimRootMotionTranslationScale Change to modify size of root motion or set to 0 to block it entirely
 	 * @param bApplyRootMotion If false, native montage root motion is disabled for this task
+	 * @param StartTimeSeconds Initial montage position, before applying StartSection when specified
 	 */
 	UFUNCTION(BlueprintCallable, Category="Ability|Tasks", meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "TRUE"))
 	static UAbilityTask_PlayMontageAndWaitForEvent* PlayMontageAndWaitForEvent(
@@ -74,12 +70,13 @@ public:
 		FName StartSection = NAME_None,
 		bool bStopWhenAbilityEnds = true,
 		float AnimRootMotionTranslationScale = 1.f,
-		bool bApplyRootMotion = true);
+		bool bApplyRootMotion = true,
+		float StartTimeSeconds = 0.f);
 
 private:
 	/** Montage that is playing */
 	UPROPERTY()
-	UAnimMontage* MontageToPlay;
+	TObjectPtr<UAnimMontage> MontageToPlay;
 
 	/** List of tags to match against gameplay events */
 	UPROPERTY()
@@ -88,6 +85,7 @@ private:
 	/** Playback rate */
 	UPROPERTY()
 	float Rate;
+	float StartTimeSeconds = 0.f;
 
 	/** Section to start montage from */
 	UPROPERTY()
@@ -107,12 +105,20 @@ private:
 
 	/** True once native montage root motion has been disabled for this task. */
 	bool bPushedDisableRootMotion = false;
+	bool bAppliedRootMotionScale = false;
+	bool bFinishing = false;
+	bool bDestroying = false;
+	float PreviousRootMotionTranslationScale = 1.f;
+	int32 MontageInstanceId = INDEX_NONE;
+	TWeakObjectPtr<UAnimInstance> MontageAnimInstance;
+	TWeakObjectPtr<ACharacter> RootMotionCharacter;
+	FAnimMontageInstance* GetMontageInstance() const;
+	bool OwnsPlayingMontage() const;
+	void RestoreRootMotion(bool bReleaseDisabledRootMotion = true);
+	void UnbindMontageDelegates();
 
 	/** Checks if the ability is playing a montage and stops that montage, returns true if a montage was stopped, false if not. */
 	bool StopPlayingMontage();
-
-	/** Returns our ability system component */
-	UIMGAbilitySystemComponent* GetTargetASC();
 
 	void OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted);
 	void OnAbilityCancelled();

@@ -53,6 +53,32 @@ void UIMGCharacterMovementComponent::SmoothClientPosition(float DeltaSeconds)
 	Super::SmoothClientPosition(DeltaSeconds);
 }
 
+void UIMGCharacterMovementComponent::ResetRagdollMeshSmoothing(int32 ExpectedSession)
+{
+	USkeletalMeshComponent* Mesh = HasValidData() ? CharacterOwner->GetMesh() : nullptr;
+	if (!Mesh || Mesh->GetAttachParent() != UpdatedComponent || Mesh->IsSimulatingPhysics()
+		|| ExpectedSession == 0 || ExpectedSession != ActiveRagdollState.Session
+		|| ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating || CharacterOwner->bClientUpdating)
+	{
+		return;
+	}
+	ResetAutonomousMeshSmoothing();
+	if (!HasPredictionData_Client())
+	{
+		return;
+	}
+	FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
+	// The pose bridge already compensates the capsule rebase; do not apply it again as a mesh offset.
+	ClientData->MeshTranslationOffset = FVector::ZeroVector;
+	ClientData->OriginalMeshTranslationOffset = FVector::ZeroVector;
+	const FQuat Rotation = NetworkSmoothingMode == ENetworkSmoothingMode::Linear
+		? UpdatedComponent->GetComponentQuat() : FQuat::Identity;
+	ClientData->MeshRotationOffset = Rotation;
+	ClientData->OriginalMeshRotationOffset = Rotation;
+	ClientData->MeshRotationTarget = Rotation;
+	bNetworkSmoothingComplete = true;
+}
+
 void UIMGCharacterMovementComponent::OnClientCorrectionReceived(
 	FNetworkPredictionData_Client_Character& ClientData,
 	float TimeStamp,

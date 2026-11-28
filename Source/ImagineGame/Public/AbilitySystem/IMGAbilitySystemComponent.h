@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "Abilities/IMGGameplayAbility.h"
@@ -64,7 +63,7 @@ public:
 	UE_API virtual void ClearActorInfo() override;
 	UE_API void AddRuntimeAttributeSet(UAttributeSet* AttributeSet);
 	UE_API void RemoveRuntimeAttributeSet(UAttributeSet* AttributeSet);
-	/** Signals local list mutations and completed replication batches. Listeners compare the set they use. */
+	/** Signals changes to attribute-set identities after local mutations or completed replication batches. */
 	FSimpleMulticastDelegate& OnAttributeSetsUpdated() { return AttributeSetsUpdated; }
 	UE_API virtual float PlayMontageSimulated(
 		UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None) override;
@@ -91,7 +90,7 @@ public:
 	UE_API void AbilityInputTagTriggered(const FGameplayTag InputTag);
 	UE_API void AbilityInputTagReleased(const FGameplayTag InputTag);
 
-	/** Tries to activate one granted ability by class. Returns true only when activation succeeds. */
+	/** Uses TryActivateAbility's result, including accepted remote requests and abilities that end immediately. */
 	UE_API bool TryActivateGrantedAbilityByClass(
 		TSubclassOf<UIMGGameplayAbility> AbilityClass,
 		bool bAllowRemoteActivation = true,
@@ -99,7 +98,7 @@ public:
 		TSubclassOf<UIMGGameplayAbility>* OutActivatedAbilityClass = nullptr,
 		FGameplayAbilitySpecHandle* OutActivatedSpecHandle = nullptr);
 
-	/** Tries to activate one granted ability by dynamic input tag. */
+	/** Same activation-result semantics as ByClass; tries matching specs until one request succeeds. */
 	UE_API bool TryActivateGrantedAbilityByInputTag(
 		FGameplayTag InputTag,
 		bool bAllowRemoteActivation = true,
@@ -129,6 +128,7 @@ public:
 	UE_API void RemoveAbilityFromActivationGroup(EIMGAbilityActivationGroup Group, UIMGGameplayAbility* IMGAbility);
 	UE_API void CancelActivationGroupAbilities(EIMGAbilityActivationGroup Group, UIMGGameplayAbility* IgnoreIMGAbility, bool bReplicateCancelAbility);
 	UE_API void AddDynamicTagGameplayEffect(const FGameplayTag& Tag);
+	/** Removes every matching cheat effect; gameplay sources must retain and remove their own effect handles. */
 	UE_API void RemoveDynamicTagGameplayEffect(const FGameplayTag& Tag);
 	UE_API void GetAbilityTargetData(const FGameplayAbilitySpecHandle AbilityHandle, FGameplayAbilityActivationInfo ActivationInfo, FGameplayAbilityTargetDataHandle& OutTargetDataHandle);
 	
@@ -153,15 +153,12 @@ protected:
 	UE_API virtual void OnUnregister() override;
 	UE_API virtual void PostRepNotifies() override;
 
-	UE_API virtual void ClientTryActivateAbility_Implementation(FGameplayAbilitySpecHandle AbilityToActivate) override;
 	UE_API virtual void ClientActivateAbilityFailed_Implementation(FGameplayAbilitySpecHandle AbilityToActivate, int16 PredictionKey) override;
 	UE_API virtual void ClientEndAbility_Implementation(FGameplayAbilitySpecHandle AbilityToEnd, FGameplayAbilityActivationInfo ActivationInfo) override;
 	UE_API virtual void ClientCancelAbility_Implementation(FGameplayAbilitySpecHandle AbilityToCancel, FGameplayAbilityActivationInfo ActivationInfo) override;
-	UE_API virtual void NotifyAbilityCommit(UGameplayAbility* Ability) override;
 	UE_API virtual void NotifyAbilityActivated(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
 	UE_API virtual void NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason) override;
 	UE_API virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled) override;
-	UE_API virtual void HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bCanBeCanceled) override;
 	UE_API virtual bool IsReadyForReplicatedMontage() override;
 	UE_API virtual void OnRep_ReplicatedAnimMontage() override;
 
@@ -196,6 +193,14 @@ protected:
 
 private:
 	FSimpleMulticastDelegate AttributeSetsUpdated;
+	TArray<TWeakObjectPtr<UAttributeSet>, TInlineAllocator<4>> ObservedAttributeSets;
+	void NotifyAttributeSetsChanged();
+	void HandleAbilityInputEvent(FGameplayAbilitySpec& Spec, bool bPressed);
+	bool TryActivateGrantedAbility(
+		TFunctionRef<bool(const FGameplayAbilitySpec&)> Matches, bool bAllowRemoteActivation,
+		bool bCancelIfAlreadyActive, TSubclassOf<UIMGGameplayAbility>* OutActivatedAbilityClass,
+		FGameplayAbilitySpecHandle* OutActivatedSpecHandle);
+
 	struct FReplicatedMontageInstance
 	{
 		TWeakObjectPtr<AActor> Avatar;
@@ -218,21 +223,32 @@ private:
 	void WaitForReplicatedMontage(const FReplicatedMontageInstance& Instance, FName Reason);
 	void ReportReplicatedMontageWait();
 	bool CanRetryReplicatedMontage() const;
+	bool EvaluateReplicatedMontagePrerequisites(const FReplicatedMontageInstance& Instance);
 
-	TArray<FReplicatedMontagePrerequisiteEntry> ReplicatedMontagePrerequisites;
-	FReplicatedMontageInstance ReadyReplicatedMontage;
-	FReplicatedMontageInstance DiscardedReplicatedMontage;
-	FReplicatedMontageInstance WaitingReplicatedMontage;
-	FName ReplicatedMontageWaitReason;
-	FTimerHandle ReplicatedMontageRetryTimer;
-	FTimerHandle ReplicatedMontageWaitTimer;
-	float ReadyReplicatedMontageLogicalStartTime = -1.f;
-	uint32 ReplicatedMontagePrerequisiteRevision = 0;
-	uint32 ReplicatedMontageAvatarGeneration = 0;
-	bool bProcessingReplicatedMontage = false;
-	bool bEndingReplicatedMontage = false;
-	bool bSuspendingReplicatedMontage = false;
-	bool bDeferringReplicatedMontageForActorInfoInitialization = false;
+	struct FReplicatedMontageGateState
+	{
+		TArray<FReplicatedMontagePrerequisiteEntry, TInlineAllocator<4>> Prerequisites;
+		FReplicatedMontageInstance Ready;
+		FReplicatedMontageInstance Discarded;
+		FReplicatedMontageInstance Waiting;
+		FName WaitReason;
+		FTimerHandle RetryTimer;
+		FTimerHandle WaitTimer;
+		float LogicalStartTime = -1.f;
+		uint32 Revision = 0;
+		uint32 AvatarGeneration = 0;
+		bool bProcessing = false;
+		bool bEnding = false;
+		bool bSuspending = false;
+		bool bDeferringForActorInfoInitialization = false;
+
+		void ResetReady()
+		{
+			Ready = FReplicatedMontageInstance();
+			LogicalStartTime = -1.f;
+		}
+	};
+	FReplicatedMontageGateState MontageGate;
 };
 
 #undef UE_API

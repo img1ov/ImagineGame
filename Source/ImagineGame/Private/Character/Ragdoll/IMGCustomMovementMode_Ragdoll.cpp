@@ -2,6 +2,7 @@
 
 #include "Character/IMGCharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/ReplicatedState.h"
 #include "Engine/ScopedMovementUpdate.h"
@@ -143,50 +144,6 @@ namespace IMGRagdollMode
 		}
 	}
 
-	FVector ResolveFollowTargetWithFloorLift(
-		const UIMGCharacterMovementComponent& Movement,
-		const FIMGRagdollSettings& Settings,
-		const FVector& PelvisLocation,
-		const FVector& Up,
-		const FCollisionQueryParams& Query,
-		FHitResult& OutFloorHit)
-	{
-		const float TraceRadius = FMath::Max(1.0f, Settings.FollowTraceRadius);
-		const FVector TraceStart = PelvisLocation + Up * TraceRadius;
-		const FVector TraceEnd = PelvisLocation - Up * FMath::Max(1.0f, Settings.FollowTraceDistance);
-		Movement.GetWorld()->SweepSingleByChannel(
-			OutFloorHit,
-			TraceStart,
-			TraceEnd,
-			FQuat::Identity,
-			Settings.FloorTraceChannel,
-			FCollisionShape::MakeSphere(TraceRadius),
-			Query);
-
-		if (OutFloorHit.bStartPenetrating)
-		{
-			Movement.GetWorld()->LineTraceSingleByChannel(
-				OutFloorHit,
-				PelvisLocation,
-				TraceEnd,
-				Settings.FloorTraceChannel,
-				Query);
-		}
-
-		FVector TargetLocation = PelvisLocation;
-		if (OutFloorHit.bBlockingHit
-			&& !OutFloorHit.bStartPenetrating
-			&& FVector::DotProduct(OutFloorHit.ImpactNormal, Up) > UE_KINDA_SMALL_NUMBER)
-		{
-			const float HalfHeight = Movement.GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-			const float PelvisHeight = FVector::DotProduct(PelvisLocation - OutFloorHit.ImpactPoint, Up);
-			const float Clearance = Settings.GetEffectiveFloorClearance(UCharacterMovementComponent::MAX_FLOOR_DIST);
-			TargetLocation += Up * FMath::Max(0.0f, HalfHeight + Clearance - PelvisHeight);
-		}
-
-		return TargetLocation;
-	}
-
 	FVector ComputeSearchCandidateOrigin(
 		const FVector& Origin,
 		const FVector& Forward,
@@ -300,14 +257,49 @@ void FIMGCustomMovementMode_Ragdoll::Enter(UIMGCharacterMovementComponent& Movem
 		bOwnsCapsuleCollision = true;
 	}
 
-	// The body provider owns contact; the capsule follows without sweeping.
-	Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-	Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	// The articulated body owns contact. The capsule remains only a logical CMC root until safe placement.
+	Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	NormalizeStance(Movement);
+	if (!Movement.HasValidData() || !Movement.IsRagdollMovementMode())
+	{
+		return;
+	}
 	Movement.SetBase(static_cast<FMovementBaseInterfaceData*>(nullptr));
 	Movement.CurrentFloor.Clear();
 	Movement.ClearAccumulatedForces();
 	Movement.CurrentRootMotion.Clear();
 	Movement.RootMotionParams.Clear();
+}
+
+void FIMGCustomMovementMode_Ragdoll::NormalizeStance(UIMGCharacterMovementComponent& Movement)
+{
+	if (!Movement.HasValidData() || Movement.GetStance() == EIMGStance::Stand)
+	{
+		return;
+	}
+	UCapsuleComponent* Capsule = Movement.CharacterOwner->GetCapsuleComponent();
+	USkeletalMeshComponent* Mesh = Movement.CharacterOwner->GetMesh();
+	const bool bAttachedMesh = Mesh && Mesh->GetAttachParent() == Capsule;
+	const FTransform EntryMeshWorld = bAttachedMesh ? Mesh->GetComponentTransform() : FTransform::Identity;
+	{
+		const FScopedPreventAttachedComponentMove PreservePose(
+			Mesh && Mesh->GetAttachParent() == Capsule ? Mesh : nullptr);
+		const FVector TranslationOffset = Movement.ClientPredictionData
+			? Movement.ClientPredictionData->MeshTranslationOffset : FVector::ZeroVector;
+		const FVector OriginalTranslationOffset = Movement.ClientPredictionData
+			? Movement.ClientPredictionData->OriginalMeshTranslationOffset : FVector::ZeroVector;
+		Movement.StanceMachine.ApplyReplicatedStance(Movement, EIMGStance::Stand);
+		if (Movement.HasValidData() && IsValid(Mesh) && bAttachedMesh
+			&& Mesh == Movement.CharacterOwner->GetMesh() && Mesh->GetAttachParent() == Capsule)
+		{
+			Mesh->SetWorldTransform(EntryMeshWorld, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		if (Movement.ClientPredictionData)
+		{
+			Movement.ClientPredictionData->MeshTranslationOffset = TranslationOffset;
+			Movement.ClientPredictionData->OriginalMeshTranslationOffset = OriginalTranslationOffset;
+		}
+	}
 }
 
 void FIMGCustomMovementMode_Ragdoll::AcquireOrientation(UIMGCharacterMovementComponent& Movement)
@@ -376,6 +368,15 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		return;
 	}
 
+	if (!Movement.CharacterOwner->bClientUpdating)
+	{
+		NormalizeStance(Movement);
+		if (!Movement.HasValidData() || !Movement.IsRagdollMovementMode())
+		{
+			return;
+		}
+	}
+
 	Movement.RootMotionParams.Clear();
 	Movement.CurrentRootMotion.Clear();
 
@@ -400,7 +401,8 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	}
 
 	const FIMGRagdollRepState& State = Movement.GetRagdollMovementState();
-	if (State.Phase != EIMGRagdollPhase::Simulating || Input.Session != State.Session || !Input.IsValid())
+	if (State.Phase != EIMGRagdollPhase::Simulating || Input.Session != State.Session || !Input.IsValid()
+		|| FMath::Abs(Input.CapsuleHeightOffset) > Movement.CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())
 	{
 		const EIMGRagdollIssue Issue = IMGRagdollMode::ResolveInputIssue(Input, State.Session);
 		Movement.Velocity = FVector::ZeroVector;
@@ -433,17 +435,15 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	Movement.InitCollisionParams(Query, Responses);
 	Responses = FCollisionResponseParams(SavedResponses);
 
-	FHitResult Floor;
-	const FVector TargetLocation = IMGRagdollMode::ResolveFollowTargetWithFloorLift(
-		Movement, Settings, PelvisLocation, Up, Query, Floor);
+	const FVector TargetLocation = PelvisLocation + Up * Input.CapsuleHeightOffset;
 
 	if (Settings.bValidateTargetPath)
 	{
 		FHitResult Obstruction;
 		if (Movement.GetWorld()->LineTraceSingleByChannel(
 			Obstruction,
-			OldLocation,
-			TargetLocation,
+			OldLocation - Up * Input.CapsuleHeightOffset,
+			PelvisLocation,
 			Movement.CharacterOwner->GetCapsuleComponent()->GetCollisionObjectType(),
 			Query,
 			Responses))
@@ -461,36 +461,32 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 #if ENABLE_DRAW_DEBUG
 	if (IMGRagdollMode::DebugDraw.GetValueOnGameThread() > 0 && !Movement.CharacterOwner->bClientUpdating)
 	{
-		const float TraceRadius = FMath::Max(1.0f, Settings.FollowTraceRadius);
-		const FVector TraceStart = PelvisLocation + Up * TraceRadius;
-		const FVector TraceEnd = PelvisLocation - Up * FMath::Max(1.0f, Settings.FollowTraceDistance);
-		DrawDebugSphere(Movement.GetWorld(), PelvisLocation, TraceRadius, 12, FColor::Cyan);
+		DrawDebugPoint(Movement.GetWorld(), PelvisLocation, 8.0f, FColor::Cyan);
 		DrawDebugLine(Movement.GetWorld(), OldLocation, TargetLocation, FColor::Yellow);
-		DrawDebugLine(Movement.GetWorld(), TraceStart, TraceEnd, Floor.bBlockingHit ? FColor::Green : FColor::Orange);
-		if (Floor.bBlockingHit)
-		{
-			DrawDebugPoint(Movement.GetWorld(), Floor.ImpactPoint, 8.0f, FColor::Green);
-		}
 	}
 #endif
 
 	Movement.SetRagdollMovementIssue(EIMGRagdollIssue::None);
 	const FVector Delta = (TargetLocation - OldLocation).GetClampedToMaxSize(FMath::Max(1.0f, Settings.MaxFollowSpeed) * DeltaTime);
-	FVector Facing = FVector::VectorPlaneProject(
-		FRotator(0.0f, FRotator::DecompressAxisFromShort(Input.FacingYaw), 0.0f).Vector(), Up).GetSafeNormal();
-	if (Facing.IsNearlyZero())
-	{
-		Facing = Movement.UpdatedComponent->GetForwardVector();
-	}
-
+	// Free-body heading is an input/recovery fact, not an instruction to rotate the capsule and its waiting mesh.
 	FHitResult Hit;
-	Movement.MoveUpdatedComponent(Delta, FRotationMatrix::MakeFromXZ(Facing, Up).ToQuat(), false, &Hit);
+	Movement.MoveUpdatedComponent(Delta, Movement.UpdatedComponent->GetComponentQuat(), false, &Hit);
 	if (!Movement.HasValidData() || !Movement.IsRagdollMovementMode() || Movement.GetRagdollMovementState().Revision != Revision)
 	{
 		return;
 	}
 
 	Movement.Velocity = (Movement.UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+	if (UIMGCharacterMovementComponent::GetMovementNetDiagnosticsLevel() >= 2)
+	{
+		UE_LOG(LogIMGMovementNet, Log,
+			TEXT("[RagdollFollow] Actor=%s Role=%d Replay=%d Session=%u Pelvis=%s HeightOffset=%.2f Capsule=%s->%s Target=%s BodyVelocity=%s CapsuleVelocity=%s"),
+			*GetNameSafe(Movement.CharacterOwner.Get()), static_cast<int32>(Movement.CharacterOwner->GetLocalRole()),
+			Movement.CharacterOwner->bClientUpdating, State.Session, *PelvisLocation.ToCompactString(), Input.CapsuleHeightOffset,
+			*OldLocation.ToCompactString(), *Movement.UpdatedComponent->GetComponentLocation().ToCompactString(),
+			*TargetLocation.ToCompactString(), *FVector(Input.PelvisVelocity).ToCompactString(),
+			*Movement.Velocity.ToCompactString());
+	}
 	Movement.bJustTeleported = false;
 	// Preserve the body-to-capsule offset after speed/plane constraints; never publish an unreachable raw target.
 	Movement.PublishRagdollBodyReference(
@@ -724,7 +720,8 @@ bool FIMGCustomMovementMode_Ragdoll::FindPlacement(
 	}
 
 	FVector BodyLocation;
-	if (bRequireFloor && !GetBodyLocation(Movement, BodyLocation, OutIssue))
+	const bool bHasBodyLocation = GetBodyLocation(Movement, BodyLocation, OutIssue);
+	if (bRequireFloor && !bHasBodyLocation)
 	{
 #if ENABLE_DRAW_DEBUG
 		IMGRagdollMode::DrawPlacement(Movement, Movement.UpdatedComponent->GetComponentTransform(), OutIssue, BodyLocalOffset);
@@ -735,7 +732,17 @@ bool FIMGCustomMovementMode_Ragdoll::FindPlacement(
 	const UCapsuleComponent* Capsule = Movement.CharacterOwner->GetCapsuleComponent();
 	const FVector Origin = Movement.UpdatedComponent->GetComponentLocation();
 	const FVector Up = -Movement.GetGravityDirection();
-	const FQuat Rotation = Movement.UpdatedComponent->GetComponentQuat();
+	FQuat Rotation = Movement.UpdatedComponent->GetComponentQuat();
+	const FIMGRagdollMovementInput PlacementInput = Movement.GetRagdollMovementInput();
+	if (PlacementInput.IsValid() && PlacementInput.Session == Movement.GetRagdollMovementState().Session)
+	{
+		const FVector BodyForward = FVector::VectorPlaneProject(
+			FRotator(0.f, FRotator::DecompressAxisFromShort(PlacementInput.FacingYaw), 0.f).Vector(), Up).GetSafeNormal();
+		if (!BodyForward.IsNearlyZero())
+		{
+			Rotation = FRotationMatrix::MakeFromXZ(BodyForward, Up).ToQuat();
+		}
+	}
 	const FVector Forward = FVector::VectorPlaneProject(Rotation.GetForwardVector(), Up).GetSafeNormal();
 	const FVector Right = FVector::CrossProduct(Up, Forward);
 	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
@@ -761,12 +768,19 @@ bool FIMGCustomMovementMode_Ragdoll::FindPlacement(
 		bool bCandidateReady = true;
 		EIMGRagdollIssue CandidateIssue = EIMGRagdollIssue::None;
 
-		if (bRequireFloor)
+		FVector GroundedPosition = Position;
+		if (bHasBodyLocation)
 		{
-			bCandidateReady = IMGRagdollMode::ResolveWalkableFloorPosition(
-				Movement, Settings, Rotation, Up, Radius, HalfHeight,
-				Channel, Shape, Query, Responses, Position, CandidateIssue);
+			GroundedPosition += Up * FMath::Max(0.0, FVector::DotProduct(BodyLocation - Position, Up));
 		}
+		const bool bFoundFloor = IMGRagdollMode::ResolveWalkableFloorPosition(
+			Movement, Settings, Rotation, Up, Radius, HalfHeight,
+			Channel, Shape, Query, Responses, GroundedPosition, CandidateIssue);
+		if (bFoundFloor)
+		{
+			Position = GroundedPosition;
+		}
+		bCandidateReady = !bRequireFloor || bFoundFloor;
 
 		const FTransform Candidate(Rotation, Position);
 		const bool bValid = bCandidateReady

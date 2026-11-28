@@ -5,6 +5,7 @@
 #include "Cosmetics/IMGPawnComponent_CharacterParts.h"
 #include "GameFramework/Character.h"
 #include "Net/UnrealNetwork.h"
+#include "PhysicsEngine/BodyInstance.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGRagdollComponent)
 
@@ -159,6 +160,7 @@ bool UIMGRagdollComponent::Initialize()
 	AddTickPrerequisiteComponent(OwnerMovement);
 	BodyPrePhysicsTick.AddPrerequisite(OwnerMovement, OwnerMovement->PrimaryComponentTick);
 	RefreshMeshObservation(/*bForcePartsLookup=*/true);
+	InitializeRecoveryPresentation();
 	HandleMovementUpdated();
 	return true;
 }
@@ -211,6 +213,7 @@ void UIMGRagdollComponent::TearDown()
 	}
 
 	TGuardValue<bool> TearDownGuard(bTearingDown, true);
+	ReleaseRecoveryPresentation();
 	const bool bPendingTransition = ActiveState.bExternalTransition
 		&& TransitionTracker.ReleasedRevision != ActiveState.Revision
 		&& (BodySessionState.Session != 0 || TransitionTracker.ReadyRevision == ActiveState.Revision);
@@ -621,6 +624,17 @@ void UIMGRagdollComponent::HandleMovementUpdated()
 		&& IsActive()
 		&& !bTearingDown;
 	SetExecutionTickEnabled(bNeedTick);
+	if (Character.IsValid() && !Character->bClientUpdating && ActiveState.Phase == EIMGRagdollPhase::Simulating
+		&& Movement->IsRagdollMovementMode())
+	{
+		// Take over the current pose before normal animation can react to the dormant capsule reset.
+		ReconcileState();
+		SampleTarget();
+	}
+	else if (ActiveState.Phase == EIMGRagdollPhase::Recovering)
+	{
+		ReconcileState();
+	}
 }
 
 void UIMGRagdollComponent::EndLocalSession(EIMGRagdollEndReason Reason)
@@ -715,12 +729,15 @@ void UIMGRagdollComponent::ReconcileState()
 		return;
 	}
 
+	if (ActiveState.Phase == EIMGRagdollPhase::Recovering && IsRagdollAvailable())
+	{
+		PrepareBodyRecovery();
+	}
 	if (ActiveState.Phase == EIMGRagdollPhase::Recovering
 		&& IsRagdollAvailable()
 		&& Movement->IsRagdollRecoveryReady()
 		&& !bRecoveryNotified)
 	{
-		PrepareBodyRecovery();
 		bRecoveryNotified = true;
 		OnRecoveryStarted.Broadcast(LocalSession);
 	}
@@ -780,19 +797,19 @@ bool UIMGRagdollComponent::GetRagdollFollowTarget_Implementation(FTransform& Out
 		return false;
 	}
 
-	const int32 PelvisIndex = Mesh->GetBoneIndex(PelvisBone);
-	if (PelvisIndex == INDEX_NONE || !Mesh->IsSimulatingPhysics(PelvisBone))
+	const FBodyInstance* PelvisBody = Mesh->GetBodyInstance(PelvisBone);
+	if (!PelvisBody || !PelvisBody->IsValidBodyInstance() || !PelvisBody->IsInstanceSimulatingPhysics())
 	{
 		return false;
 	}
 
-	const FVector Pelvis = Mesh->GetBoneTransform(PelvisIndex).GetLocation();
+	const FVector Pelvis = PelvisBody->GetUnrealWorldTransform().GetLocation();
 	if (Pelvis.ContainsNaN())
 	{
 		return false;
 	}
 
-	// Include both unconsumed owner correction and any same-frame PrePhysics translation not yet baked into bone space.
+	// Physics already contains applied translations; only the unconsumed owner correction belongs in input.
 	OutTarget.SetLocation(Pelvis + GetBodyMovementOffset());
 
 	// An optional orientation bone must not disable a valid position sample.
@@ -821,7 +838,15 @@ void UIMGRagdollComponent::SampleTarget()
 		return;
 	}
 
-	if (!bProvided || !Movement->SubmitRagdollFollowTarget(Target, bFaceUp, this, Session))
+	FVector LinearVelocity;
+	FVector AngularVelocity;
+	const bool bMeasured = bProvided && GetRagdollBodyMotion(LinearVelocity, AngularVelocity);
+	if (!IsRagdollAvailable() || ActiveState.Session != Session || ActiveState.Phase != EIMGRagdollPhase::Simulating)
+	{
+		return;
+	}
+	if (!bMeasured || !Movement->SubmitRagdollFollowTarget(
+			Target, LinearVelocity, BodySessionState.CapsuleHeightOffset, bFaceUp, this, Session))
 	{
 		Movement->ClearRagdollFollowTarget(this, Session);
 	}
@@ -844,8 +869,14 @@ bool UIMGRagdollComponent::GetRagdollBodyMotion_Implementation(
 		return false;
 	}
 
-	OutLinearVelocity = Mesh->GetPhysicsLinearVelocity(PelvisBone);
-	OutAngularVelocityRadians = Mesh->GetPhysicsAngularVelocityInRadians(PelvisBone);
+	const FBodyInstance* PelvisBody = Mesh->GetBodyInstance(PelvisBone);
+	if (!PelvisBody || !PelvisBody->IsValidBodyInstance())
+	{
+		return false;
+	}
+	const FVector Pelvis = PelvisBody->GetUnrealWorldTransform().GetLocation();
+	OutLinearVelocity = PelvisBody->GetUnrealWorldVelocityAtPoint(Pelvis);
+	OutAngularVelocityRadians = PelvisBody->GetUnrealWorldAngularVelocityInRadians();
 	if (OutLinearVelocity.ContainsNaN() || OutAngularVelocityRadians.ContainsNaN())
 	{
 		OutLinearVelocity = FVector::ZeroVector;
@@ -881,6 +912,7 @@ bool UIMGRagdollComponent::IsFaceUp() const
 void UIMGRagdollComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UIMGRagdollComponent, RecoveryApproval);
 	DOREPLIFETIME_CONDITION(UIMGRagdollComponent, PelvisBone, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(UIMGRagdollComponent, OrientationBone, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(UIMGRagdollComponent, FaceUpAxis, COND_InitialOnly);
@@ -913,9 +945,7 @@ void UIMGRagdollComponent::TickPrePhysics(float DeltaTime)
 
 void UIMGRagdollComponent::TickPostPhysics()
 {
-	// Physics and EndPhysics have now baked any PrePhysics TranslateBody into the mesh's bone space.
-	BodySessionState.PendingPrePhysicsTranslation = FVector::ZeroVector;
-
+	UpdateRecoveryPresentation();
 	RefreshMeshObservation();
 	if (bTearingDown || !Movement.IsValid() || !Movement->IsActive() || !IsRegistered() || !IsActive())
 	{

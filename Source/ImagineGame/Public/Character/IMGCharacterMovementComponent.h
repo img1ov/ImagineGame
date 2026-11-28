@@ -205,6 +205,9 @@ struct FIMGRagdollMovementRuntime
 	TWeakObjectPtr<AController> OwningController;
 	EIMGRagdollIssue Issue = EIMGRagdollIssue::None;
 	bool bTransitioning = false;
+	bool bAwaitingInitialInput = false;
+	FVector LocalLaunchVelocity = FVector::ZeroVector;
+	uint16 LocalLaunchSession = 0;
 
 	void ClearInput();
 	void ClearCorrection();
@@ -343,7 +346,7 @@ public:
 	UE_API void CompleteRagdollRecovery(int32 ExpectedSession, bool bInterrupted = false);
 
 	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement|Ragdoll", meta = (DefaultToSelf = "InputSource"))
-	UE_API bool SubmitRagdollFollowTarget(const FTransform& Target, bool bFaceUp, UObject* InputSource, int32 ExpectedSession);
+	UE_API bool SubmitRagdollFollowTarget(const FTransform& Target, const FVector& PelvisVelocity, float CapsuleHeightOffset, bool bFaceUp, UObject* InputSource, int32 ExpectedSession);
 
 	UFUNCTION(BlueprintCallable, Category = "IMG|CharacterMovement|Ragdoll")
 	UE_API void ClearRagdollFollowTarget(const UObject* InputSource, int32 ExpectedSession);
@@ -366,6 +369,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
 	FVector GetRagdollInitialVelocity() const { return ActiveRagdollState.InitialVelocity; }
+	UE_API FVector GetRagdollLaunchVelocity() const;
+	UE_API void ResetRagdollMeshSmoothing(int32 ExpectedSession);
 
 	UFUNCTION(BlueprintPure, Category = "IMG|CharacterMovement|Ragdoll")
 	EIMGRagdollIssue GetRagdollMovementIssue() const { return RagdollRuntime.Issue; }

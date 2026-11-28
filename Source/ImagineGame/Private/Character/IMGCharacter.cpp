@@ -650,6 +650,15 @@ void AIMGCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeight
 		IMGASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crouching, 1);
 	}
 
+	if (GetMesh() && GetMesh()->GetAttachParent() != GetRootComponent())
+	{
+		RecalculateBaseEyeHeight();
+		const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
+		BaseTranslationOffset.Z = (DefaultCharacter->GetMesh() ? DefaultCharacter->GetMesh()->GetRelativeLocation().Z
+			: DefaultCharacter->BaseTranslationOffset.Z) + HalfHeightAdjust;
+		K2_OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		return;
+	}
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
@@ -660,6 +669,15 @@ void AIMGCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAd
 		IMGASC->SetLooseGameplayTagCount(IMGGameplayTags::Status_Crouching, 0);
 	}
 
+	if (GetMesh() && GetMesh()->GetAttachParent() != GetRootComponent())
+	{
+		RecalculateBaseEyeHeight();
+		const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
+		BaseTranslationOffset.Z = DefaultCharacter->GetMesh() ? DefaultCharacter->GetMesh()->GetRelativeLocation().Z
+			: DefaultCharacter->BaseTranslationOffset.Z;
+		K2_OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		return;
+	}
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 }
 
@@ -679,7 +697,7 @@ void AIMGCharacter::OnStartCrawl(float HalfHeightAdjust, float ScaledHalfHeightA
 {
 	RecalculateBaseEyeHeight();
 	const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
-	if (GetMesh() && DefaultCharacter->GetMesh())
+	if (GetMesh() && DefaultCharacter->GetMesh() && GetMesh()->GetAttachParent() == GetRootComponent())
 	{
 		// Match native crouch: a relative-location setter can skip this write when
 		// deferred capsule movement makes the desired mesh world displacement zero.
@@ -704,7 +722,7 @@ void AIMGCharacter::OnEndCrawl(float HalfHeightAdjust, float ScaledHalfHeightAdj
 	if (GetStance() == EIMGStance::Stand)
 	{
 		const AIMGCharacter* DefaultCharacter = GetClass()->GetDefaultObject<AIMGCharacter>();
-		if (GetMesh() && DefaultCharacter->GetMesh())
+		if (GetMesh() && DefaultCharacter->GetMesh() && GetMesh()->GetAttachParent() == GetRootComponent())
 		{
 			FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
 			MeshRelativeLocation.Z = DefaultCharacter->GetMesh()->GetRelativeLocation().Z;

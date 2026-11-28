@@ -19,6 +19,9 @@
 
 ## 换装组件与装备动画的动态装配边界
 
+- `Inventory/IPickupable.cpp::AddPickupToInventory` 的 Instances 路径调用 `AddItemInstance`，最终进入尚为 `unimplemented()` 的 `FIMGInventoryList::AddEntry(UIMGInventoryItemInstance*)`；Templates 路径使用另一个已实现重载，不能将所有拾取都视为必然触发该断言。
+- `IMGInventoryManagerComponent::ConsumeItemsByDefinition` 按实例逐个直接调用 `InventoryList.RemoveEntry`，未先验证总量；不足时返回 false，但已删除的条目不会回滚，也绕过 `RemoveItemInstance` 的复制子对象注销。该函数及 `GetTotalItemCountByDefinition` 当前按条目计数，未按 Entry.StackCount 汇总；修复需统一数量语义。
+
 - 装配合同：Pawn/Character 本体通过蓝图组件或原生默认子对象预装一个 Pawn Parts，早于 Possess/初始装备查询；Controller Parts 可由 GF 动态添加，只在权威端决定和应用角色部件。不在 GF 再注入第二份 Pawn Parts。动态 Pawn Parts 晚到属于兼容保底，不保证重播首次掏枪 Montage；两组件头文件已用英文注明该边界及生命周期。
 - 已实现：`IMGControllerComponent_CharacterParts` 保存实际承接句柄的 Pawn Parts 弱引用。已注册的预装组件在 BeginPlay 前也可承接部件，保留原 Possess 时序；缺组件时保留请求并 Warning，收到 `CharacterPartsReady` 后仅补未应用且未被 Cheat 抑制的条目。GF 添加 Controller 时 BeginPlay 追补既有 Possess；换 Pawn、组件替换/移除、Controller EndPlay 清理旧句柄与监听。部件请求可跨 Possess 保留，句柄不能跨 Pawn Parts 实例复用；取消请求后晚到事件不得重新添加。
 - 已验证：Pawn Parts 默认复制，CharacterPartList 无自主/模拟代理过滤。UE `GameFrameworkComponentManager.cpp::CreateComponentOnInstance` 对复制组件只在 ROLE_Authority 创建，客户端等待网络复制；GF 的 Client 勾选不保证客户端 Possess/装备回调前存在组件。专服不生成外观 Actor；监听服/单机及客户端生成本机外观。

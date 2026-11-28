@@ -47,6 +47,10 @@ namespace IMGGameplayTags
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Crouching, "Status.Crouching", "Target is crouching.");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Crawling, "Status.Crawling", "Target is crawling.");
+	UE_DEFINE_GAMEPLAY_TAG(Status_Ragdoll, "Status.Ragdoll");
+	UE_DEFINE_GAMEPLAY_TAG(GameplayEvent_Ragdoll, "GameplayEvent.Ragdoll");
+	UE_DEFINE_GAMEPLAY_TAG(GameplayEvent_Ragdoll_Impact, "GameplayEvent.Ragdoll.Impact");
+	UE_DEFINE_GAMEPLAY_TAG(Ability_Type_Action_Ragdoll, "Ability.Type.Action.Ragdoll");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death, "Status.Death", "Target has the death status.");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death_Dying, "Status.Death.Dying", "Target has begun the death process.");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death_Dead, "Status.Death.Dead", "Target has finished the death process.");

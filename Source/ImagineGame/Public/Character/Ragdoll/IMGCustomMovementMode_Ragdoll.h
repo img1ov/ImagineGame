@@ -48,6 +48,7 @@ public:
 	FIMGRagdollMovementInput Input;
 
 private:
+	void NormalizeStance(UIMGCharacterMovementComponent& Movement);
 	bool GetBodyLocation(
 		const UIMGCharacterMovementComponent& Movement,
 		FVector& OutLocation,

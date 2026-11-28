@@ -2,6 +2,13 @@
 
 运行时合同见 [Traversal 检测与执行](traversal.md)，编辑器目录见 [工程方向与编辑器](project.md)。
 
+## 待实施：面向 Agent 的采集与导出精简
+
+- 用户明确导出最终主要由 Agent 阅读，要求同时审查运行时和 JSON 冗余；继续列为待实施；当前优先完成 Ragdoll 运行验收，具体采集删减与格式改造另行按范围执行。以下是待实施方向，不代表已修改采集或导出合同。
+- 已核对：`IMGTraversalDebugTrace::Output` 将完整 Frame 序列化为 FrameV4；`IMGTraversalTraceExport.cpp::RecordObject` 用 `UStructToJsonObject` 递归导出，范围导出逐条写完整帧，没有面向分析任务的字段投影。`IMGTraversalDebug.cpp::State` 的 Detail 字符串重复写入 Sequence/Active/Instance，而事件结构已有对应身份字段。Details/时间轴隐藏不等于采集或导出已删减。
+- 实施先逐项核对生产者、Rewind/Graph/Details 消费者及 Agent 诊断用途。无消费者或无诊断作用的数据从采集源删除；重复身份/静态路径优先归入元数据或动作上下文，纯绘图样式不进入默认 Agent 导出，未变化状态与明细文本按实际诊断用途去重。视口回放仍消费的必要图元不因 Agent 无需样式而直接删除。
+- 导出优先表达动作/尝试、关键事件、判定输入与阈值、失败原因及必要轨迹；保留 Actor/Role/NetMode、Attempt/Spec/PredKey/Sequence/Montage 实例的关联能力、时间与单位、Dropped/覆盖范围及数据缺失语义。同帧多次检测、纠偏/Replay 和结束前后的关键证据不能按帧或显示重复直接合并；具体删减字段和采样策略仍待完整调用链审查。格式变更升级相应 Trace/导出版本，不为精简新增长期兼容壳。
+
 ## 调试工具与记录合同
 
 ### 日常入口与数据边界

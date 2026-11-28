@@ -1,4 +1,5 @@
 #include "Character/Ragdoll/IMGRagdollTypes.h"
+#include "Animation/AnimMontage.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGRagdollTypes)
 
@@ -16,11 +17,10 @@ bool FIMGRagdollSettings::IsValid() const
 {
 	const float PositiveValues[] =
 	{
-		FollowTraceRadius,
-		FollowTraceDistance,
 		MaxFollowSpeed,
 		MaxTargetDistance,
 		MaxTargetAge,
+		EntryInputTimeout,
 		RecoveryTraceDistance
 	};
 	for (const float Value : PositiveValues)
@@ -35,7 +35,6 @@ bool FIMGRagdollSettings::IsValid() const
 		&& FloorClearance >= 0.0f
 		&& FMath::IsFinite(MaxRecoverySpeed)
 		&& MaxRecoverySpeed >= 0.0f
-		&& FloorTraceChannel < ECC_MAX
 		&& FMath::IsFinite(RecoverySearchRadius)
 		&& RecoverySearchRadius >= 0.0f
 		&& RecoverySearchRings >= IMGRagdollTypes::MinSearchRings
@@ -52,16 +51,9 @@ float FIMGRagdollSettings::GetEffectiveFloorClearance(float MaxFloorDist) const
 
 bool FIMGRagdollSettings::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
 {
-	uint8 Channel = FloorTraceChannel;
-	Ar << Channel;
-	if (Ar.IsLoading())
-	{
-		FloorTraceChannel = static_cast<ECollisionChannel>(Channel);
-	}
-
-	Ar << FollowTraceRadius << FollowTraceDistance << FloorClearance << MaxFollowSpeed << MaxTargetDistance;
+	Ar << FloorClearance << MaxFollowSpeed << MaxTargetDistance;
 	Ar << RecoveryTraceDistance << MaxRecoverySpeed;
-	Ar << MaxTargetAge << RecoverySearchRadius;
+	Ar << MaxTargetAge << EntryInputTimeout << RecoverySearchRadius;
 
 	uint8 RingsByte = static_cast<uint8>(FMath::Clamp(RecoverySearchRings, 0, 7));
 	uint8 SamplesByte = static_cast<uint8>(FMath::Clamp(RecoverySearchSamples, 0, 31));
@@ -111,6 +103,9 @@ bool FIMGRagdollMovementInput::NetSerialize(FArchive& Ar, UPackageMap* Map, bool
 			bool bVectorSuccess = true;
 			PelvisLocation.NetSerialize(Ar, Map, bVectorSuccess);
 			bOutSuccess &= bVectorSuccess;
+			PelvisVelocity.NetSerialize(Ar, Map, bVectorSuccess);
+			bOutSuccess &= bVectorSuccess;
+			Ar << CapsuleHeightOffset;
 			Ar << FacingYaw;
 			Ar.SerializeBits(&bFaceUp, 1);
 		}
@@ -255,6 +250,8 @@ bool FIMGRagdollRepState::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOu
 		bOutSuccess &= bVectorSuccess;
 		InitialVelocity.NetSerialize(Ar, Map, bVectorSuccess);
 		bOutSuccess &= bVectorSuccess;
+		LaunchVelocityDelta.NetSerialize(Ar, Map, bVectorSuccess);
+		bOutSuccess &= bVectorSuccess;
 		Ar << StartServerTime;
 		bOutSuccess &= FMath::IsFinite(StartServerTime) && StartServerTime >= 0.0;
 		Ar << FacingYaw;
@@ -264,6 +261,7 @@ bool FIMGRagdollRepState::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOu
 	{
 		AnchorLocation = FVector::ZeroVector;
 		InitialVelocity = FVector::ZeroVector;
+		LaunchVelocityDelta = FVector::ZeroVector;
 		StartServerTime = 0.0;
 		FacingYaw = 0;
 		bFaceUp = false;
@@ -312,4 +310,87 @@ bool FIMGRagdollRepState::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOu
 	bOutSuccess &= EndReason != EIMGRagdollEndReason::Transferred || (bHasRecovery && bExternalTransition);
 	bOutSuccess &= !Ar.IsError();
 	return bOutSuccess;
+}
+
+bool FIMGRagdollRecoverySelection::GetPlaybackPosition(
+	double ElapsedSeconds, float& OutPosition, float& OutRemainingSeconds) const
+{
+	OutPosition = -1.f;
+	OutRemainingSeconds = 0.f;
+	if (!IsValid(Montage) || !Montage->bEnableAutoBlendOut || !FMath::IsFinite(StartTime) ||
+		!FMath::IsFinite(PlayRate) || PlayRate <= 0.f || !FMath::IsFinite(Montage->RateScale) ||
+		Montage->RateScale <= 0.f || !FMath::IsFinite(ElapsedSeconds) || ElapsedSeconds < 0.0 ||
+		StartTime < 0.f || StartTime >= Montage->GetPlayLength() || Montage->SlotAnimTracks.IsEmpty())
+	{
+		return false;
+	}
+	const double EffectiveRate = static_cast<double>(PlayRate) * Montage->RateScale;
+	double RemainingAdvance = ElapsedSeconds * EffectiveRate;
+	double RemainingPath = 0.0;
+	float Cursor = StartTime;
+	int32 Section = Montage->GetSectionIndexFromPosition(Cursor);
+	TArray<int32, TInlineAllocator<8>> Visited;
+	if (Section == INDEX_NONE)
+	{
+		return false;
+	}
+	while (Section != INDEX_NONE)
+	{
+		if (Visited.Contains(Section) || !Montage->CompositeSections.IsValidIndex(Section))
+		{
+			return false;
+		}
+		Visited.Add(Section);
+		float Begin = 0.f;
+		float End = 0.f;
+		Montage->GetSectionStartAndEndTime(Section, Begin, End);
+		if (!FMath::IsFinite(Begin) || !FMath::IsFinite(End) || End <= Cursor || Cursor < Begin)
+		{
+			return false;
+		}
+		const double Span = End - Cursor;
+		if (OutPosition < 0.f)
+		{
+			if (RemainingAdvance < Span)
+			{
+				OutPosition = Cursor + static_cast<float>(RemainingAdvance);
+				RemainingPath += Span - RemainingAdvance;
+			}
+			else
+			{
+				RemainingAdvance -= Span;
+			}
+		}
+		else
+		{
+			RemainingPath += Span;
+		}
+		const FName NextName = Montage->CompositeSections[Section].NextSectionName;
+		Section = NextName.IsNone() ? INDEX_NONE : Montage->GetSectionIndex(NextName);
+		if (!NextName.IsNone() && Section == INDEX_NONE)
+		{
+			return false;
+		}
+		if (Section != INDEX_NONE)
+		{
+			Montage->GetSectionStartAndEndTime(Section, Cursor, End);
+		}
+	}
+	OutRemainingSeconds = static_cast<float>(RemainingPath / EffectiveRate);
+	return OutPosition >= 0.f && FMath::IsFinite(OutRemainingSeconds) && OutRemainingSeconds > 0.f;
+}
+
+bool FIMGRagdollRecoveryAnimation::Allows(
+	const FIMGRagdollRecoverySelection& Selection, bool bInFaceUp) const
+{
+	float Position = -1.f;
+	float Duration = 0.f;
+	return Montage && Montage == Selection.Montage && bFaceUp == bInFaceUp &&
+		FMath::IsFinite(MinStartTime) && FMath::IsFinite(MaxStartTime) &&
+		MinStartTime >= 0.f && MaxStartTime >= MinStartTime &&
+		FMath::IsFinite(MinPlayRate) && FMath::IsFinite(MaxPlayRate) &&
+		MinPlayRate > 0.f && MaxPlayRate >= MinPlayRate &&
+		Selection.StartTime >= MinStartTime && Selection.StartTime <= MaxStartTime &&
+		Selection.PlayRate >= MinPlayRate && Selection.PlayRate <= MaxPlayRate &&
+		!BodyLocalOffset.ContainsNaN() && Selection.GetPlaybackPosition(0.0, Position, Duration);
 }
