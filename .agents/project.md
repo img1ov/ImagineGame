@@ -12,7 +12,7 @@
 - 跨工程 PA/PCA/物理材质对照、用户资料包、骨骼框架适配和统一脚本入口见 [PA/PCA 迁移流程](physics-asset-migration.md)；资产基线与Ragdoll运行时职责见 [Ragdoll](ragdoll.md)。
 - Lyra 参考：`D:/Application/UnrealProjects/LyraStarterGame`（已核对本地源码）。核心源码保留本工程移动、Bot、Traversal 扩展；TopDownArena、LyraExtTool、自动化示例与发布脚本未迁入。文件对应不代表行为一致。
 - GTA 参考当前位于 `C:/Application/gta5/src/dev_ng/game`，工程导航见 `C:/Application/gta5/AGENTS.md`；引擎侧 IK 在 `src/dev_ng/rage/base/src/crbody/iksolver.*`。该源码快照用于静态对照，发行版配置另行验证；本工程保留 UE/GAS/CMC 网络体系。
-- UE 源码当前位于 `D:/Application/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
+- UE 源码当前位于 `D:/Workspace/UnrealEngine/UE_5.8/Engine/Source`，`Engine/Build/Build.version` 为 5.8.4。GAS 在 `Engine/Plugins/Runtime/GameplayAbilities`，MotionWarping 在 `Engine/Plugins/Animation/MotionWarping`。当前工程有 Game/Editor Target 和编辑器 Validator/ContentValidationCommandlet；独立 Client/Server、渠道 Target 按打包需求设计。
 
 ## 编辑器资产搜索缓存诊断
 

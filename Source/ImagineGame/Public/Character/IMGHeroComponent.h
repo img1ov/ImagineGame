@@ -3,7 +3,6 @@
 
 #include "Components/GameFrameworkInitStateInterface.h"
 #include "Components/PawnComponent.h"
-#include "GameFeatures/GameFeatureAction_AddInputContextMapping.h"
 #include "GameplayAbilitySpecHandle.h"
 #include "GameplayTagContainer.h"
 #include "Input/IMGInputConfig.h"
@@ -22,6 +21,9 @@ class UGameFrameworkComponentManager;
 class UInputComponent;
 class UIMGCameraMode;
 class UIMGInputConfig;
+class UIMGInputComponent;
+class UEnhancedInputLocalPlayerSubsystem;
+class UInputMappingContext;
 class UObject;
 struct FActorInitStateChangedParams;
 struct FFrame;
@@ -100,11 +102,11 @@ public:
 	/** Clears the camera override if owned by this ability. */
 	UE_API void ClearAbilityCameraMode(const FGameplayAbilitySpecHandle& OwningSpecHandle);
 
-	/** Adds mode-specific input config */
-	UE_API void AddAdditionalInputConfig(const UIMGInputConfig* InputConfig);
+	/** Source owns an idempotent request; the last source removal releases the bindings. */
+	UE_API void AddAdditionalInputConfig(const UIMGInputConfig* InputConfig, const UObject* Source);
 
 	/** Removes a mode-specific input config if it has been added */
-	UE_API void RemoveAdditionalInputConfig(const UIMGInputConfig* InputConfig);
+	UE_API void RemoveAdditionalInputConfig(const UIMGInputConfig* InputConfig, const UObject* Source);
 
 	/** True if this is controlled by a real player and has progressed far enough in initialization where additional input bindings can be added */
 	UE_API bool IsReadyToBindInputs() const;
@@ -126,6 +128,7 @@ public:
 protected:
 
 	UE_API virtual void OnRegister() override;
+	UE_API virtual void OnUnregister() override;
 	UE_API virtual void BeginPlay() override;
 	UE_API virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -195,6 +198,23 @@ protected:
 	/** Spec handle for the last ability to set a camera mode. */
 	FGameplayAbilitySpecHandle AbilityCameraModeOwningSpecHandle;
 
+private:
+	void ReleasePlayerInput();
+	void ReleaseInputConfigTags(const UIMGInputConfig* InputConfig);
+
+	struct FAdditionalInputConfigBinding
+	{
+		TSet<TWeakObjectPtr<const UObject>> Sources;
+		TArray<uint32> BindHandles;
+	};
+
+	TMap<TWeakObjectPtr<const UIMGInputConfig>, FAdditionalInputConfigBinding> InputConfigBindings;
+	TWeakObjectPtr<UIMGInputComponent> BoundInputComponent;
+	TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem> BoundInputSubsystem;
+	TArray<TWeakObjectPtr<const UInputMappingContext>> AppliedDefaultMappings;
+	bool bInitializingPlayerInput = false;
+
+protected:
 	/** True when player input bindings have been applied, will never be true for non - players */
 	bool bReadyToBindInputs;
 

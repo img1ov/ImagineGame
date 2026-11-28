@@ -56,19 +56,21 @@ void UIMGHealthComponent::InitializeWithAbilitySystem(UIMGAbilitySystemComponent
 		return;
 	}
 
-	AbilitySystemComponent = InASC;
-	if (!AbilitySystemComponent)
+	if (!IsValid(InASC))
 	{
 		UE_LOG(LogIMG, Error, TEXT("UIMGHealthComponent: Cannot initialize health component for owner [%s] with NULL ability system."), *GetNameSafe(Owner));
 		return;
 	}
 	
-	HealthSet = AbilitySystemComponent->GetSet<UIMGHealthSet>();
-	if (!HealthSet)
+	const UIMGHealthSet* NewHealthSet = InASC->GetSet<UIMGHealthSet>();
+	if (!NewHealthSet)
 	{
 		UE_LOG(LogIMG, Error, TEXT("IMGHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
 		return;
 	}
+	AbilitySystemComponent = InASC;
+	HealthSet = NewHealthSet;
+	const uint32 BindingGeneration = ++AbilitySystemBindingGeneration;
 	
 	// Register to listen for attribute changes.
 	HealthSet->OnHealthChanged.AddUObject(this, &ThisClass::HandleHealthChanged);
@@ -77,16 +79,33 @@ void UIMGHealthComponent::InitializeWithAbilitySystem(UIMGAbilitySystemComponent
 
 	// TEMP: Reset attributes to default values.  Eventually this will be driven by a spread sheet.
 	AbilitySystemComponent->SetNumericAttributeBase(UIMGHealthSet::GetHealthAttribute(), HealthSet->GetMaxHealth());
+	if (BindingGeneration != AbilitySystemBindingGeneration)
+	{
+		return;
+	}
 
 	ClearGameplayTags();
+	if (BindingGeneration != AbilitySystemBindingGeneration)
+	{
+		return;
+	}
 	
 	OnHealthChanged.Broadcast(this, HealthSet->GetHealth(), HealthSet->GetHealth(), nullptr);
+	if (BindingGeneration != AbilitySystemBindingGeneration)
+	{
+		return;
+	}
 	OnMaxHealthChanged.Broadcast(this, HealthSet->GetMaxHealth(), HealthSet->GetMaxHealth(), nullptr);
 }
 
 void UIMGHealthComponent::UninitializeFromAbilitySystem()
 {
+	const uint32 BindingGeneration = ++AbilitySystemBindingGeneration;
 	ClearGameplayTags();
+	if (BindingGeneration != AbilitySystemBindingGeneration)
+	{
+		return;
+	}
 
 	if (HealthSet)
 	{
@@ -103,8 +122,12 @@ void UIMGHealthComponent::ClearGameplayTags()
 {
 	if (AbilitySystemComponent)
 	{
+		const uint32 BindingGeneration = AbilitySystemBindingGeneration;
 		AbilitySystemComponent->SetLooseGameplayTagCount(IMGGameplayTags::Status_Death_Dying, 0);
-		AbilitySystemComponent->SetLooseGameplayTagCount(IMGGameplayTags::Status_Death_Dead, 0);
+		if (BindingGeneration == AbilitySystemBindingGeneration)
+		{
+			AbilitySystemComponent->SetLooseGameplayTagCount(IMGGameplayTags::Status_Death_Dead, 0);
+		}
 	}
 }
 

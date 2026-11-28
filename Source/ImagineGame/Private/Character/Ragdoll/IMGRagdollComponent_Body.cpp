@@ -4,11 +4,13 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Cosmetics/IMGPawnComponent_CharacterParts.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/ReplicatedState.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/GameStateBase.h"
 #include "IMGLogChannels.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/PhysicsAsset.h"
@@ -20,9 +22,22 @@ namespace IMGRagdollBody
 	constexpr float MinDistanceLimit = 1.0f;
 	// Avoid waking sleeping simulated ragdolls with negligible correction forces.
 	constexpr float MinAccelerationThreshold = 1.0f;
+	constexpr float SettledVelocityTolerance = 2.0f;
+	constexpr int32 MaxRemoteReferences = 4;
+
+	void RetireKinematicUpdate(USkeletalMeshComponent& Mesh)
+	{
+		UWorld* World = Mesh.GetWorld();
+		if (FPhysScene* Scene = World ? World->GetPhysicsScene() : nullptr)
+		{
+			Scene->ClearPreSimKinematicUpdate(&Mesh);
+		}
+	}
 
 	void SynchronizeBodiesToPose(USkeletalMeshComponent& Mesh)
 	{
+		// A queued animation teleport can still write simulated bodies at the next pre-sim boundary.
+		RetireKinematicUpdate(Mesh);
 		// Enabling simulation preserves the old physics pose, which may lag behind the displayed mesh.
 		for (FBodyInstance* Body : Mesh.Bodies)
 		{
@@ -220,6 +235,9 @@ void UIMGRagdollComponent::FBodyExecutionSession::ResetActiveBody()
 	MeshAsset.Reset();
 	PhysicsAsset.Reset();
 	OwnerCorrectionRemaining = FVector::ZeroVector;
+	ApprovedPelvisVelocity = FVector::ZeroVector;
+	RemoteReferences.Reset();
+	RemotePresentationTime = -1.0;
 	bRecovering = false;
 	bInputRejected = false;
 	bInvalidated = false;
@@ -300,6 +318,8 @@ bool UIMGRagdollComponent::CanExecuteBody(USkeletalMeshComponent& Mesh) const
 		&& FMath::IsFinite(HardCorrectionDistance) && HardCorrectionDistance > 0.f
 		&& FMath::IsFinite(RemoteCorrectionTime) && RemoteCorrectionTime > 0.f
 		&& FMath::IsFinite(RemoteVelocityCorrectionTime) && RemoteVelocityCorrectionTime > 0.f
+		&& FMath::IsFinite(RemoteInterpolationTime) && RemoteInterpolationTime >= 0.f
+		&& FMath::IsFinite(RemotePositionTolerance) && RemotePositionTolerance >= 0.f
 		&& FMath::IsFinite(RemoteMaxVelocityCorrection) && RemoteMaxVelocityCorrection >= 0.f
 		&& FMath::IsFinite(RemoteMaxVerticalVelocityCorrection) && RemoteMaxVerticalVelocityCorrection >= 0.f
 		&& FMath::IsFinite(RemoteMaxBackwardCorrection) && RemoteMaxBackwardCorrection >= 0.f
@@ -694,6 +714,7 @@ bool UIMGRagdollComponent::EnsureBody()
 	const FVector LaunchVelocity = bHasReference && !bInputProducer
 		? FVector(Reference.Velocity)
 		: (bHasRestartPose || bFreshLaunch ? LocalLaunchVelocity : Movement->Velocity);
+	BodySessionState.ApprovedPelvisVelocity = bHasReference ? FVector(Reference.Velocity) : LaunchVelocity;
 	InitializeBodyVelocity(*Mesh, LaunchVelocity, bHasRestartPose, bInputProducer);
 	RestartPose.Reset();
 
@@ -815,6 +836,7 @@ void UIMGRagdollComponent::UpdateOwnerBodyCorrection(USkeletalMeshComponent& Mes
 	if (Movement->GetRagdollBodyReference(BodySessionState.Session, Reference))
 	{
 		BodySessionState.ApprovedPelvisOffset = FVector(Reference.PelvisLocation) - FVector(Reference.CapsuleLocation);
+		BodySessionState.ApprovedPelvisVelocity = Reference.Velocity;
 	}
 
 	const bool bRejected = IMGRagdollBody::IsRejectedTargetIssue(Movement->GetRagdollMovementIssue())
@@ -827,7 +849,7 @@ void UIMGRagdollComponent::UpdateOwnerBodyCorrection(USkeletalMeshComponent& Mes
 			const FVector CurrentPelvis = PelvisBody->GetUnrealWorldTransform().GetLocation();
 			BodySessionState.OwnerCorrectionRemaining = Movement->UpdatedComponent->GetComponentLocation()
 				+ BodySessionState.ApprovedPelvisOffset - CurrentPelvis;
-			Mesh.SetAllPhysicsLinearVelocity(Movement->Velocity);
+			Mesh.SetAllPhysicsLinearVelocity(BodySessionState.ApprovedPelvisVelocity);
 			SampleTarget();
 		}
 	}
@@ -854,10 +876,80 @@ void UIMGRagdollComponent::UpdateOwnerBodyCorrection(USkeletalMeshComponent& Mes
 	}
 }
 
-void UIMGRagdollComponent::UpdateRemoteBodyCorrection(USkeletalMeshComponent& Mesh, float DeltaTime)
+bool UIMGRagdollComponent::SampleRemoteBodyReference(FVector& OutTarget, FVector& OutVelocity)
 {
 	FIMGRagdollBodyReference Reference;
 	if (!Movement->GetRagdollBodyReference(BodySessionState.Session, Reference))
+	{
+		BodySessionState.RemoteReferences.Reset();
+		BodySessionState.RemotePresentationTime = -1.0;
+		return false;
+	}
+
+	// Keep interpolation history independent of capsule smoothing and world-origin shifts.
+	Reference.PelvisLocation = FRepMovement::RebaseOntoZeroOrigin(Reference.PelvisLocation, this);
+	Reference.CapsuleLocation = FRepMovement::RebaseOntoZeroOrigin(Reference.CapsuleLocation, this);
+	auto& Samples = BodySessionState.RemoteReferences;
+	if (!Samples.IsEmpty() && (Samples.Last().Session != Reference.Session
+		|| Samples.Last().MovementRevision != Reference.MovementRevision))
+	{
+		Samples.Reset();
+		BodySessionState.RemotePresentationTime = -1.0;
+	}
+	if (Samples.IsEmpty() || Samples.Last().Sequence != Reference.Sequence)
+	{
+		if (!Samples.IsEmpty() && Reference.ServerTime <= Samples.Last().ServerTime)
+		{
+			Samples.Last() = Reference;
+		}
+		else
+		{
+			if (Samples.Num() == IMGRagdollBody::MaxRemoteReferences)
+			{
+				Samples.RemoveAt(0, 1, EAllowShrinking::No);
+			}
+			Samples.Add(Reference);
+		}
+	}
+	const double Delay = FMath::Min(static_cast<double>(RemoteInterpolationTime),
+		static_cast<double>(ActiveState.Settings.MaxTargetAge));
+	const double TargetTime = FMath::Max(BodySessionState.RemotePresentationTime,
+		IMGRagdollBody::GetServerClockSeconds(*Character, GetWorld()) - Delay);
+	BodySessionState.RemotePresentationTime = TargetTime;
+	FVector Position = Samples[0].PelvisLocation;
+	OutVelocity = Samples[0].Velocity;
+	for (int32 Index = 1; Index < Samples.Num(); ++Index)
+	{
+		const FIMGRagdollBodyReference& A = Samples[Index - 1];
+		const FIMGRagdollBodyReference& B = Samples[Index];
+		if (TargetTime <= B.ServerTime)
+		{
+			const double Span = B.ServerTime - A.ServerTime;
+			const double Alpha = Span > UE_DOUBLE_SMALL_NUMBER
+				? FMath::Clamp((TargetTime - A.ServerTime) / Span, 0.0, 1.0) : 1.0;
+			Position = FMath::Lerp(FVector(A.PelvisLocation), FVector(B.PelvisLocation), Alpha);
+			OutVelocity = FMath::Lerp(FVector(A.Velocity), FVector(B.Velocity), Alpha);
+			OutTarget = FRepMovement::RebaseOntoLocalOrigin(Position, this);
+			return true;
+		}
+	}
+	if (TargetTime > Samples.Last().ServerTime)
+	{
+		const double MaxExtrapolation = FMath::Min(static_cast<double>(ActiveState.Settings.MaxTargetAge),
+			FMath::Max(Delay, static_cast<double>(IMGRagdollBody::MinCorrectionTime)));
+		OutVelocity = Samples.Last().Velocity;
+		Position = FVector(Samples.Last().PelvisLocation)
+			+ OutVelocity * FMath::Clamp(TargetTime - Samples.Last().ServerTime, 0.0, MaxExtrapolation);
+	}
+	OutTarget = FRepMovement::RebaseOntoLocalOrigin(Position, this);
+	return true;
+}
+
+void UIMGRagdollComponent::UpdateRemoteBodyCorrection(USkeletalMeshComponent& Mesh, float DeltaTime)
+{
+	FVector Target;
+	FVector FeedVelocity;
+	if (!SampleRemoteBodyReference(Target, FeedVelocity))
 	{
 		return;
 	}
@@ -869,8 +961,6 @@ void UIMGRagdollComponent::UpdateRemoteBodyCorrection(USkeletalMeshComponent& Me
 	}
 
 	const FVector Pelvis = PelvisBody->GetUnrealWorldTransform().GetLocation();
-	const FVector Target = IMGRagdollBody::PredictBodyReference(
-		*Character, GetWorld(), Reference, ActiveState.Settings.MaxTargetAge);
 	const FVector Error = Target - Pelvis;
 	if (Error.ContainsNaN())
 	{
@@ -880,15 +970,21 @@ void UIMGRagdollComponent::UpdateRemoteBodyCorrection(USkeletalMeshComponent& Me
 	if (Error.SizeSquared() > FMath::Square(FMath::Max(IMGRagdollBody::MinDistanceLimit, HardCorrectionDistance)))
 	{
 		TranslateBody(Mesh, Error);
-		Mesh.SetAllPhysicsLinearVelocity(Reference.Velocity);
+		Mesh.SetAllPhysicsLinearVelocity(FeedVelocity);
 		return;
 	}
 
 	const FVector Up = -Movement->GetGravityDirection();
 	// Match physical body motion; capsule floor lift/correction must never accelerate the ragdoll.
-	const FVector FeedVelocity = Reference.Velocity;
 	const float PosTime = FMath::Max(IMGRagdollBody::MinCorrectionTime, RemoteCorrectionTime);
-	const float VelTime = FMath::Max(IMGRagdollBody::MinCorrectionTime, RemoteVelocityCorrectionTime);
+	const float VelTime = FMath::Min(FMath::Max(IMGRagdollBody::MinCorrectionTime, RemoteVelocityCorrectionTime), PosTime * 0.25f);
+	const FVector CurrentVelocity = PelvisBody->GetUnrealWorldVelocityAtPoint(Pelvis);
+	if (Error.IsNearlyZero(RemotePositionTolerance)
+		&& FeedVelocity.IsNearlyZero(IMGRagdollBody::SettledVelocityTolerance)
+		&& CurrentVelocity.IsNearlyZero(IMGRagdollBody::SettledVelocityTolerance))
+	{
+		return;
+	}
 
 	FVector VelocityCorrection = IMGRagdollBody::ClampHorizontalAndVertical(
 		Error / PosTime, Up, RemoteMaxVelocityCorrection, RemoteMaxVerticalVelocityCorrection);
@@ -901,9 +997,11 @@ void UIMGRagdollComponent::UpdateRemoteBodyCorrection(USkeletalMeshComponent& Me
 		VelocityCorrection += TravelDirection * (-BackwardLimit - AlongTravel);
 	}
 
-	const FVector CurrentVelocity = PelvisBody->GetUnrealWorldVelocityAtPoint(Pelvis);
+	// Implicit damping remains stable when a render frame spans several physics steps.
+	const double Step = DeltaTime;
+	const double DampingTime = VelTime + Step + Step * Step / PosTime;
 	const FVector Acceleration = IMGRagdollBody::ClampHorizontalAndVertical(
-		(FeedVelocity + VelocityCorrection - CurrentVelocity) / VelTime,
+		(VelocityCorrection + (FeedVelocity - CurrentVelocity) * (1.0 + Step / PosTime)) / DampingTime,
 		Up,
 		RemoteMaxAcceleration,
 		RemoteMaxVerticalAcceleration);
@@ -943,6 +1041,7 @@ void UIMGRagdollComponent::PrepareBodyRecovery()
 	Mesh.SnapshotPose(RecoveryHold.Snapshot.Pose);
 	RecoveryHold.MeshAsset = Mesh.GetSkeletalMeshAsset();
 	RecoveryHold.Snapshot.MeshWorldTransform = Mesh.GetComponentTransform();
+	RecoveryHold.BodyState.Capture(Mesh, *Character);
 	const int32 PelvisIndex = Mesh.GetBoneIndex(PelvisBone);
 	RecoveryHold.Snapshot.PelvisWorldLocation = PelvisIndex != INDEX_NONE
 		? Mesh.GetBoneTransform(PelvisIndex).GetLocation()
@@ -951,6 +1050,19 @@ void UIMGRagdollComponent::PrepareBodyRecovery()
 
 	StopBodySimulation(Mesh);
 	Mesh.SetAllBodiesSimulatePhysics(false);
+	for (FBodyInstance* Body : Mesh.Bodies)
+	{
+		if (!Body || !Body->IsValidBodyInstance() || !Body->GetBodySetup())
+		{
+			continue;
+		}
+		// A held pose has no contact authority after the capsule takes over.
+		const int32 ShapeCount = Body->GetBodySetup()->AggGeom.GetElementCount();
+		for (int32 Index = 0; Index < ShapeCount; ++Index)
+		{
+			Body->SetShapeCollisionEnabled(Index, ECollisionEnabled::NoCollision);
+		}
+	}
 	Mesh.SetComponentTickEnabled(false);
 	Mesh.bPauseAnims = true;
 	BodySessionState.bRecovering = true;
@@ -1012,7 +1124,7 @@ bool UIMGRagdollComponent::HandOffRagdollBody(int32 ExpectedSession)
 	{
 		Movement->ClearRagdollFollowTarget(this, BodySessionState.Session);
 	}
-	ReleaseBody(/*bKeepPhysics=*/true);
+	ReleaseBody(/*bKeepPhysics=*/true, /*bResumeHeldBody=*/true);
 	SetBodyIssue(EIMGRagdollBodyIssue::BodyHandedOff);
 	return true;
 }
@@ -1094,10 +1206,32 @@ void UIMGRagdollComponent::ReleaseBody(bool bKeepPhysics, bool bResumeHeldBody)
 		StopBodySimulation(*Mesh);
 		if (bKeepPhysics && bResumeHeldBody && bWasRecovering && bRestoreBodies)
 		{
+			IMGRagdollBody::RetireKinematicUpdate(*Mesh);
+			for (const FSavedBodyInstanceState& Saved : RecoveryHold.BodyState.Bodies)
+			{
+				FBodyInstance* Body = Mesh->GetBodyInstance(Saved.BoneName);
+				if (!Body || !Body->IsValidBodyInstance())
+				{
+					continue;
+				}
+				Body->SetBodyTransform(Saved.WorldTransform, ETeleportType::TeleportPhysics);
+				for (int32 Index = 0; Index < Saved.ShapeCollisions.Num(); ++Index)
+				{
+					Body->SetShapeCollisionEnabled(Index, Saved.ShapeCollisions[Index]);
+				}
+			}
 			Mesh->bPauseAnims = SavedMeshState.bPauseAnims;
 			Mesh->SetComponentTickEnabled(true);
 			Mesh->SetAllBodiesSimulatePhysics(true);
 			Mesh->SetAllBodiesPhysicsBlendWeight(1.f);
+			for (const FSavedBodyInstanceState& Saved : RecoveryHold.BodyState.Bodies)
+			{
+				if (FBodyInstance* Body = Mesh->GetBodyInstance(Saved.BoneName); Body && Body->IsValidBodyInstance())
+				{
+					Body->SetLinearVelocity(Saved.LinearVelocity, false);
+					Body->SetAngularVelocityInRadians(Saved.AngularVelocityRadians, false);
+				}
+			}
 		}
 		if (!bKeepPhysics)
 		{

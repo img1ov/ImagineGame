@@ -93,9 +93,9 @@ public:
 	}
 
 	UIMGInventoryItemInstance* AddEntry(TSubclassOf<UIMGInventoryItemDefinition> ItemClass, int32 StackCount);
-	void AddEntry(UIMGInventoryItemInstance* Instance);
+	UIMGInventoryItemInstance* AddEntry(UIMGInventoryItemInstance* Instance);
 
-	void RemoveEntry(UIMGInventoryItemInstance* Instance);
+	void RemoveEntry(int32 Index);
 
 private:
 	void BroadcastChangeMessage(FIMGInventoryEntry& Entry, int32 OldCount, int32 NewCount);
@@ -137,8 +137,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Inventory)
 	UE_API UIMGInventoryItemInstance* AddItemDefinition(TSubclassOf<UIMGInventoryItemDefinition> ItemDef, int32 StackCount = 1);
 
+	// Adds one unit, preserving stats. Foreign actors' instances are copied under this inventory's owner.
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Inventory)
-	UE_API void AddItemInstance(UIMGInventoryItemInstance* ItemInstance);
+	UE_API UIMGInventoryItemInstance* AddItemInstance(UIMGInventoryItemInstance* ItemInstance);
 	
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Inventory)
 	UE_API void RemoveItemInstance(UIMGInventoryItemInstance* ItemInstance);
@@ -158,6 +159,8 @@ public:
 	//~End of UObject interface
 	
 private:
+	void RemoveItemAt(int32 Index);
+
 	UPROPERTY(Replicated)
 	FIMGInventoryList InventoryList;
 };

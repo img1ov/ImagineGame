@@ -122,10 +122,11 @@ protected:
 	// Health set used by this component.
 	UPROPERTY()
 	TObjectPtr<const UIMGHealthSet> HealthSet;
+	uint32 AbilitySystemBindingGeneration = 0;
 	
 	// Replicated state used to handle dying.
 	UPROPERTY(ReplicatedUsing = OnRep_DeathState)
 	EIMGDeathState DeathState;
 };
 
-#undef UE_API 
+#undef UE_API

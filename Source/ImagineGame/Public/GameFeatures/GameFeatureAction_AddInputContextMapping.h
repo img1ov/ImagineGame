@@ -2,6 +2,7 @@
 #pragma once
 
 #include "GameFeatureAction_WorldActionBase.h"
+#include "Input/IMGInputConfig.h"
 #include "UObject/SoftObjectPtr.h"
 #include "GameFeatureAction_AddInputContextMapping.generated.h"
 
@@ -9,24 +10,8 @@ class AActor;
 class UInputMappingContext;
 class UPlayer;
 class APlayerController;
+class UEnhancedInputLocalPlayerSubsystem;
 struct FComponentRequestHandle;
-
-USTRUCT()
-struct FInputMappingContextAndPriority
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, Category="Input", meta=(AssetBundles="Client,Server"))
-	TSoftObjectPtr<UInputMappingContext> InputMapping;
-
-	// Higher priority input mappings will be prioritized over mappings with a lower priority.
-	UPROPERTY(EditAnywhere, Category="Input")
-	int32 Priority = 0;
-	
-	/** If true, then this mapping context will be registered with the settings when this game feature action is registered. */
-	UPROPERTY(EditAnywhere, Category="Input")
-	bool bRegisterWithSettings = true;
-};
 
 /**
  * Adds InputMappingContext to local players' EnhancedInput system. 
@@ -58,7 +43,7 @@ private:
 	struct FPerContextData
 	{
 		TArray<TSharedPtr<FComponentRequestHandle>> ExtensionRequestHandles;
-		TArray<TWeakObjectPtr<APlayerController>> ControllersAddedTo;
+		TMap<TWeakObjectPtr<APlayerController>, TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem>> ControllersAddedTo;
 	};
 
 	TMap<FGameFeatureStateChangeContext, FPerContextData> ContextData;
@@ -91,7 +76,7 @@ private:
 
 	void Reset(FPerContextData& ActiveData);
 	void HandleControllerExtension(AActor* Actor, FName EventName, FGameFeatureStateChangeContext ChangeContext);
-	void AddInputMappingForPlayer(UPlayer* Player, FPerContextData& ActiveData);
-	void RemoveInputMapping(APlayerController* PlayerController, FPerContextData& ActiveData);
+	void AddInputMappingForPlayer(APlayerController* PlayerController, FPerContextData& ActiveData);
+	void RemoveInputMapping(TWeakObjectPtr<APlayerController> PlayerController, FPerContextData& ActiveData);
 
 };

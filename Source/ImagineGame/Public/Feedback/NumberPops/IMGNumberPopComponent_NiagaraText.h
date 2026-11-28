@@ -21,6 +21,7 @@ public:
 	//~UIMGNumberPopComponent interface
 	virtual void AddNumberPop(const FIMGNumberPopRequest& NewRequest) override;
 	//~End of UIMGNumberPopComponent interface
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 protected:
 

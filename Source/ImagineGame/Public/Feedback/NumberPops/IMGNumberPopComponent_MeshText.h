@@ -29,8 +29,9 @@ struct FLiveNumberPopEntry
 	UPROPERTY(transient)
 	TObjectPtr<UStaticMeshComponent> Component = nullptr;
 
-	/** The pool this component will go into when released */
-	FPooledNumberPopComponentList* Pool = nullptr;
+	/** Resolve the pool on release; TMap element addresses do not survive growth. */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMesh> PoolMesh = nullptr;
 
 	/** The world time that this component will be released to the pool */
 	float ReleaseTime = 0.0f;
@@ -38,8 +39,8 @@ struct FLiveNumberPopEntry
 	FLiveNumberPopEntry()
 	{}
 
-	FLiveNumberPopEntry(UStaticMeshComponent* InComponent, FPooledNumberPopComponentList* InPool, float InReleaseTime)
-		: Component(InComponent), Pool(InPool), ReleaseTime(InReleaseTime)
+	FLiveNumberPopEntry(UStaticMeshComponent* InComponent, UStaticMesh* InPoolMesh, float InReleaseTime)
+		: Component(InComponent), PoolMesh(InPoolMesh), ReleaseTime(InReleaseTime)
 	{}
 };
 
@@ -68,6 +69,7 @@ public:
 	//~UIMGNumberPopComponent interface
 	virtual void AddNumberPop(const FIMGNumberPopRequest& NewRequest) override;
 	//~End of UIMGNumberPopComponent interface
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 protected:
 	void SetMaterialParameters(const FIMGNumberPopRequest& Request, FTempNumberPopInfo& NewDamageNumberInfo, const FTransform& CameraTransform, const FVector& NumberLocation);

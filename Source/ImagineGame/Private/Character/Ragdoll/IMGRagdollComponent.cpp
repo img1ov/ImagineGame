@@ -4,6 +4,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Cosmetics/IMGPawnComponent_CharacterParts.h"
 #include "GameFramework/Character.h"
+#include "IMGLogChannels.h"
 #include "Net/UnrealNetwork.h"
 #include "PhysicsEngine/BodyInstance.h"
 
@@ -845,8 +846,23 @@ void UIMGRagdollComponent::SampleTarget()
 	{
 		return;
 	}
-	if (!bMeasured || !Movement->SubmitRagdollFollowTarget(
-			Target, LinearVelocity, BodySessionState.CapsuleHeightOffset, bFaceUp, this, Session))
+	const bool bSubmitted = bMeasured && Movement->SubmitRagdollFollowTarget(
+		Target, LinearVelocity, BodySessionState.CapsuleHeightOffset, bFaceUp, this, Session);
+	if (bMeasured && UE_LOG_ACTIVE(LogIMG, Verbose))
+	{
+		const USkeletalMeshComponent* Mesh = Character->GetMesh();
+		const FBodyInstance* Pelvis = Mesh ? Mesh->GetBodyInstance(PelvisBone) : nullptr;
+		if (Pelvis && Pelvis->IsValidBodyInstance())
+		{
+			UE_LOG(LogIMG, Verbose,
+				TEXT("[Ragdoll][Sample] Actor=%s Role=%d Session=%u RawPelvis=%s Correction=%s SubmittedPelvis=%s Capsule=%s Accepted=%d"),
+				*GetPathNameSafe(Character.Get()), static_cast<int32>(Character->GetLocalRole()), Session,
+				*Pelvis->GetUnrealWorldTransform().GetLocation().ToCompactString(),
+				*GetBodyMovementOffset().ToCompactString(), *Target.GetLocation().ToCompactString(),
+				*Movement->UpdatedComponent->GetComponentLocation().ToCompactString(), bSubmitted);
+		}
+	}
+	if (!bSubmitted)
 	{
 		Movement->ClearRagdollFollowTarget(this, Session);
 	}

@@ -124,6 +124,10 @@ public:
 	FIMGPerformanceStatCache(UIMGPerformanceStatSubsystem* InSubsystem)
 		: MySubsystem(InSubsystem)
 	{
+		for (int32 Index = 0; Index < static_cast<int32>(EIMGDisplayablePerformanceStat::Count); ++Index)
+		{
+			PerfStateCache.Add(static_cast<EIMGDisplayablePerformanceStat>(Index), MakeShared<FSampledStatCache>());
+		}
 	}
 
 	//~IPerformanceDataConsumer interface
@@ -138,11 +142,11 @@ public:
 	double GetCachedStat(EIMGDisplayablePerformanceStat Stat) const;
 
 	/**
-	 * Returns a pointer to the cache for the given stat type. This can be used it
+	 * Returns shared access to the cache for the given stat type. This can be used to
 	 * get the min/max/average of this stat, the latest stat, and iterate all of the samples.
 	 * This is useful for generating some UI, like an FPS chart over time. 
 	 */
-	const FSampledStatCache* GetCachedStatData(const EIMGDisplayablePerformanceStat Stat) const;
+	TSharedPtr<const FSampledStatCache> GetCachedStatData(EIMGDisplayablePerformanceStat Stat) const;
 
 protected:
 
@@ -153,7 +157,7 @@ protected:
 	/**
 	 * Caches the sampled data for each of the performance stats currently available
 	 */
-	TMap<EIMGDisplayablePerformanceStat, FSampledStatCache> PerfStateCache;
+	TMap<EIMGDisplayablePerformanceStat, TSharedPtr<FSampledStatCache>> PerfStateCache;
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -168,7 +172,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	double GetCachedStat(EIMGDisplayablePerformanceStat Stat) const;
 
-	const FSampledStatCache* GetCachedStatData(const EIMGDisplayablePerformanceStat Stat) const;
+	TSharedPtr<const FSampledStatCache> GetCachedStatData(EIMGDisplayablePerformanceStat Stat) const;
 
 	//~USubsystem interface
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;

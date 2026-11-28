@@ -120,8 +120,8 @@ void UGameFeatureAction_AddAbilities::AddToWorld(const FWorldContext& WorldConte
 					TSharedPtr<FComponentRequestHandle> ExtensionRequestHandle = ComponentMan->AddExtensionHandler(Entry.ActorClass, AddAbilitiesDelegate);
 
 					ActiveData.ComponentRequests.Add(ExtensionRequestHandle);
-					EntryIndex++;
 				}
+				++EntryIndex;
 			}
 		}
 	}

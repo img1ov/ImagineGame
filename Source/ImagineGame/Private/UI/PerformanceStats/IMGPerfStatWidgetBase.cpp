@@ -50,22 +50,22 @@ FVector2D SIMGLatencyGraph::ComputeDesiredSize(float LayoutScaleMultiplier) cons
 
 void SIMGLatencyGraph::DrawTotalLatency(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
 {
-	if (!GraphData)
+	const TSharedPtr<const FSampledStatCache> Samples = GraphData.Pin();
+	if (!Samples || !FMath::IsFinite(MaxYAxisOfGraph) || MaxYAxisOfGraph <= UE_DOUBLE_SMALL_NUMBER || !FMath::IsFinite(ScaleFactor))
 	{
 		return;
 	}
 	
-	static TArray<FVector2D> Points;
-	Points.Reset(GraphData->GetSampleSize() + 1);
+	Points.Reset(Samples->GetSampleSize() + 1);
 	
 	const FVector2D WidgetSize = AllottedGeometry.GetLocalSize();
 	const float LineThickness = 1.0f;
-	const double XSlice = WidgetSize.X / static_cast<double>(GraphData->GetSampleSize());
+	const double XSlice = WidgetSize.X / static_cast<double>(Samples->GetSampleSize());
 	const double Border = 1.0;
 
 	int32 i = 0;
 	
-	GraphData->ForEachCurrentSample([&](const double Stat)
+	Samples->ForEachCurrentSample([&](const double Stat)
 	{
 		double Y = WidgetSize.Y - FMath::Clamp((Stat * ScaleFactor), 0.0, MaxYAxisOfGraph) / MaxYAxisOfGraph * WidgetSize.Y;
 		Y = FMath::Clamp(Y, Border, WidgetSize.Y - Border);
@@ -96,7 +96,12 @@ UIMGPerfStatGraph::UIMGPerfStatGraph(const FObjectInitializer& ObjectInitializer
 
 TSharedRef<SWidget> UIMGPerfStatGraph::RebuildWidget()
 {
-	return SAssignNew(SlateLatencyGraph, SIMGLatencyGraph);
+	SAssignNew(SlateLatencyGraph, SIMGLatencyGraph)
+		.LineColor(CachedLineColor)
+		.BackgroundColor(CachedBackgroundColor)
+		.MaxLatencyToGraph(CachedMaxYValue);
+	SlateLatencyGraph->UpdateGraphData(CachedGraphData.Pin(), CachedScaleFactor);
+	return SlateLatencyGraph.ToSharedRef();
 }
 
 void UIMGPerfStatGraph::ReleaseSlateResources(bool bReleaseChildren)
@@ -107,22 +112,39 @@ void UIMGPerfStatGraph::ReleaseSlateResources(bool bReleaseChildren)
 
 void UIMGPerfStatGraph::SetLineColor(const FColor& InColor)
 {
-	SlateLatencyGraph->SetLineColor(InColor);
+	CachedLineColor = InColor;
+	if (SlateLatencyGraph)
+	{
+		SlateLatencyGraph->SetLineColor(InColor);
+	}
 }
 
 void UIMGPerfStatGraph::SetMaxYValue(const float InValue)
 {
-	SlateLatencyGraph->SetMaxYValue(InValue);
+	CachedMaxYValue = InValue;
+	if (SlateLatencyGraph)
+	{
+		SlateLatencyGraph->SetMaxYValue(InValue);
+	}
 }
 
 void UIMGPerfStatGraph::SetBackgroundColor(const FColor& InValue)
 {
-	SlateLatencyGraph->SetBackgroundColor(InValue);
+	CachedBackgroundColor = InValue;
+	if (SlateLatencyGraph)
+	{
+		SlateLatencyGraph->SetBackgroundColor(InValue);
+	}
 }
 
-void UIMGPerfStatGraph::UpdateGraphData(const FSampledStatCache* StatData, const float ScaleFactor)
+void UIMGPerfStatGraph::UpdateGraphData(TSharedPtr<const FSampledStatCache> StatData, const float ScaleFactor)
 {
-	SlateLatencyGraph->UpdateGraphData(StatData, ScaleFactor);
+	CachedGraphData = StatData;
+	CachedScaleFactor = ScaleFactor;
+	if (SlateLatencyGraph)
+	{
+		SlateLatencyGraph->UpdateGraphData(StatData, ScaleFactor);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -132,7 +154,7 @@ double UIMGPerfStatWidgetBase::FetchStatValue()
 {
 	if (UIMGPerformanceStatSubsystem* Subsystem = GetStatSubsystem())
 	{
-		return CachedStatSubsystem->GetCachedStat(StatToDisplay);
+		return Subsystem->GetCachedStat(StatToDisplay);
 	}
 	else
 	{
@@ -142,13 +164,11 @@ double UIMGPerfStatWidgetBase::FetchStatValue()
 
 void UIMGPerfStatWidgetBase::UpdateGraphData(const float ScaleFactor)
 {
-	// When we cache the subsystem also update the graph data pointer if we have a graph widget
+	GraphScaleFactor = ScaleFactor;
 	if (PerfStatGraph)
 	{
-		if (const FSampledStatCache* GraphData = CachedStatSubsystem->GetCachedStatData(StatToDisplay))
-		{
-			PerfStatGraph->UpdateGraphData(GraphData, ScaleFactor);
-		}	
+		const UIMGPerformanceStatSubsystem* Subsystem = GetStatSubsystem();
+		PerfStatGraph->UpdateGraphData(Subsystem ? Subsystem->GetCachedStatData(StatToDisplay) : TSharedPtr<const FSampledStatCache>(), ScaleFactor);
 	}
 }
 
@@ -165,6 +185,17 @@ void UIMGPerfStatWidgetBase::NativeConstruct()
 		PerfStatGraph->SetMaxYValue(GraphMaxYValue);
 		PerfStatGraph->SetBackgroundColor(GraphBackgroundColor);
 	}
+	UpdateGraphData(GraphScaleFactor);
+}
+
+void UIMGPerfStatWidgetBase::NativeDestruct()
+{
+	if (PerfStatGraph)
+	{
+		PerfStatGraph->UpdateGraphData(TSharedPtr<const FSampledStatCache>(), GraphScaleFactor);
+	}
+	CachedStatSubsystem = nullptr;
+	Super::NativeDestruct();
 }
 
 UIMGPerformanceStatSubsystem* UIMGPerfStatWidgetBase::GetStatSubsystem()

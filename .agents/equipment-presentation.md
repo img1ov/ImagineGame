@@ -4,6 +4,8 @@
 
 ## 多 Mesh 挂接、Retarget 与 NinjaEquipment 参考
 
+- `IMGPawnComponent_CharacterParts::BroadcastChanged` 无有效 BodyStyle 选择时保留当前 Mesh；ForcedPhysicsAsset 使用 `SetPhysicsAsset(..., false)`，相同 PA 不重建物理身体，真实 PA 变化仍走引擎替换。该规则只消除无效重建，不保证活动 Ragdoll 可以无缝切换不同 Mesh/PA。仍在更新后广播 PartsChanged，不因 Mesh/PA 未变而吞掉部件 Tag 变化。UE 5.8 `SkeletalMeshComponentPhysics.cpp::SetPhysicsAsset` 已核对：force 或实际 PA 不同才执行 TermArticulated。
+
 - 原始 Lyra 挂接入口固定 Character.GetMesh/其他 Pawn.Root；本工程已通过下节的 Part Attachment 路径扩展至实际 Part Mesh。`IMGWeaponInstance.cpp::RefreshEquippedAnimLayer` 继续固定主 Mesh，挂枪目标与动作层目标保持各自职责。
 - 已验证：`IMGPawnComponent_CharacterParts.cpp::SpawnActorForEntry` 在专服跳过外观 ChildActor，各非专服节点根据复制的部件列表本地创建；`GetCharacterPartActors` 可读本机快照，`OnCharacterPartsChanged` 在部件增删改后通知。服务端不能依赖这类 ChildActor 作为装备复制挂接的父对象；装备 FastArray、部件 FastArray、装备 Actor 引用与本机 Mesh 初始化没有统一到达顺序。
 - 设计边界：主 Mesh 驱动动画、ChildActor Mesh 用 Retarget 显示时，枪体挂接目标可以是 Child Mesh，动作层/Montage 仍可能属于主 Mesh；替换服装 Mesh 又是另一种操作。后续扩展须分别表达这些消费目标，不能将所有 `GetMesh()` 机械替换为同一个可见 Mesh，也不把 ASC/装备实例的 Pawn 所有权转给外观 Actor。

@@ -63,6 +63,9 @@ void FIMGRagdollMovementRuntime::ClearAll()
 {
 	ClearInput();
 	ClearCorrection();
+	ReplayState.Reset();
+	bSkipReplayMove = false;
+	ProxyEnteredSession = 0;
 	ActiveBodyReference = FIMGRagdollBodyReference();
 	BodyReferencePublishTime = -1.0;
 	InputMoveTimeStamp = -1.f;
@@ -96,6 +99,27 @@ bool UIMGCharacterMovementComponent::HasRagdollNetworkMovementMode() const
 
 void UIMGCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
 {
+	if (!HasValidData())
+	{
+		return;
+	}
+	if (IsRagdollMovementMode() && ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating)
+	{
+		RagdollRuntime.ProxyEnteredSession = ActiveRagdollState.Session;
+	}
+	if (bNetworkMovementModeChanged && ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating
+		&& ActiveRagdollState.Session != 0 && RagdollRuntime.ProxyEnteredSession == ActiveRagdollState.Session)
+	{
+		TEnumAsByte<EMovementMode> Mode;
+		TEnumAsByte<EMovementMode> GroundMode;
+		uint8 CustomMode = 0;
+		UnpackNetworkMovementMode(CharacterOwner->GetReplicatedMovementMode(), Mode, CustomMode, GroundMode);
+		if (Mode != MOVE_Custom || CustomMode != static_cast<uint8>(EIMGCustomMovementMode::Ragdoll))
+		{
+			// Mode replication may lead the phase contract; keep the body active until recovery/retirement arrives.
+			bNetworkMovementModeChanged = false;
+		}
+	}
 	if (!HasRagdollNetworkMovementMode())
 	{
 		Super::SimulatedTick(DeltaSeconds);
@@ -186,14 +210,66 @@ FIMGRagdollMovementInput UIMGCharacterMovementComponent::CaptureRagdollInput() c
 	{
 		Input.Status = EIMGRagdollTargetStatus::Expired;
 	}
-	else if (Input.IsValid())
-	{
-		// Predict cached physical motion to this move boundary once; replay consumes the saved result.
-		const double Age = FMath::Max(0.0, GetWorld()->GetTimeSeconds() - RagdollRuntime.InputSampleTime);
-		Input.PelvisLocation = IMGRagdollMovement::QuantizeVector(
-			FVector(Input.PelvisLocation) + FVector(Input.PelvisVelocity) * Age, IMGRagdollMovement::Quantize10Scale);
-	}
 	return Input;
+}
+
+const FIMGRagdollRepState& UIMGCharacterMovementComponent::GetRagdollSimulationState() const
+{
+	return CharacterOwner && CharacterOwner->bClientUpdating && RagdollRuntime.ReplayState.IsSet()
+		? RagdollRuntime.ReplayState.GetValue() : ActiveRagdollState;
+}
+
+void UIMGCharacterMovementComponent::PrepareRagdollReplayMove(const FIMGRagdollRepState& State, uint8 PackedMode)
+{
+	if (!HasValidData() || MovementMode == MOVE_None || !CharacterOwner->bClientUpdating)
+	{
+		return;
+	}
+	RagdollRuntime.ReplayState.Reset();
+	RagdollRuntime.bSkipReplayMove = ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating
+		&& (State.Phase == EIMGRagdollPhase::Simulating
+			|| (ActiveRagdollState.bHasRecovery && State.Session != ActiveRagdollState.Session));
+	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating)
+	{
+		// Replay pre-entry locomotion and recorded body inputs without changing the live body session.
+		RagdollRuntime.ReplayState = State;
+		if (State.Phase == EIMGRagdollPhase::Simulating)
+		{
+			SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+		}
+		else if (IsRagdollMovementMode())
+		{
+			ApplyNetworkMovementMode(PackedMode);
+		}
+		if (GetMovementNetDiagnosticsLevel() >= 2)
+		{
+			const FSavedMove_Character* Move = GetCurrentReplayedSavedMove();
+			UE_LOG(LogIMGMovementNet, Log,
+				TEXT("[RagdollReplay] Actor=%s Move=%.6f LiveSession=%u HistoricalSession=%u Phase=%u RecordedMode=%u ReplayMode=%u"),
+				*GetNameSafe(CharacterOwner.Get()), Move ? Move->TimeStamp : -1.f,
+				ActiveRagdollState.Session, State.Session, static_cast<uint8>(State.Phase), PackedMode, PackNetworkMovementMode());
+		}
+	}
+}
+
+void UIMGCharacterMovementComponent::FinishRagdollReplay()
+{
+	RagdollRuntime.ReplayState.Reset();
+	RagdollRuntime.bSkipReplayMove = false;
+	if (!HasValidData() || MovementMode == MOVE_None
+		|| ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating || IsRagdollMovementMode())
+	{
+		return;
+	}
+	// Admission can arrive before the owner has recorded its first ragdoll move.
+	const TWeakObjectPtr<ACharacter> ReplayedCharacter = CharacterOwner;
+	const bool bWasClientUpdating = ReplayedCharacter->bClientUpdating;
+	ReplayedCharacter->bClientUpdating = true;
+	SetMovementMode(MOVE_Custom, static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+	if (ReplayedCharacter.IsValid())
+	{
+		ReplayedCharacter->bClientUpdating = bWasClientUpdating;
+	}
 }
 
 FIMGRagdollMovementInput UIMGCharacterMovementComponent::GetRagdollMovementInput() const
@@ -458,7 +534,7 @@ void UIMGCharacterMovementComponent::ReceiveRagdollBodyReference(const FIMGRagdo
 
 bool UIMGCharacterMovementComponent::IsRagdollRecovering() const
 {
-	return ActiveRagdollState.Phase == EIMGRagdollPhase::Recovering;
+	return GetRagdollSimulationState().Phase == EIMGRagdollPhase::Recovering;
 }
 
 bool UIMGCharacterMovementComponent::IsRagdollRecoveryReady() const
@@ -540,8 +616,7 @@ bool UIMGCharacterMovementComponent::StartRagdollMovement(const FIMGRagdollSetti
 
 	// Old locomotion moves are still in flight until the owner has received this admission.
 	RagdollRuntime.bAwaitingInitialInput = !CharacterOwner->IsLocallyControlled()
-		&& CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy
-		&& (IsMovingOnGround() || IsFalling());
+		&& CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy;
 	SetRagdollMovementIssue(EIMGRagdollIssue::None);
 	PublishRagdollMovementState();
 	if (!RagdollRuntime.bAwaitingInitialInput)
@@ -601,13 +676,6 @@ bool UIMGCharacterMovementComponent::SubmitRagdollFollowTarget(
 		|| FMath::Abs(CapsuleHeightOffset) > CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())
 	{
 		SetRagdollMovementIssue(EIMGRagdollIssue::InvalidTarget);
-		return false;
-	}
-
-	if (FVector::DistSquared(Target.GetLocation(), UpdatedComponent->GetComponentLocation())
-		> FMath::Square(ActiveRagdollState.Settings.MaxTargetDistance))
-	{
-		SetRagdollMovementIssue(EIMGRagdollIssue::TargetTooFar);
 		return false;
 	}
 
@@ -1217,6 +1285,24 @@ void UIMGCharacterMovementComponent::ReceiveRagdollMovementState(const FIMGRagdo
 	}
 
 	ActiveRagdollState = State;
+	if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy
+		&& State.Phase != EIMGRagdollPhase::Simulating
+		&& RagdollRuntime.ProxyEnteredSession == State.Session)
+	{
+		bNetworkMovementModeChanged = true;
+		bNetworkUpdateReceived = true;
+	}
+	if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy
+		&& State.Phase == EIMGRagdollPhase::Simulating && !CharacterOwner->bClientUpdating
+		&& HasBegunPlay() && IsActive() && IsRegistered())
+	{
+		// Detach the displayed pose before an older native move response rebases the capsule.
+		UpdateRagdollMovementState();
+		if (ActiveRagdollState.Session != State.Session || ActiveRagdollState.Revision != State.Revision)
+		{
+			return;
+		}
+	}
 	if (State.Phase != EIMGRagdollPhase::Inactive
 		|| (State.bHasRecovery && RagdollRuntime.RecoveryAppliedSession != State.Session))
 	{
@@ -1257,7 +1343,7 @@ void UIMGCharacterMovementComponent::UpdateRagdollMovementState()
 			StopRagdollMovement(EIMGRagdollEndReason::Unavailable);
 		}
 		else if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode()
-			&& !(RagdollRuntime.bAwaitingInitialInput && (IsMovingOnGround() || IsFalling())))
+			&& !RagdollRuntime.bAwaitingInitialInput)
 		{
 			FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);
 		}

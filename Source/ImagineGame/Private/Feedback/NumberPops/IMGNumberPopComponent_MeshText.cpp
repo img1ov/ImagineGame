@@ -45,6 +45,12 @@ UIMGNumberPopComponent_MeshText::UIMGNumberPopComponent_MeshText(const FObjectIn
 
 void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& NewRequest)
 {
+	UWorld* LocalWorld = GetWorld();
+	if (!LocalWorld || !FMath::IsFinite(ComponentLifespan) || ComponentLifespan <= 0.f)
+	{
+		return;
+	}
+
 	// Drop requests for remote players on the floor
 	// (this prevents multiple pops from showing up for the host of a listen server)
 	if (APlayerController* PC = GetController<APlayerController>())
@@ -59,7 +65,7 @@ void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& N
 
 	// Prepare the DamageNumberArray with the digits from the damage.
 	{
-		int32 LocalDamage = NewRequest.NumberToDisplay;
+		int64 LocalDamage = FMath::Abs(static_cast<int64>(NewRequest.NumberToDisplay));
 		PreparedNumberInfo.DamageNumberArray.Empty();
 
 		if (LocalDamage == 0)
@@ -72,7 +78,7 @@ void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& N
 			// Parse the base10 number into an array
 			while (LocalDamage > 0)
 			{
-				PreparedNumberInfo.DamageNumberArray.Insert(LocalDamage % 10, 0);
+				PreparedNumberInfo.DamageNumberArray.Insert(static_cast<int32>(LocalDamage % 10), 0);
 				LocalDamage /= 10;
 			}
 		}
@@ -123,9 +129,7 @@ void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& N
 		ComponentToUse->RegisterComponent();
 
 		// Add to the "live" list
-		UWorld* LocalWorld = GetWorld();
-		check(LocalWorld);
-		LiveComponents.Emplace(ComponentToUse, &ComponentPool, LocalWorld->GetTimeSeconds() + ComponentLifespan);
+		LiveComponents.Emplace(ComponentToUse, MeshToUse, LocalWorld->GetTimeSeconds() + ComponentLifespan);
 
 		// Assign struct pointers
 		PreparedNumberInfo.StaticMeshComponent = ComponentToUse;
@@ -136,7 +140,8 @@ void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& N
 		}
 
 		// Start the timer if it wasn't already running
-		if (!LocalWorld->GetTimerManager().IsTimerActive(ReleaseTimerHandle))
+		const float RemainingTime = LocalWorld->GetTimerManager().GetTimerRemaining(ReleaseTimerHandle);
+		if (RemainingTime < 0.f || RemainingTime > ComponentLifespan)
 		{
 			LocalWorld->GetTimerManager().SetTimer(ReleaseTimerHandle, this, &ThisClass::ReleaseNextComponents, ComponentLifespan);
 		}
@@ -168,49 +173,75 @@ void UIMGNumberPopComponent_MeshText::AddNumberPop(const FIMGNumberPopRequest& N
 void UIMGNumberPopComponent_MeshText::ReleaseNextComponents()
 {
 	UWorld* LocalWorld = GetWorld();
-	check(LocalWorld);
+	if (!LocalWorld)
+	{
+		return;
+	}
 
 	const float CurrentTime = LocalWorld->GetTimeSeconds();
 
-	int32 NumReleased = 0;
-	for (const FLiveNumberPopEntry& LiveComp : LiveComponents)
+	float NextReleaseTime = TNumericLimits<float>::Max();
+	for (int32 Index = LiveComponents.Num() - 1; Index >= 0; --Index)
 	{
+		const FLiveNumberPopEntry& LiveComp = LiveComponents[Index];
 		if (CurrentTime >= LiveComp.ReleaseTime)
 		{
-			NumReleased++;
-			if (ensure(LiveComp.Component))
+			if (IsValid(LiveComp.Component))
 			{
 				LiveComp.Component->UnregisterComponent();
 
-				if (ensure(LiveComp.Pool))
+				if (FPooledNumberPopComponentList* Pool = PooledComponentMap.Find(LiveComp.PoolMesh))
 				{
 					// Return this component to the pool
-					LiveComp.Pool->Components.Push(LiveComp.Component);
+					Pool->Components.Push(LiveComp.Component);
 				}
 				else
 				{
-					// No pool. Just remove it.
-					LiveComp.Component->SetFlags(RF_Transient);
-					LiveComp.Component->Rename(nullptr, GetTransientPackage(), RF_NoFlags);
+					LiveComp.Component->DestroyComponent();
 				}
 			}
+			LiveComponents.RemoveAtSwap(Index, 1, EAllowShrinking::No);
 		}
 		else
 		{
-			// These are in chronological order so none of the other elements will be deleted
-			break;
+			NextReleaseTime = FMath::Min(NextReleaseTime, LiveComp.ReleaseTime);
 		}
 	}
-
-	// Actually remove it from the live components array
-	LiveComponents.RemoveAt(0, NumReleased);
 
 	// If we still have live components animating, set the timer to remove the next one
 	if (LiveComponents.Num() > 0)
 	{
-		const float TimeUntilNextRelease = LiveComponents[0].ReleaseTime - CurrentTime;
+		const float TimeUntilNextRelease = FMath::Max(NextReleaseTime - CurrentTime, KINDA_SMALL_NUMBER);
 		LocalWorld->GetTimerManager().SetTimer(ReleaseTimerHandle, this, &ThisClass::ReleaseNextComponents, TimeUntilNextRelease);
 	}
+}
+
+void UIMGNumberPopComponent_MeshText::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ReleaseTimerHandle);
+	}
+	for (const FLiveNumberPopEntry& Entry : LiveComponents)
+	{
+		if (IsValid(Entry.Component))
+		{
+			Entry.Component->DestroyComponent();
+		}
+	}
+	for (const auto& Pool : PooledComponentMap)
+	{
+		for (UStaticMeshComponent* Component : Pool.Value.Components)
+		{
+			if (IsValid(Component))
+			{
+				Component->DestroyComponent();
+			}
+		}
+	}
+	LiveComponents.Reset();
+	PooledComponentMap.Reset();
+	Super::EndPlay(EndPlayReason);
 }
 
 FLinearColor UIMGNumberPopComponent_MeshText::DetermineColor(const FIMGNumberPopRequest& Request) const
@@ -259,12 +290,20 @@ void UIMGNumberPopComponent_MeshText::SetMaterialParameters(const FIMGNumberPopR
 
 		for (UMaterialInstanceDynamic* MeshMID : NewDamageNumberInfo.MeshMIDs)
 		{
+			if (!MeshMID)
+			{
+				continue;
+			}
 			MeshMID->SetScalarParameterValue(SignDigitParameterName, bIsSignNegative ? 0.5f : 0.0f);
 			MeshMID->SetVectorParameterValue(ColorParameterName, DetermineColor(Request));
 
 			// IF the damage number has more digits than we support
 			// THEN force the damage number to the highest number we can support
 			const int32 MaxSupportedDigits = FMath::Min(FMath::Min(PositionParameterNames.Num(), ScaleRotationAngleParameterNames.Num()), DurationParameterNames.Num());
+			if (MaxSupportedDigits == 0)
+			{
+				return;
+			}
 			if (!ensure(NewDamageNumberInfo.DamageNumberArray.Num() <= MaxSupportedDigits))
 			{
 				NewDamageNumberInfo.DamageNumberArray.SetNum(MaxSupportedDigits);
@@ -283,11 +322,11 @@ void UIMGNumberPopComponent_MeshText::SetMaterialParameters(const FIMGNumberPopR
 			const int32 DamageNumberArrayLength = NewDamageNumberInfo.DamageNumberArray.Num();
 			float OffsetAccumulatedValue = (DamageNumberArrayLength * -1.f) + (bShouldShowSign ? 0.f : -1.f);
 
-			const int32 LastIndex = (DamageNumberArrayLength >= 4) ? DamageNumberArrayLength : 4;
+			const int32 LastIndex = FMath::Min(FMath::Max(DamageNumberArrayLength, 4), MaxSupportedDigits);
 
 			for (int32 NumberIndex = 0; NumberIndex < LastIndex; ++NumberIndex)
 			{
-				const float NumberYOffset = ((NumberIndex / FMath::Max(1, DamageNumberArrayLength - 1)) - 0.5f) * 2.f;
+				const float NumberYOffset = ((static_cast<float>(NumberIndex) / FMath::Max(1, DamageNumberArrayLength - 1)) - 0.5f) * 2.f;
 				const FVector NumberOffset = FVector(0.f, NumberYOffset, 0.f);
 				const FVector CameraSpaceDirection = CameraTransform.TransformVectorNoScale(NumberOffset);
 
@@ -301,7 +340,8 @@ void UIMGNumberPopComponent_MeshText::SetMaterialParameters(const FIMGNumberPopR
 				MeshMID->SetVectorParameterValue(PositionParameterName, RGBAPositionParameter);
 
 				const float DistanceFromCameraToNumber = (CameraTransform.GetLocation() - NumberLocation).Size();
-				const float DistanceSpriteScale = DistanceFromCameraBeforeDoublingSize == 0.f ? 1.f : FMath::Clamp(DistanceFromCameraToNumber / DistanceFromCameraBeforeDoublingSize, 1.f, 1000000000.f);
+				const float DistanceSpriteScale = !FMath::IsFinite(DistanceFromCameraBeforeDoublingSize) || DistanceFromCameraBeforeDoublingSize <= KINDA_SMALL_NUMBER
+					? 1.f : FMath::Clamp(DistanceFromCameraToNumber / DistanceFromCameraBeforeDoublingSize, 1.f, 1000000000.f);
 
 				const float ScaleToZeroMultiplier = (NumberIndex < DamageNumberArrayLength) && (((NumberIndex == 0) && bShouldShowSign) || (NumberIndex != 0)) ? 1.f : 0.f;
 

@@ -26,7 +26,10 @@
 
 - `FIMGInputAction` 只保存 InputTag/InputAction；`UIMGInputComponent::BindAbilityActions` 对有效 Action/Tag 按 IFE 的 LyraInputComponent 固定绑定 Started→Pressed、Completed→Released，不配置每项 PressedTriggerEvent 或 BindReleaseEvent。NativeAction 仍由调用方显式选择 TriggerEvent。
 - 默认 PawnData 输入和附加 InputConfig 均经 Hero 的 Pressed/Released 转发当前 Avatar 匹配的 ASC，再由 PlayerController.PostProcessInput 调用 ASC.ProcessAbilityInput。GA.ActivationPolicy 决定 OnInputTriggered/WhileInputActive/OnSpawn；Started 在输入开始时转发一次 Pressed，Held 状态保持至 Released，避免持续 Triggered 被 WaitInputPress 当作下一次点按。
-- Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。ProcessAbilityInput 固定本轮 Pressed/Released/Held 列表，能力回调中新排入的输入留给下一轮；ClearAbilityInput 或 Avatar 切换使旧轮次失效，禁止跨 ASC 共享临时激活列表或重入消费。ASC Avatar 切换、ClearActorInfo、EndPlay 清理输入。输入解绑的绑定句柄与 ASC.ClearAbilityInput 保持原职责；额外输入配置的移除仍是现有未实现边界，不因固定绑定而视为已解决。
+- Completed→ASC.AbilityInputTagReleased 移除 Held 并登记 Released；ProcessAbilityInput 更新 Spec.InputPressed，AbilitySpecInputReleased 发 InputReleased 通用事件，GA.WaitInputRelease 依赖该链及自身预测键向服务端传递释放。移除配置开关不能删掉释放转发。ProcessAbilityInput 固定本轮 Pressed/Released/Held 列表，能力回调中新排入的输入留给下一轮；ClearAbilityInput 或 Avatar 切换使旧轮次失效，禁止跨 ASC 共享临时激活列表或重入消费。ASC Avatar 切换、ClearActorInfo、EndPlay 清理输入。
+- Hero 持有 InputConfig → 来源集合/绑定句柄，以及本机实际 InputComponent/Subsystem 的弱引用。Add/RemoveAdditionalInputConfig 显式接受 Source：同来源重复加入幂等，不同来源共享配置时只绑定一次，最后来源移除才解绑；默认 PawnData 配置以 Hero 自身为来源。GameFeature 只记录实际承接请求的 Hero，退出不依赖当前 Controller/LocalPlayer，重复 BindInputsNow 可重申请求。配置移除释放已无其他配置使用的 InputTag；Controller 更换、重绑定、EndPlay/OnUnregister 释放本方全部绑定及默认 IMC，不再 ClearAllMappings。GameplayReady 后通过既有初始化检查接合新的 InputComponent，不新增 Tick。
+- Hero 临时 OnUnregister 后仍保留 InitState；已 BeginPlay 的 OnRegister 通过现有初始化检查恢复输入。解绑释放直接提交给 Avatar 仍匹配的 ASC，不经过会拒绝 IsBeingDestroyed 的普通输入回调，避免动态销毁 Hero 后残留 Held。
+- 共用 FInputMappingContextAndPriority 声明归现有 `Input/IMGInputConfig.h`，Hero 与 GameFeature 都消费输入配置，Hero 不包含 Action 头；结构体仍在同模块且未改名，反射身份不变。bRegisterWithSettings 只决定设置注册，不控制运行时 AddMappingContext；默认 IMC 激活不要求 PawnData.InputConfig 非空。
 
 - 通用 InputPressed/InputReleased 按活动实例及其 PredictionKey 分发，同一个 Spec/PredictionKey 只调用一次 GAS generic event；回调后再确认实例仍属该激活。InstancedPerExecution 不使用过时的 Spec 激活信息替代实例键。
 
@@ -57,8 +60,9 @@
 
 ## UI 与设置
 
-- `IMGNumberPopComponent_MeshText` 的 `LiveComponents` 跨帧保存 `PooledComponentMap.FindOrAdd` 返回值地址；后续 Map 元素存储扩容可使 `FLiveNumberPopEntry::Pool` 失效，回收路径仍会解引用。`IMGNumberPopComponent_NiagaraText::AddNumberPop` 仅在设置 Niagara Asset 时检查 Style，后续读取 `Style->NiagaraArrayName` 无保护；空 Style 路径仍不安全。以上为源码缺口，未运行复现。
-- `IMGPerformanceStatSubsystem` 在 `PerfStateCache`（TMap）内保存采样数据并通过 `GetCachedStatData` 返回元素地址；`SIMGLatencyGraph::UpdateGraphData` 将该地址缓存供后续绘制。修复须同时考虑 Map 元素地址稳定性和 Tracker 生命周期，不能仅给 Slate 指针判空。
+- `IMGNumberPopComponent_MeshText::LiveComponents` 保存受 GC 跟踪的 PoolMesh 键，回收时重新查 PooledComponentMap，不跨帧保存 Map 元素地址；按实际 ReleaseTime 回收并重设最早计时器，支持运行中调整寿命。MeshText/NiagaraText 在 EndPlay 销毁自行创建的表现组件，MeshText 同时释放计时器和池。Niagara 请求先验证 Style/Asset/World，并过滤远端 Controller；MeshText 校验寿命、材质指针和参数数组边界。
+- `IMGPerformanceStatSubsystem` 的采样缓存为独立共享对象，Tracker 建立时预建全部 Stat 的环形缓存，GetCachedStatData 返回只读共享引用；Slate 只持弱引用并在绘制时 Pin，Map 扩容不影响地址，Tracker 释放后图表停止取样。Subsystem 的 Tracker 空值、UMG/Slate 未建立及图表无效 Y 上限均有守卫，绘制点数组由每个 Slate 实例复用。
+- `UIMGPerfStatGraph` 在 UObject 控件侧保留颜色、Y 上限、缩放和采样弱引用，RebuildWidget 恢复到新 Slate；Slate 未建立时调用 setter 不丢失设置。父 `UIMGPerfStatWidgetBase` 保留最近一次 UpdateGraphData 的缩放，NativeConstruct 不覆盖蓝图 Construct 已指定的比例；NativeDestruct 清采样引用与 Subsystem 缓存，再交给原生/蓝图 Destruct。
 
 - UI 可订阅快捷栏 SlotsChanged/ActiveIndexChanged、生命/死亡委托；装弹提供开始/结束事件，自动重生提供可配置消息 Tag。
 - GameSettings.UGameSettingDetailView 通过 HandleCurrentSettingChanged 订阅当前 Setting 的变化并刷新描述/动态详情；DLC Registry 定时变更沿同一路径，不另轮询。
@@ -68,4 +72,10 @@
 
 - `Public/Physics/IMGCollisionChannels.h` 当前将 Interaction 与 Traversal 同时映射为 `ECC_GameTraceChannel1`；`Config/DefaultEngine.ini` 将其配置为 Traversable、默认 Block。拆分交互通道须同步处理配置及交互目标响应，不能仅替换宏；既有资产/实例响应尚未核对。
 - `AbilityTask_GrantNearbyInteraction` 以 Task 自身为授予能力的 SourceObject，按能力类缓存句柄；查询只增加，离开范围不撤销，OnDestroy 仅清扫描计时器。调整回收须先明确共享能力与授予来源的所有权。
-- `IMGTeamSubsystem::CanCauseDamage` 在 `bAllowDamageToSelf` 为 true 时，将两个 `FindPlayerStateFromActor` 返回值直接比较；两个不同对象均无 PlayerState 时也会提前允许伤害，绕过后续队伍比较。该结论有前述开关和空引用条件，不能表述为所有同队目标必然可受伤。
+- `IMGTeamSubsystem::CanCauseDamage` 先拒绝无效 Instigator/Target；允许自伤时只接受同一有效对象或同一非空 PlayerState。不同对象都没有 PlayerState 时继续走原队伍规则，不以 null == null 放行。
+
+## 基础组件与 GameFeature 生命周期
+
+- `IMGHealthComponent::InitializeWithAbilitySystem` 先验证 ASC 和 HealthSet，再提交两个成员及委托；缺 HealthSet 的失败不留下半初始化状态，后续可再次调用。初始化和清理的同步属性/Tag/业务回调后以绑定代次校验，避免旧调用继续访问已解绑或重建的 HealthSet。当前仍由既有装配链发起初始化，没有新增属性晚到轮询或自动重试。
+- `GameFeatureAction_AddAbilities::AddToWorld` 的扩展委托保存原始 AbilitiesList 下标；ActorClass 空行不会压缩后续索引。现有同 Actor 多条授予配置的行为不因此改变。
+- `GameFeatureAction_AddInputContextMapping` 在激活上下文中保存 Controller → 实际 EnhancedInputSubsystem 弱引用，重复 ExtensionAdded 不重复增加映射；BindInputsNow 先成对移除再重加。退出使用保存的 Subsystem，即使 Controller 已失去 LocalPlayer 或失效也可释放映射，不在未实际加入时误删。跨来源共享 IMC 仍遵循资产原生 RegistrationTrackingMode（默认 Untracked；CountRegistrations 才提供引擎引用计数）。

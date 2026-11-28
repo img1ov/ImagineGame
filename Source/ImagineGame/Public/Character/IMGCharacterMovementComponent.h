@@ -190,6 +190,8 @@ struct FIMGRagdollMovementRuntime
 	double BodyReferencePublishTime = -1.0;
 
 	FIMGRagdollMovementInput SubmittedInput;
+	TOptional<FIMGRagdollRepState> ReplayState;
+	bool bSkipReplayMove = false;
 	TWeakObjectPtr<UObject> InputSource;
 	double InputSampleTime = -1.0;
 	double RemoteInputTime = -1.0;
@@ -201,6 +203,7 @@ struct FIMGRagdollMovementRuntime
 	uint16 AdjustmentPlacementSession = 0;
 	uint16 RecoveryAppliedSession = 0;
 	uint16 LocalPlacementSession = 0;
+	uint16 ProxyEnteredSession = 0;
 
 	TWeakObjectPtr<AController> OwningController;
 	EIMGRagdollIssue Issue = EIMGRagdollIssue::None;
@@ -444,6 +447,9 @@ protected:
 	void ApplyRagdollRecoveryTransform(const FTransform& Transform);
 	void UpdateRagdollMovementState();
 	void TickRagdollRemoteInputTimeout();
+	const FIMGRagdollRepState& GetRagdollSimulationState() const;
+	void PrepareRagdollReplayMove(const FIMGRagdollRepState& State, uint8 PackedMode);
+	void FinishRagdollReplay();
 
 	FIMGCustomMovementMode_Ragdoll RagdollMode;
 	FIMGCharacterNetworkMoveDataContainer IMGNetworkMoveData;

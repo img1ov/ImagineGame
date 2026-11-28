@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ScopeExit.h"
 
 namespace IMGRagdollMode
 {
@@ -23,8 +24,27 @@ namespace IMGRagdollMode
 	TAutoConsoleVariable<int32> DebugDraw(
 		TEXT("IMG.Ragdoll.DebugDraw"),
 		0,
-		TEXT("0: off, 1: follow target, 2: also placement candidates/support/path."),
+		TEXT("0: off, 1: actual CMC capsule/follow target, 2: also placement candidates/support/path."),
 		ECVF_Cheat);
+
+	void DrawMovementAnchor(const UIMGCharacterMovementComponent& Movement)
+	{
+		const ACharacter* Character = Movement.GetCharacterOwner();
+		if (DebugDraw.GetValueOnGameThread() < 1 || !Movement.HasValidData()
+			|| !IsValid(Character) || Character->bClientUpdating || !Movement.IsRagdollMovementMode())
+		{
+			return;
+		}
+		const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+		const FVector Location = Movement.UpdatedComponent->GetComponentLocation();
+		DrawDebugCapsule(Movement.GetWorld(), Location, Capsule->GetScaledCapsuleHalfHeight(),
+			Capsule->GetScaledCapsuleRadius(), Movement.UpdatedComponent->GetComponentQuat(),
+			FColor::Cyan, false, 0.f);
+		DrawDebugString(Movement.GetWorld(), Location - Movement.GetGravityDirection() * Capsule->GetScaledCapsuleHalfHeight(),
+			FString::Printf(TEXT("CMC %s %s Role=%d Session=%d %s"),
+				*Movement.GetWorld()->GetName(), *Character->GetName(), static_cast<int32>(Character->GetLocalRole()),
+				Movement.GetRagdollMovementSession(), *Location.ToCompactString()), nullptr, FColor::Cyan, 0.f);
+	}
 
 	TAutoConsoleVariable<float> DebugDuration(
 		TEXT("IMG.Ragdoll.DebugDuration"),
@@ -368,6 +388,10 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		return;
 	}
 
+#if ENABLE_DRAW_DEBUG
+	ON_SCOPE_EXIT { IMGRagdollMode::DrawMovementAnchor(Movement); };
+#endif
+
 	if (!Movement.CharacterOwner->bClientUpdating)
 	{
 		NormalizeStance(Movement);
@@ -400,7 +424,7 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		Input = Movement.GetRagdollMovementInput();
 	}
 
-	const FIMGRagdollRepState& State = Movement.GetRagdollMovementState();
+	const FIMGRagdollRepState& State = Movement.GetRagdollSimulationState();
 	if (State.Phase != EIMGRagdollPhase::Simulating || Input.Session != State.Session || !Input.IsValid()
 		|| FMath::Abs(Input.CapsuleHeightOffset) > Movement.CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())
 	{
@@ -415,6 +439,7 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	}
 
 	const FIMGRagdollSettings& Settings = State.Settings;
+	const uint16 Session = State.Session;
 	const uint16 Revision = State.Revision;
 	const FVector OldLocation = Movement.UpdatedComponent->GetComponentLocation();
 	const FVector PelvisLocation = FRepMovement::RebaseOntoLocalOrigin(Input.PelvisLocation, &Movement);
@@ -471,7 +496,9 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 	// Free-body heading is an input/recovery fact, not an instruction to rotate the capsule and its waiting mesh.
 	FHitResult Hit;
 	Movement.MoveUpdatedComponent(Delta, Movement.UpdatedComponent->GetComponentQuat(), false, &Hit);
-	if (!Movement.HasValidData() || !Movement.IsRagdollMovementMode() || Movement.GetRagdollMovementState().Revision != Revision)
+	if (!Movement.HasValidData() || !Movement.IsActive() || !Movement.IsRegistered()
+		|| !Movement.IsRagdollMovementMode() || Movement.GetRagdollSimulationState().Session != Session
+		|| Movement.GetRagdollSimulationState().Revision != Revision)
 	{
 		return;
 	}
@@ -482,7 +509,7 @@ void FIMGCustomMovementMode_Ragdoll::Simulate(UIMGCharacterMovementComponent& Mo
 		UE_LOG(LogIMGMovementNet, Log,
 			TEXT("[RagdollFollow] Actor=%s Role=%d Replay=%d Session=%u Pelvis=%s HeightOffset=%.2f Capsule=%s->%s Target=%s BodyVelocity=%s CapsuleVelocity=%s"),
 			*GetNameSafe(Movement.CharacterOwner.Get()), static_cast<int32>(Movement.CharacterOwner->GetLocalRole()),
-			Movement.CharacterOwner->bClientUpdating, State.Session, *PelvisLocation.ToCompactString(), Input.CapsuleHeightOffset,
+			Movement.CharacterOwner->bClientUpdating, Session, *PelvisLocation.ToCompactString(), Input.CapsuleHeightOffset,
 			*OldLocation.ToCompactString(), *Movement.UpdatedComponent->GetComponentLocation().ToCompactString(),
 			*TargetLocation.ToCompactString(), *FVector(Input.PelvisVelocity).ToCompactString(),
 			*Movement.Velocity.ToCompactString());

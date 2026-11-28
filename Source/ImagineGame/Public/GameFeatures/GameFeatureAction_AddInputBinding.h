@@ -11,6 +11,7 @@ class UInputMappingContext;
 class UPlayer;
 class APlayerController;
 class UIMGInputConfig;
+class UIMGHeroComponent;
 struct FComponentRequestHandle;
 
 /**
@@ -41,7 +42,7 @@ private:
 	struct FPerContextData
 	{
 		TArray<TSharedPtr<FComponentRequestHandle>> ExtensionRequestHandles;
-		TArray<TWeakObjectPtr<APawn>> PawnsAddedTo;
+		TMap<TWeakObjectPtr<APawn>, TWeakObjectPtr<UIMGHeroComponent>> PawnsAddedTo;
 	};
 
 	TMap<FGameFeatureStateChangeContext, FPerContextData> ContextData;
@@ -53,6 +54,6 @@ private:
 	void Reset(FPerContextData& ActiveData);
 	void HandlePawnExtension(AActor* Actor, FName EventName, FGameFeatureStateChangeContext ChangeContext);
 	void AddInputMappingForPlayer(APawn* Pawn, FPerContextData& ActiveData);
-	void RemoveInputMapping(APawn* Pawn, FPerContextData& ActiveData);
+	void RemoveInputMapping(TWeakObjectPtr<APawn> Pawn, FPerContextData& ActiveData);
 
 };

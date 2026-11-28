@@ -339,22 +339,21 @@ FGameplayTagContainer UIMGPawnComponent_CharacterParts::GetCombinedTags(FGamepla
 
 void UIMGPawnComponent_CharacterParts::BroadcastChanged()
 {
-	const bool bReinitPose = true;
-
 	// Check to see if the body type has changed
 	if (USkeletalMeshComponent* MeshComponent = GetParentMeshComponent())
 	{
 		// Determine the mesh to use based on cosmetic part tags
 		const FGameplayTagContainer MergedTags = GetCombinedTags(FGameplayTag());
-		USkeletalMesh* DesiredMesh = BodyMeshes.SelectBestBodyStyle(MergedTags);
-
-		// Apply the desired mesh (this call is a no-op if the mesh hasn't changed)
-		MeshComponent->SetSkeletalMesh(DesiredMesh, /*bReinitPose=*/ bReinitPose);
+		if (USkeletalMesh* DesiredMesh = BodyMeshes.SelectBestBodyStyle(MergedTags))
+		{
+			MeshComponent->SetSkeletalMesh(DesiredMesh, /*bReinitPose=*/ true);
+		}
 
 		// Apply the desired physics asset if there's a forced override independent of the one from the mesh
 		if (UPhysicsAsset* PhysicsAsset = BodyMeshes.ForcedPhysicsAsset)
 		{
-			MeshComponent->SetPhysicsAsset(PhysicsAsset, /*bForceReInit=*/ bReinitPose);
+			// Rebuilding an unchanged asset destroys the active ragdoll bodies.
+			MeshComponent->SetPhysicsAsset(PhysicsAsset, /*bForceReInit=*/ false);
 		}
 	}
 

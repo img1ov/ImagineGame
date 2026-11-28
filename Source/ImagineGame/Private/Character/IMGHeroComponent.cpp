@@ -7,9 +7,9 @@
 #include "Logging/MessageLog.h"
 #include "IMGLogChannels.h"
 #include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
 #include "Player/IMGPlayerController.h"
 #include "Player/IMGPlayerState.h"
-#include "Player/IMGLocalPlayer.h"
 #include "Character/IMGPawnExtensionComponent.h"
 #include "Character/IMGPawnData.h"
 #include "Character/IMGCharacter.h"
@@ -18,7 +18,6 @@
 #include "Input/IMGInputComponent.h"
 #include "IMGGameplayTags.h"
 #include "Components/GameFrameworkComponentManager.h"
-#include "PlayerMappableInputConfig.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 #include "InputMappingContext.h"
 
@@ -245,43 +244,133 @@ void UIMGHeroComponent::ResetMovementIntent()
 	MovementIntentProcessor.Reset();
 }
 
-void UIMGHeroComponent::AddAdditionalInputConfig(const UIMGInputConfig* InputConfig)
+void UIMGHeroComponent::AddAdditionalInputConfig(const UIMGInputConfig* InputConfig, const UObject* Source)
 {
-	TArray<uint32> BindHandles;
-
 	const APawn* Pawn = GetPawn<APawn>();
-	if (!Pawn)
+	UIMGInputComponent* InputComponent = BoundInputComponent.Get();
+	if (!IsValid(InputConfig) || !IsValid(Source) || !bReadyToBindInputs || !Pawn || !Pawn->IsLocallyControlled() ||
+		!IsRegistered() || IsBeingDestroyed() || !InputComponent || Pawn->InputComponent != InputComponent)
 	{
 		return;
 	}
-
-	const APlayerController* PC = GetController<APlayerController>();
-	check(PC);
-
-	const ULocalPlayer* LP = PC->GetLocalPlayer();
-	check(LP);
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-	check(Subsystem);
-
-	if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
+	FAdditionalInputConfigBinding& Binding = InputConfigBindings.FindOrAdd(InputConfig);
+	if (Binding.Sources.Contains(Source))
 	{
-		UIMGInputComponent* IMGIC = Pawn->FindComponentByClass<UIMGInputComponent>();
-		if (ensureMsgf(IMGIC, TEXT("Unexpected Input Component class! The Gameplay Abilities will not be bound to their inputs. Change the input component to UIMGInputComponent or a subclass of it.")))
+		return;
+	}
+	Binding.Sources.Add(Source);
+	if (Binding.Sources.Num() == 1)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = BoundInputSubsystem.Get())
 		{
-			IMGIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, /*out*/ BindHandles);
+			InputComponent->AddInputMappings(InputConfig, Subsystem);
+		}
+		InputComponent->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed,
+			&ThisClass::Input_AbilityInputTagReleased, Binding.BindHandles);
+	}
+}
+
+void UIMGHeroComponent::RemoveAdditionalInputConfig(const UIMGInputConfig* InputConfig, const UObject* Source)
+{
+	FAdditionalInputConfigBinding* Binding = InputConfigBindings.Find(InputConfig);
+	if (!Binding || Binding->Sources.Remove(Source) == 0 || !Binding->Sources.IsEmpty())
+	{
+		return;
+	}
+	if (UIMGInputComponent* InputComponent = BoundInputComponent.Get())
+	{
+		InputComponent->RemoveBinds(Binding->BindHandles);
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = BoundInputSubsystem.Get())
+		{
+			InputComponent->RemoveInputMappings(InputConfig, Subsystem);
+		}
+	}
+	InputConfigBindings.Remove(InputConfig);
+	ReleaseInputConfigTags(InputConfig);
+}
+
+void UIMGHeroComponent::ReleaseInputConfigTags(const UIMGInputConfig* InputConfig)
+{
+	if (!IsValid(InputConfig))
+	{
+		return;
+	}
+	const APawn* Pawn = GetPawn<APawn>();
+	const UIMGPawnExtensionComponent* PawnExt = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn);
+	UIMGAbilitySystemComponent* ASC = PawnExt ? PawnExt->GetIMGAbilitySystemComponent() : nullptr;
+	if (!IsValid(ASC) || ASC->GetAvatarActor() != Pawn)
+	{
+		return;
+	}
+	for (const FIMGInputAction& Action : InputConfig->AbilityInputActions)
+	{
+		if (!Action.InputAction || !Action.InputTag.IsValid())
+		{
+			continue;
+		}
+		bool bStillBound = false;
+		for (const auto& Entry : InputConfigBindings)
+		{
+			const UIMGInputConfig* Config = Entry.Key.Get();
+			if (Config && Config->AbilityInputActions.ContainsByPredicate([&Action](const FIMGInputAction& Other)
+			{
+				return Other.InputAction && Other.InputTag == Action.InputTag;
+			}))
+			{
+				bStillBound = true;
+				break;
+			}
+		}
+		if (!bStillBound)
+		{
+			// Teardown must release held input even after this Hero starts being destroyed.
+			ASC->AbilityInputTagReleased(Action.InputTag);
 		}
 	}
 }
 
-void UIMGHeroComponent::RemoveAdditionalInputConfig(const UIMGInputConfig* InputConfig)
+void UIMGHeroComponent::ReleasePlayerInput()
 {
-	//@TODO: Implement me!
+	bReadyToBindInputs = false;
+	const auto PreviousBindings = MoveTemp(InputConfigBindings);
+	for (const auto& Entry : PreviousBindings)
+	{
+		ReleaseInputConfigTags(Entry.Key.Get());
+	}
+	if (UIMGInputComponent* InputComponent = BoundInputComponent.Get())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = BoundInputSubsystem.Get())
+		{
+			for (const auto& Entry : PreviousBindings)
+			{
+				if (const UIMGInputConfig* Config = Entry.Key.Get())
+				{
+					InputComponent->RemoveInputMappings(Config, Subsystem);
+				}
+			}
+		}
+		InputComponent->ClearBindingsForObject(this);
+	}
+	BoundInputComponent.Reset();
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = BoundInputSubsystem.Get())
+	{
+		for (const auto& Mapping : AppliedDefaultMappings)
+		{
+			if (const UInputMappingContext* Context = Mapping.Get())
+			{
+				Subsystem->RemoveMappingContext(Context);
+			}
+		}
+	}
+	AppliedDefaultMappings.Reset();
+	BoundInputSubsystem.Reset();
 }
 
 bool UIMGHeroComponent::IsReadyToBindInputs() const
 {
-	return bReadyToBindInputs;
+	const APawn* Pawn = GetPawn<APawn>();
+	return bReadyToBindInputs && IsRegistered() && !IsBeingDestroyed() && Pawn && Pawn->IsLocallyControlled() &&
+		BoundInputComponent.IsValid() && Pawn->InputComponent == BoundInputComponent.Get();
 }
 
 bool UIMGHeroComponent::CanChangeInitState(UGameFrameworkComponentManager* Manager, FGameplayTag CurrentState, FGameplayTag DesiredState) const
@@ -391,6 +480,13 @@ void UIMGHeroComponent::CheckDefaultInitialization()
 	};
 
 	ContinueInitStateChain(StateChain);
+	const APawn* Pawn = GetPawn<APawn>();
+	if (GetInitState() == IMGGameplayTags::InitState_GameplayReady && Pawn &&
+		Pawn->IsLocallyControlled() && !Pawn->IsBotControlled() && Pawn->InputComponent &&
+		(!bReadyToBindInputs || BoundInputComponent.Get() != Pawn->InputComponent))
+	{
+		InitializePlayerInput(Pawn->InputComponent);
+	}
 }
 
 void UIMGHeroComponent::OnRegister()
@@ -418,6 +514,10 @@ void UIMGHeroComponent::OnRegister()
 	else
 	{
 		RegisterInitStateFeature();
+		if (HasBegunPlay())
+		{
+			CheckDefaultInitialization();
+		}
 	}
 }
 
@@ -434,8 +534,15 @@ void UIMGHeroComponent::BeginPlay()
 	CheckDefaultInitialization();
 }
 
+void UIMGHeroComponent::OnUnregister()
+{
+	ReleasePlayerInput();
+	Super::OnUnregister();
+}
+
 void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ReleasePlayerInput();
 	if (APawn* Pawn = GetPawn<APawn>())
 	{
 		Pawn->ReceiveControllerChangedDelegate.RemoveDynamic(this, &ThisClass::HandlePawnControllerChanged);
@@ -457,91 +564,85 @@ void UIMGHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UIMGHeroComponent::HandlePawnControllerChanged(APawn*, AController*, AController*)
+void UIMGHeroComponent::HandlePawnControllerChanged(APawn*, AController* OldController, AController* NewController)
 {
 	ResetMovementIntent();
+	if (OldController != NewController)
+	{
+		ReleasePlayerInput();
+	}
 }
 
 void UIMGHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputComponent)
 {
-	check(PlayerInputComponent);
-
 	const APawn* Pawn = GetPawn<APawn>();
-	if (Pawn == nullptr)
+	const APlayerController* PC = GetController<APlayerController>();
+	const ULocalPlayer* LP = PC ? PC->GetLocalPlayer() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP ? LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	UIMGInputComponent* IMGIC = Cast<UIMGInputComponent>(PlayerInputComponent);
+	if (bInitializingPlayerInput || !IsRegistered() || IsBeingDestroyed() || !Pawn ||
+		!Pawn->IsLocallyControlled() || !InputSubsystem || !InputSubsystem->GetPlayerInput() ||
+		!ensureMsgf(IMGIC, TEXT("Player input must use UIMGInputComponent or a subclass.")))
 	{
 		return;
 	}
-
-	const APlayerController* PC = GetController<APlayerController>();
-	check(PC);
-
-	const UIMGLocalPlayer* LP = Cast<UIMGLocalPlayer>(PC->GetLocalPlayer());
-	check(LP);
-
-	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-	check(InputSubsystem);
-
+	TGuardValue<bool> InitializingInput(bInitializingPlayerInput, true);
+	ReleasePlayerInput();
 	ResetMovementIntent();
-	InputSubsystem->ClearAllMappings();
+	BoundInputComponent = IMGIC;
+	BoundInputSubsystem = InputSubsystem;
+	bReadyToBindInputs = true;
 
-	if (const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
+	for (const FInputMappingContextAndPriority& Mapping : DefaultInputMappings)
 	{
-		if (const UIMGPawnData* PawnData = PawnExtComp->GetPawnData<UIMGPawnData>())
+		if (UInputMappingContext* IMC = Mapping.InputMapping.LoadSynchronous())
 		{
-			if (const UIMGInputConfig* InputConfig = PawnData->InputConfig)
+			if (!IsReadyToBindInputs() || Pawn->GetController() != PC)
 			{
-				for (const FInputMappingContextAndPriority& Mapping : DefaultInputMappings)
+				return;
+			}
+			if (Mapping.bRegisterWithSettings)
+			{
+				if (UEnhancedInputUserSettings* Settings = InputSubsystem->GetUserSettings())
 				{
-					if (UInputMappingContext* IMC = Mapping.InputMapping.LoadSynchronous())
-					{
-						if (Mapping.bRegisterWithSettings)
-						{
-							if (UEnhancedInputUserSettings* Settings = InputSubsystem->GetUserSettings())
-							{
-								Settings->RegisterInputMappingContext(IMC);
-							}
-
-							FModifyContextOptions Options = {};
-							Options.bIgnoreAllPressedKeysUntilRelease = false;
-							// Actually add the config to the local player
-							InputSubsystem->AddMappingContext(IMC, Mapping.Priority, Options);
-						}
-					}
-				}
-
-				// The IMG Input Component has some additional functions to map Gameplay Tags to an Input Action.
-				// If you want this functionality but still want to change your input component class, make it a subclass
-				// of the UIMGInputComponent or modify this component accordingly.
-				UIMGInputComponent* IMGIC = Cast<UIMGInputComponent>(PlayerInputComponent);
-				if (ensureMsgf(IMGIC, TEXT("Unexpected Input Component class! Change the input component to UIMGInputComponent or a subclass of it.")))
-				{
-					// Add the key mappings that may have been set by the player
-					IMGIC->AddInputMappings(InputConfig, InputSubsystem);
-
-					// Ability actions forward Started/Completed through tags to ASC input processing.
-					TArray<uint32> BindHandles;
-					IMGIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, BindHandles);
-
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move, false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Completed, this, &ThisClass::Input_MoveCompleted, false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Canceled, this, &ThisClass::Input_MoveCompleted, false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Stick, ETriggerEvent::Triggered, this, &ThisClass::Input_LookStick, false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crouch, ETriggerEvent::Triggered, this, &ThisClass::Input_Crouch, /*bLogIfNotFound=*/ false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crawl, ETriggerEvent::Triggered, this, &ThisClass::Input_Crawl, /*bLogIfNotFound=*/ false);
-					IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_AutoRun, ETriggerEvent::Triggered, this, &ThisClass::Input_AutoRun, /*bLogIfNotFound=*/ false);
+					Settings->RegisterInputMappingContext(IMC);
 				}
 			}
+			if (!IsReadyToBindInputs() || Pawn->GetController() != PC)
+			{
+				return;
+			}
+			FModifyContextOptions Options = {};
+			Options.bIgnoreAllPressedKeysUntilRelease = false;
+			InputSubsystem->AddMappingContext(IMC, Mapping.Priority, Options);
+			AppliedDefaultMappings.Add(IMC);
 		}
 	}
 
-	if (ensure(!bReadyToBindInputs))
+	if (!IsReadyToBindInputs() || Pawn->GetController() != PC)
 	{
-		bReadyToBindInputs = true;
+		return;
+	}
+	const UIMGPawnExtensionComponent* PawnExtComp = UIMGPawnExtensionComponent::FindPawnExtensionComponent(Pawn);
+	const UIMGPawnData* PawnData = PawnExtComp ? PawnExtComp->GetPawnData<UIMGPawnData>() : nullptr;
+	if (const UIMGInputConfig* InputConfig = PawnData ? PawnData->InputConfig.Get() : nullptr)
+	{
+		AddAdditionalInputConfig(InputConfig, this);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Completed, this, &ThisClass::Input_MoveCompleted, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Move, ETriggerEvent::Canceled, this, &ThisClass::Input_MoveCompleted, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Look_Stick, ETriggerEvent::Triggered, this, &ThisClass::Input_LookStick, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crouch, ETriggerEvent::Triggered, this, &ThisClass::Input_Crouch, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_Crawl, ETriggerEvent::Triggered, this, &ThisClass::Input_Crawl, false);
+		IMGIC->BindNativeAction(InputConfig, IMGGameplayTags::InputTag_AutoRun, ETriggerEvent::Triggered, this, &ThisClass::Input_AutoRun, false);
 	}
 
 	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_BindInputsNow);
-	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APawn*>(Pawn), NAME_BindInputsNow);
+	if (bReadyToBindInputs && BoundInputComponent.Get() == IMGIC && Pawn->GetController() == PC && IsRegistered() && !IsBeingDestroyed())
+	{
+		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APawn*>(Pawn), NAME_BindInputsNow);
+	}
 }
 
 void UIMGHeroComponent::Input_AbilityInputTagPressed(FGameplayTag InputTag)

@@ -8,6 +8,7 @@
 #include "Inventory/IMGInventoryItemInstance.h"
 #include "NativeGameplayTags.h"
 #include "Net/UnrealNetwork.h"
+#include "UObject/StrongObjectPtr.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(IMGInventoryManagerComponent)
 
@@ -88,41 +89,46 @@ UIMGInventoryItemInstance* FIMGInventoryList::AddEntry(TSubclassOf<UIMGInventory
 	check(OwningActor->HasAuthority());
 
 
-	FIMGInventoryEntry& NewEntry = Entries.AddDefaulted_GetRef();
-	NewEntry.Instance = NewObject<UIMGInventoryItemInstance>(OwnerComponent->GetOwner());  //@TODO: Using the actor instead of component as the outer due to UE-127172
-	NewEntry.Instance->SetItemDef(ItemDef);
+	Result = NewObject<UIMGInventoryItemInstance>(OwningActor);
+	const TStrongObjectPtr<UIMGInventoryItemInstance> InstanceGuard(Result);
+	Result->SetItemDef(ItemDef);
 	for (UIMGInventoryItemFragment* Fragment : GetDefault<UIMGInventoryItemDefinition>(ItemDef)->Fragments)
 	{
 		if (Fragment != nullptr)
 		{
-			Fragment->OnInstanceCreated(NewEntry.Instance);
+			Fragment->OnInstanceCreated(Result);
 		}
 	}
+	FIMGInventoryEntry& NewEntry = Entries.AddDefaulted_GetRef();
+	NewEntry.Instance = Result;
 	NewEntry.StackCount = StackCount;
-	Result = NewEntry.Instance;
 
-	//const UIMGInventoryItemDefinition* ItemCDO = GetDefault<UIMGInventoryItemDefinition>(ItemDef);
 	MarkItemDirty(NewEntry);
 
 	return Result;
 }
 
-void FIMGInventoryList::AddEntry(UIMGInventoryItemInstance* Instance)
+UIMGInventoryItemInstance* FIMGInventoryList::AddEntry(UIMGInventoryItemInstance* Instance)
 {
-	unimplemented();
+	check(OwnerComponent && OwnerComponent->GetOwner()->HasAuthority());
+	// Replicated objects keep their network outer. Copy foreign pickups instead of renaming them.
+	UIMGInventoryItemInstance* OwnedInstance = Instance->GetOuter() == OwnerComponent->GetOwner()
+		? Instance : DuplicateObject<UIMGInventoryItemInstance>(Instance, OwnerComponent->GetOwner());
+	if (!OwnedInstance)
+	{
+		return nullptr;
+	}
+	FIMGInventoryEntry& NewEntry = Entries.AddDefaulted_GetRef();
+	NewEntry.Instance = OwnedInstance;
+	NewEntry.StackCount = 1;
+	MarkItemDirty(NewEntry);
+	return OwnedInstance;
 }
 
-void FIMGInventoryList::RemoveEntry(UIMGInventoryItemInstance* Instance)
+void FIMGInventoryList::RemoveEntry(int32 Index)
 {
-	for (auto EntryIt = Entries.CreateIterator(); EntryIt; ++EntryIt)
-	{
-		FIMGInventoryEntry& Entry = *EntryIt;
-		if (Entry.Instance == Instance)
-		{
-			EntryIt.RemoveCurrent();
-			MarkArrayDirty();
-		}
-	}
+	Entries.RemoveAt(Index);
+	MarkArrayDirty();
 }
 
 TArray<UIMGInventoryItemInstance*> FIMGInventoryList::GetAllItems() const
@@ -158,14 +164,13 @@ void UIMGInventoryManagerComponent::GetLifetimeReplicatedProps(TArray< FLifetime
 
 bool UIMGInventoryManagerComponent::CanAddItemDefinition(TSubclassOf<UIMGInventoryItemDefinition> ItemDef, int32 StackCount)
 {
-	//@TODO: Add support for stack limit / uniqueness checks / etc...
-	return true;
+	return GetOwner() && GetOwner()->HasAuthority() && ItemDef && StackCount > 0;
 }
 
 UIMGInventoryItemInstance* UIMGInventoryManagerComponent::AddItemDefinition(TSubclassOf<UIMGInventoryItemDefinition> ItemDef, int32 StackCount)
 {
 	UIMGInventoryItemInstance* Result = nullptr;
-	if (ItemDef != nullptr)
+	if (CanAddItemDefinition(ItemDef, StackCount))
 	{
 		Result = InventoryList.AddEntry(ItemDef, StackCount);
 		
@@ -177,23 +182,45 @@ UIMGInventoryItemInstance* UIMGInventoryManagerComponent::AddItemDefinition(TSub
 	return Result;
 }
 
-void UIMGInventoryManagerComponent::AddItemInstance(UIMGInventoryItemInstance* ItemInstance)
+UIMGInventoryItemInstance* UIMGInventoryManagerComponent::AddItemInstance(UIMGInventoryItemInstance* ItemInstance)
 {
-	InventoryList.AddEntry(ItemInstance);
-	if (IsUsingRegisteredSubObjectList() && IsReadyForReplication() && ItemInstance)
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsValid(ItemInstance) || !ItemInstance->GetItemDef())
 	{
-		AddReplicatedSubObject(ItemInstance);
+		return nullptr;
 	}
+	if (InventoryList.Entries.ContainsByPredicate([ItemInstance](const FIMGInventoryEntry& Entry) { return Entry.Instance == ItemInstance; }))
+	{
+		return ItemInstance;
+	}
+	UIMGInventoryItemInstance* Result = InventoryList.AddEntry(ItemInstance);
+	if (IsUsingRegisteredSubObjectList() && IsReadyForReplication() && Result)
+	{
+		AddReplicatedSubObject(Result);
+	}
+	return Result;
 }
 
 void UIMGInventoryManagerComponent::RemoveItemInstance(UIMGInventoryItemInstance* ItemInstance)
 {
-	InventoryList.RemoveEntry(ItemInstance);
-
-	if (ItemInstance && IsUsingRegisteredSubObjectList())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !ItemInstance)
 	{
-		RemoveReplicatedSubObject(ItemInstance);
+		return;
 	}
+	const int32 Index = InventoryList.Entries.IndexOfByPredicate([ItemInstance](const FIMGInventoryEntry& Entry) { return Entry.Instance == ItemInstance; });
+	if (Index != INDEX_NONE)
+	{
+		RemoveItemAt(Index);
+	}
+}
+
+void UIMGInventoryManagerComponent::RemoveItemAt(int32 Index)
+{
+	UIMGInventoryItemInstance* Instance = InventoryList.Entries[Index].Instance;
+	if (Instance && IsUsingRegisteredSubObjectList())
+	{
+		RemoveReplicatedSubObject(Instance);
+	}
+	InventoryList.RemoveEntry(Index);
 }
 
 TArray<UIMGInventoryItemInstance*> UIMGInventoryManagerComponent::GetAllItems() const
@@ -209,7 +236,7 @@ UIMGInventoryItemInstance* UIMGInventoryManagerComponent::FindFirstItemStackByDe
 
 		if (IsValid(Instance))
 		{
-			if (Instance->GetItemDef() == ItemDef)
+			if (Instance->GetItemDef() == ItemDef && Entry.StackCount > 0)
 			{
 				return Instance;
 			}
@@ -228,9 +255,9 @@ int32 UIMGInventoryManagerComponent::GetTotalItemCountByDefinition(TSubclassOf<U
 
 		if (IsValid(Instance))
 		{
-			if (Instance->GetItemDef() == ItemDef)
+			if (Instance->GetItemDef() == ItemDef && Entry.StackCount > 0)
 			{
-				++TotalCount;
+				TotalCount = static_cast<int32>(FMath::Min<int64>(static_cast<int64>(TotalCount) + Entry.StackCount, MAX_int32));
 			}
 		}
 	}
@@ -241,27 +268,34 @@ int32 UIMGInventoryManagerComponent::GetTotalItemCountByDefinition(TSubclassOf<U
 bool UIMGInventoryManagerComponent::ConsumeItemsByDefinition(TSubclassOf<UIMGInventoryItemDefinition> ItemDef, int32 NumToConsume)
 {
 	AActor* OwningActor = GetOwner();
-	if (!OwningActor || !OwningActor->HasAuthority())
+	if (!OwningActor || !OwningActor->HasAuthority() || !ItemDef || NumToConsume < 0 ||
+		GetTotalItemCountByDefinition(ItemDef) < NumToConsume)
 	{
 		return false;
 	}
 
-	//@TODO: N squared right now as there's no acceleration structure
-	int32 TotalConsumed = 0;
-	while (TotalConsumed < NumToConsume)
+	int32 Remaining = NumToConsume;
+	for (int32 Index = InventoryList.Entries.Num() - 1; Index >= 0 && Remaining > 0; --Index)
 	{
-		if (UIMGInventoryItemInstance* Instance = UIMGInventoryManagerComponent::FindFirstItemStackByDefinition(ItemDef))
+		FIMGInventoryEntry& Entry = InventoryList.Entries[Index];
+		if (!IsValid(Entry.Instance) || Entry.Instance->GetItemDef() != ItemDef || Entry.StackCount <= 0)
 		{
-			InventoryList.RemoveEntry(Instance);
-			++TotalConsumed;
+			continue;
+		}
+		const int32 Count = FMath::Min(Entry.StackCount, Remaining);
+		Remaining -= Count;
+		if (Count == Entry.StackCount)
+		{
+			RemoveItemAt(Index);
 		}
 		else
 		{
-			return false;
+			Entry.StackCount -= Count;
+			InventoryList.MarkItemDirty(Entry);
 		}
 	}
 
-	return TotalConsumed == NumToConsume;
+	return Remaining == 0;
 }
 
 void UIMGInventoryManagerComponent::ReadyForReplication()

@@ -251,10 +251,20 @@ void UIMGCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iteration
 
 void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
+	if (!CharacterOwner)
+	{
+		return;
+	}
 	const bool bWasTransitioning = RagdollRuntime.bTransitioning;
 	TGuardValue<bool> Transition(RagdollRuntime.bTransitioning, true);
+	USkeletalMeshComponent* EntryMesh = CharacterOwner ? CharacterOwner->GetMesh() : nullptr;
+	const bool bPreserveEntryPose = CharacterOwner && !CharacterOwner->bClientUpdating
+		&& IsRagdollMovementMode()
+		&& !(PreviousMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll))
+		&& IsValid(EntryMesh) && EntryMesh->GetAttachParent() == UpdatedComponent;
+	const FTransform EntryMeshWorld = bPreserveEntryPose ? EntryMesh->GetComponentTransform() : FTransform::Identity;
 
-	if ((!IsMovingOnGround() && !IsFalling()) || IsRagdollRecovering())
+	if (!CharacterOwner->bClientUpdating && ((!IsMovingOnGround() && !IsFalling()) || IsRagdollRecovering()))
 	{
 		ResetAutonomousMeshSmoothing();
 	}
@@ -269,7 +279,8 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 	else if (!bWasRagdoll && bIsRagdoll)
 	{
 		// Capture once before Enter detaches the movement base; replay never re-launches a body.
-		if (HasValidData() && !CharacterOwner->bClientUpdating)
+		if (HasValidData() && !CharacterOwner->bClientUpdating
+			&& RagdollRuntime.LocalLaunchSession != ActiveRagdollState.Session)
 		{
 			RagdollRuntime.LocalLaunchVelocity = Velocity + GetImpartedMovementBaseVelocity()
 				+ FVector(ActiveRagdollState.LaunchVelocityDelta);
@@ -288,12 +299,17 @@ void UIMGCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 	{
 		return;
 	}
+	if (bPreserveEntryPose && IsValid(EntryMesh)
+		&& EntryMesh == CharacterOwner->GetMesh() && EntryMesh->GetAttachParent() == UpdatedComponent)
+	{
+		EntryMesh->SetWorldTransform(EntryMeshWorld, false, nullptr, ETeleportType::TeleportPhysics);
+	}
 
 	if (!bWasTransitioning
 		&& CharacterOwner->HasAuthority()
 		&& ActiveRagdollState.Phase != EIMGRagdollPhase::Inactive
 		&& ((ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !IsRagdollMovementMode()
-			&& !(RagdollRuntime.bAwaitingInitialInput && (IsMovingOnGround() || IsFalling())))
+			&& !RagdollRuntime.bAwaitingInitialInput)
 			|| (IsRagdollRecovering() && MovementMode != MOVE_Walking)))
 	{
 		FinishRagdollMovement(EIMGRagdollEndReason::MovementChanged, false);

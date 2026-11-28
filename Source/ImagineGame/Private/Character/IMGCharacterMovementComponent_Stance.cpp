@@ -334,7 +334,7 @@ void UIMGCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float De
 		return;
 	}
 
-	if (ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating && !RagdollRuntime.bAwaitingInitialInput)
+	if (GetRagdollSimulationState().Phase == EIMGRagdollPhase::Simulating && !RagdollRuntime.bAwaitingInitialInput)
 	{
 		if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy && MovementMode != MOVE_None)
 		{

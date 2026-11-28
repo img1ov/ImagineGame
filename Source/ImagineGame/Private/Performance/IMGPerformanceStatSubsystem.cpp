@@ -128,14 +128,19 @@ void FIMGPerformanceStatCache::StopCharting()
 
 void FIMGPerformanceStatCache::RecordStat(const EIMGDisplayablePerformanceStat Stat, const double Value)
 {
-	PerfStateCache.FindOrAdd(Stat).RecordSample(Value);
+	TSharedPtr<FSampledStatCache>& Cache = PerfStateCache.FindOrAdd(Stat);
+	if (!Cache)
+	{
+		Cache = MakeShared<FSampledStatCache>();
+	}
+	Cache->RecordSample(Value);
 }
 
 double FIMGPerformanceStatCache::GetCachedStat(EIMGDisplayablePerformanceStat Stat) const
 {
 	static_assert((int32)EIMGDisplayablePerformanceStat::Count == 18, "Need to update this function to deal with new performance stats");
 
-	if (const FSampledStatCache* Cache = GetCachedStatData(Stat))
+	if (const TSharedPtr<const FSampledStatCache> Cache = GetCachedStatData(Stat))
 	{
 		return Cache->GetLastCachedStat();
 	}
@@ -143,11 +148,12 @@ double FIMGPerformanceStatCache::GetCachedStat(EIMGDisplayablePerformanceStat St
 	return 0.0;
 }
 
-const FSampledStatCache* FIMGPerformanceStatCache::GetCachedStatData(const EIMGDisplayablePerformanceStat Stat) const
+TSharedPtr<const FSampledStatCache> FIMGPerformanceStatCache::GetCachedStatData(EIMGDisplayablePerformanceStat Stat) const
 {
 	static_assert((int32)EIMGDisplayablePerformanceStat::Count == 18, "Need to update this function to deal with new performance stats");
 	
-	return PerfStateCache.Find(Stat);
+	const TSharedPtr<FSampledStatCache>* Cache = PerfStateCache.Find(Stat);
+	return Cache ? *Cache : TSharedPtr<const FSampledStatCache>();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -167,11 +173,11 @@ void UIMGPerformanceStatSubsystem::Deinitialize()
 
 double UIMGPerformanceStatSubsystem::GetCachedStat(EIMGDisplayablePerformanceStat Stat) const
 {
-	return Tracker->GetCachedStat(Stat);
+	return Tracker ? Tracker->GetCachedStat(Stat) : 0.0;
 }
 
-const FSampledStatCache* UIMGPerformanceStatSubsystem::GetCachedStatData(const EIMGDisplayablePerformanceStat Stat) const
+TSharedPtr<const FSampledStatCache> UIMGPerformanceStatSubsystem::GetCachedStatData(EIMGDisplayablePerformanceStat Stat) const
 {
-	return Tracker->GetCachedStatData(Stat);
+	return Tracker ? Tracker->GetCachedStatData(Stat) : TSharedPtr<const FSampledStatCache>();
 }
 

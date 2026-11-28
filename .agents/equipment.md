@@ -19,8 +19,8 @@
 
 ## 换装组件与装备动画的动态装配边界
 
-- `Inventory/IPickupable.cpp::AddPickupToInventory` 的 Instances 路径调用 `AddItemInstance`，最终进入尚为 `unimplemented()` 的 `FIMGInventoryList::AddEntry(UIMGInventoryItemInstance*)`；Templates 路径使用另一个已实现重载，不能将所有拾取都视为必然触发该断言。
-- `IMGInventoryManagerComponent::ConsumeItemsByDefinition` 按实例逐个直接调用 `InventoryList.RemoveEntry`，未先验证总量；不足时返回 false，但已删除的条目不会回滚，也绕过 `RemoveItemInstance` 的复制子对象注销。该函数及 `GetTotalItemCountByDefinition` 当前按条目计数，未按 Entry.StackCount 汇总；修复需统一数量语义。
+- `Inventory/IPickupable.cpp::AddPickupToInventory` 的 Instances 路径调用 `AddItemInstance`，按一个单位加入并返回库存实际持有的实例；同 Owner 的重复实例不重复加入，外部 Actor Outer 的实例通过 DuplicateObject 复制到库存 Owner，保留 ItemDef/StatTags，不 Rename 已可复制对象，也不重新执行初始化 Fragment。Templates 路径按传入正 StackCount 新建。两条写入口均要求权威，RegisteredSubObjectList 与传统 ReplicateSubobjects 共用库存条目来源。
+- `IMGInventoryManagerComponent::GetTotalItemCountByDefinition` 按正 Entry.StackCount 汇总并饱和到 int32 上限；ConsumeItemsByDefinition 先验总量，不足/负数/无效定义无修改，零数量成功。部分堆叠扣除使用 MarkItemDirty；整条移除与公开 RemoveItemInstance 共用 RemoveItemAt，同时注销复制子对象，不删除仍可能被快捷栏/装备持有的实例。客户端继续通过原生 FastArray 通知变化；数量正确性不表示快捷栏会自动清理已耗尽物品。
 
 - 装配合同：Pawn/Character 本体通过蓝图组件或原生默认子对象预装一个 Pawn Parts，早于 Possess/初始装备查询；Controller Parts 可由 GF 动态添加，只在权威端决定和应用角色部件。不在 GF 再注入第二份 Pawn Parts。动态 Pawn Parts 晚到属于兼容保底，不保证重播首次掏枪 Montage；两组件头文件已用英文注明该边界及生命周期。
 - 已实现：`IMGControllerComponent_CharacterParts` 保存实际承接句柄的 Pawn Parts 弱引用。已注册的预装组件在 BeginPlay 前也可承接部件，保留原 Possess 时序；缺组件时保留请求并 Warning，收到 `CharacterPartsReady` 后仅补未应用且未被 Cheat 抑制的条目。GF 添加 Controller 时 BeginPlay 追补既有 Possess；换 Pawn、组件替换/移除、Controller EndPlay 清理旧句柄与监听。部件请求可跨 Possess 保留，句柄不能跨 Pawn Parts 实例复用；取消请求后晚到事件不得重新添加。

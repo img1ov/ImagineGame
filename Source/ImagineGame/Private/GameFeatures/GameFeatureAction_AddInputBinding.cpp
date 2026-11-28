@@ -93,15 +93,7 @@ void UGameFeatureAction_AddInputBinding::Reset(FPerContextData& ActiveData)
 
 	while (!ActiveData.PawnsAddedTo.IsEmpty())
 	{
-		TWeakObjectPtr<APawn> PawnPtr = ActiveData.PawnsAddedTo.Top();
-		if (PawnPtr.IsValid())
-		{
-			RemoveInputMapping(PawnPtr.Get(), ActiveData);
-		}
-		else
-		{
-			ActiveData.PawnsAddedTo.Pop();
-		}
+		RemoveInputMapping(ActiveData.PawnsAddedTo.CreateConstIterator().Key(), ActiveData);
 	}
 }
 
@@ -132,15 +124,19 @@ void UGameFeatureAction_AddInputBinding::AddInputMappingForPlayer(APawn* Pawn, F
 			UIMGHeroComponent* HeroComponent = Pawn->FindComponentByClass<UIMGHeroComponent>();
 			if (HeroComponent && HeroComponent->IsReadyToBindInputs())
 			{
+				if (const auto* PreviousHero = ActiveData.PawnsAddedTo.Find(Pawn); PreviousHero && PreviousHero->Get() != HeroComponent)
+				{
+					RemoveInputMapping(Pawn, ActiveData);
+				}
 				for (const TSoftObjectPtr<const UIMGInputConfig>& Entry : InputConfigs)
 				{
 					if (const UIMGInputConfig* BindSet = Entry.Get())
 					{
-						HeroComponent->AddAdditionalInputConfig(BindSet);
+						HeroComponent->AddAdditionalInputConfig(BindSet, this);
 					}
 				}
+				ActiveData.PawnsAddedTo.Add(Pawn, HeroComponent);
 			}
-			ActiveData.PawnsAddedTo.AddUnique(Pawn);
 		}
 		else
 		{
@@ -149,28 +145,23 @@ void UGameFeatureAction_AddInputBinding::AddInputMappingForPlayer(APawn* Pawn, F
 	}
 }
 
-void UGameFeatureAction_AddInputBinding::RemoveInputMapping(APawn* Pawn, FPerContextData& ActiveData)
+void UGameFeatureAction_AddInputBinding::RemoveInputMapping(TWeakObjectPtr<APawn> Pawn, FPerContextData& ActiveData)
 {
-	APlayerController* PlayerController = Cast<APlayerController>(Pawn->GetController());
-
-	if (ULocalPlayer* LocalPlayer = PlayerController ? PlayerController->GetLocalPlayer() : nullptr)
+	TWeakObjectPtr<UIMGHeroComponent> HeroPtr;
+	if (!ActiveData.PawnsAddedTo.RemoveAndCopyValue(Pawn, HeroPtr))
 	{
-		if (UEnhancedInputLocalPlayerSubsystem* InputSystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+		return;
+	}
+	if (UIMGHeroComponent* HeroComponent = HeroPtr.Get())
+	{
+		for (const TSoftObjectPtr<const UIMGInputConfig>& Entry : InputConfigs)
 		{
-			if (UIMGHeroComponent* HeroComponent = Pawn->FindComponentByClass<UIMGHeroComponent>())
+			if (const UIMGInputConfig* InputConfig = Entry.Get())
 			{
-				for (const TSoftObjectPtr<const UIMGInputConfig>& Entry : InputConfigs)
-				{
-					if (const UIMGInputConfig* InputConfig = Entry.Get())
-					{
-						HeroComponent->RemoveAdditionalInputConfig(InputConfig);
-					}
-				}
+				HeroComponent->RemoveAdditionalInputConfig(InputConfig, this);
 			}
 		}
 	}
-
-	ActiveData.PawnsAddedTo.Remove(Pawn);
 }
 
 #undef LOCTEXT_NAMESPACE

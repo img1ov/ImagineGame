@@ -249,6 +249,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Correction", meta = (ClampMin = "0.01", ForceUnits = "s"))
 	float RemoteVelocityCorrectionTime = 0.05f;
 
+	/** Body presentation only; does not delay movement input or capsule prediction. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Correction", meta = (ClampMin = "0", ForceUnits = "s"))
+	float RemoteInterpolationTime = 0.05f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Correction", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float RemotePositionTolerance = 1.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "IMG|Ragdoll|Correction", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float RemoteMaxVelocityCorrection = 500.f;
 
@@ -363,6 +370,9 @@ private:
 		FVector OwnerCorrectionRemaining = FVector::ZeroVector;
 		float CapsuleHeightOffset = 0.f;
 		FVector ApprovedPelvisOffset = FVector::ZeroVector;
+		FVector ApprovedPelvisVelocity = FVector::ZeroVector;
+		TArray<FIMGRagdollBodyReference, TInlineAllocator<4>> RemoteReferences;
+		double RemotePresentationTime = -1.0;
 		uint16 Session = 0;
 		uint16 LastSession = 0;
 		uint16 HandedOffSession = 0;
@@ -377,11 +387,13 @@ private:
 	{
 		FIMGRagdollPoseSnapshot Snapshot;
 		TWeakObjectPtr<USkeletalMesh> MeshAsset;
+		FSavedMeshBodyState BodyState;
 
 		void Reset()
 		{
 			Snapshot = FIMGRagdollPoseSnapshot();
 			MeshAsset.Reset();
+			BodyState.Reset();
 		}
 	};
 
@@ -438,6 +450,7 @@ private:
 	void PrepareBodyRecovery();
 	void UpdateBodyCorrection(float DeltaTime);
 	void UpdateOwnerBodyCorrection(USkeletalMeshComponent& Mesh, float DeltaTime);
+	bool SampleRemoteBodyReference(FVector& OutTarget, FVector& OutVelocity);
 	void UpdateRemoteBodyCorrection(USkeletalMeshComponent& Mesh, float DeltaTime);
 	void HandleCapsuleCorrection(int32 Session, const FVector& Delta);
 	void HandlePhysicsCreated();

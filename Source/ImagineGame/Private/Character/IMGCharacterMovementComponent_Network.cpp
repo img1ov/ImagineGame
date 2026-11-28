@@ -56,6 +56,7 @@ public:
 	float SavedBrakingFrictionFactor = 0.f;
 	bool bSavedUseSeparateBrakingFriction = false;
 	FIMGRagdollMovementInput SavedRagdollInput;
+	FIMGRagdollRepState SavedRagdollState;
 	TArray<FMovementReplaySetup> SavedReplaySetups;
 	TArray<FMovementReplayRestore> ReplayRestores;
 
@@ -74,6 +75,7 @@ public:
 		SavedBrakingFrictionFactor = 0.f;
 		bSavedUseSeparateBrakingFriction = false;
 		SavedRagdollInput = FIMGRagdollMovementInput();
+		SavedRagdollState = FIMGRagdollRepState();
 		SavedReplaySetups.Reset();
 		ReplayRestores.Reset();
 	}
@@ -94,6 +96,9 @@ public:
 			&& SavedMovementContext.Revision == OtherMove->SavedMovementContext.Revision
 			&& SavedMovementContext.HasSameParameters(OtherMove->SavedMovementContext)
 			&& SavedRagdollInput.Session == 0 && OtherMove->SavedRagdollInput.Session == 0
+			&& SavedRagdollState.Session == OtherMove->SavedRagdollState.Session
+			&& SavedRagdollState.Revision == OtherMove->SavedRagdollState.Revision
+			&& SavedRagdollState.Phase == OtherMove->SavedRagdollState.Phase
 			&& SavedStance == OtherMove->SavedStance && SavedInputMagnitude == OtherMove->SavedInputMagnitude
 			&& SavedMovementParameters.Equals(OtherMove->SavedMovementParameters, bSavedHasMovementRequest)
 			&& SavedBrakingFriction == OtherMove->SavedBrakingFriction
@@ -116,6 +121,9 @@ public:
 			|| !SavedMovementContext.HasSameParameters(LastMove->SavedMovementContext)
 			|| SavedInputMagnitude != LastMove->SavedInputMagnitude
 			|| SavedRagdollInput.Session != LastMove->SavedRagdollInput.Session
+			|| SavedRagdollState.Session != LastMove->SavedRagdollState.Session
+			|| SavedRagdollState.Revision != LastMove->SavedRagdollState.Revision
+			|| SavedRagdollState.Phase != LastMove->SavedRagdollState.Phase
 			|| SavedRagdollInput.Status != LastMove->SavedRagdollInput.Status
 			|| (SavedRagdollInput.IsValid()
 				&& (SavedRagdollInput.PelvisLocation != LastMove->SavedRagdollInput.PelvisLocation
@@ -155,20 +163,26 @@ public:
 		SavedBrakingFrictionFactor = Movement->BrakingFrictionFactor;
 		bSavedUseSeparateBrakingFriction = Movement->bUseSeparateBrakingFriction;
 		SavedStance = Movement->GetDesiredStance();
+		SavedRagdollState = Movement->ActiveRagdollState;
 		SavedRagdollInput = Movement->CaptureRagdollInput();
 		Movement->RagdollMode.Input = SavedRagdollInput;
-		bForceNoCombine |= SavedRagdollInput.Session != 0;
+		bForceNoCombine |= SavedRagdollState.Phase != EIMGRagdollPhase::Inactive;
 	}
 
 	virtual void PrepMoveFor(ACharacter* Character) override
 	{
 		FSavedMove_Character::PrepMoveFor(Character);
+		UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
+		Movement->PrepareRagdollReplayMove(SavedRagdollState, StartPackedMovementMode);
+		if (Movement->RagdollRuntime.bSkipReplayMove)
+		{
+			return;
+		}
 		for (const FMovementReplaySetup& Setup : SavedReplaySetups)
 		{
 			ReplayRestores.Add(Setup());
 		}
 
-		UIMGCharacterMovementComponent* Movement = CastChecked<UIMGCharacterMovementComponent>(Character->GetCharacterMovement());
 		FIMGMovementRequestRuntime& Runtime = Movement->MovementRequestRuntime;
 		Runtime.bHasRequest = Movement->HasMovementRequestProvider()
 			&& bSavedHasMovementRequest
@@ -315,7 +329,9 @@ void FIMGCharacterMoveResponseDataContainer::ServerFillResponseData(
 	bHasRagdollBodyReference = bHasRagdollState
 		&& RagdollBodyReference.Sequence != 0
 		&& RagdollBodyReference.Session == RagdollState.Session
-		&& RagdollBodyReference.MovementRevision == RagdollState.Revision;
+		&& RagdollBodyReference.MovementRevision == RagdollState.Revision
+		&& (RagdollBodyReference.ClientTimeStamp < 0.f
+			|| RagdollBodyReference.ClientTimeStamp == PendingAdjustment.TimeStamp);
 
 	bRagdollPlacementReflected = bHasRagdollState
 		&& RagdollState.bHasRecovery
@@ -616,6 +632,13 @@ void UIMGCharacterMovementComponent::MoveAutonomous(
 	uint8 CompressedFlags,
 	const FVector& NewAccel)
 {
+	if (CharacterOwner && CharacterOwner->bClientUpdating && RagdollRuntime.bSkipReplayMove)
+	{
+		// Terminal placement supersedes earlier body inputs; they cannot become fresh locomotion input.
+		RootMotionParams.Clear();
+		CurrentRootMotion.Clear();
+		return;
+	}
 	const FIMGCharacterNetworkMoveData* RequestData = static_cast<const FIMGCharacterNetworkMoveData*>(GetCurrentNetworkMoveData());
 	if (CharacterOwner && !CharacterOwner->bClientUpdating)
 	{
@@ -649,7 +672,7 @@ void UIMGCharacterMovementComponent::MoveAutonomous(
 			&& RagdollMode.Input.Session == ActiveRagdollState.Session && RagdollMode.Input.IsValid())
 		{
 			RagdollRuntime.RemoteInputTime = GetWorld()->GetTimeSeconds();
-			if (RagdollRuntime.bAwaitingInitialInput && (IsMovingOnGround() || IsFalling())
+			if (RagdollRuntime.bAwaitingInitialInput && MovementMode != MOVE_None
 				&& GetWorld()->GetTimeSeconds() - ActiveRagdollState.StartServerTime <= ActiveRagdollState.Settings.EntryInputTimeout
 				&& FMath::Abs(RagdollMode.Input.CapsuleHeightOffset) <= CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
 				&& FVector::DistSquared(FRepMovement::RebaseOntoLocalOrigin(RagdollMode.Input.PelvisLocation, this),
@@ -710,6 +733,7 @@ bool UIMGCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 	const bool bSavedSeparateBrakingFriction = bUseSeparateBrakingFriction;
 
 	const bool bResult = Super::ClientUpdatePositionAfterServerUpdate();
+	FinishRagdollReplay();
 
 	// A callback may have removed/replaced the provider during replay; don't undo its cleanup.
 	if (Generation == MovementRequestRuntime.Generation)
@@ -840,18 +864,18 @@ void UIMGCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMo
 		&& CurrentClientData
 		&& CurrentClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp) != INDEX_NONE)
 	{
-		const FSavedMove_IMG* AckMove = static_cast<const FSavedMove_IMG*>(
-			CurrentClientData->SavedMoves[CurrentClientData->GetSavedMoveIndex(Response.ClientAdjustment.TimeStamp)].Get());
+		// Native correction and replay retain the pre-entry locomotion baseline.
 		TEnumAsByte<EMovementMode> ServerMode;
 		TEnumAsByte<EMovementMode> ServerGroundMode;
 		uint8 ServerCustomMode = 0;
 		UnpackNetworkMovementMode(Response.ClientAdjustment.MovementMode, ServerMode, ServerCustomMode, ServerGroundMode);
-		// Admission is current, but this position/mode was evaluated for a pre-entry locomotion move.
-		bDiscardCorrection = ActiveRagdollState.Phase == EIMGRagdollPhase::Simulating
-			&& Response.bHasRagdollState && Response.RagdollState.Session == ActiveRagdollState.Session
-			&& Response.RagdollState.Phase == EIMGRagdollPhase::Simulating
-			&& AckMove->SavedRagdollInput.Session != ActiveRagdollState.Session
-			&& !(ServerMode == MOVE_Custom && ServerCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll));
+		const bool bCurrentSession = Response.bHasRagdollState
+			&& Response.RagdollState.Session == ActiveRagdollState.Session;
+		const bool bOldRagdollMode = ServerMode == MOVE_Custom
+			&& ServerCustomMode == static_cast<uint8>(EIMGCustomMovementMode::Ragdoll);
+		// Approved placement/transfer is a terminal boundary, even while older moves still need ACKs.
+		bDiscardCorrection = bCurrentSession && ActiveRagdollState.Phase != EIMGRagdollPhase::Simulating
+			&& ((ActiveRagdollState.bHasRecovery && !Response.bRagdollPlacementReflected) || bOldRagdollMode);
 		ClientCorrectionFilter.Broadcast(MoveResponse, bDiscardCorrection);
 	}
 

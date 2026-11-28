@@ -139,6 +139,11 @@ void UIMGGameplayAbility_Ragdoll::ActivateAbility(FGameplayAbilitySpecHandle Han
 	Action.ActivatedTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	Action.PreviousCheckTime = Action.ActivatedTime;
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+	if (IsActionCurrent())
+	{
+		// Replaceable movement actions release their root motion/collision before body ownership begins.
+		Action.ASC->CancelActivationGroupAbilities(EIMGAbilityActivationGroup::Exclusive_Replaceable, this, ActorInfo->IsNetAuthority());
+	}
 	if (!IsActionCurrent() || !Action.Body->BindRecoveryAbilitySystem(Action.ASC.Get()))
 	{
 		AbortAction(TEXT("Activation infrastructure unavailable"));

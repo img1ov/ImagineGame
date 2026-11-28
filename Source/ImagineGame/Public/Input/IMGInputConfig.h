@@ -3,12 +3,30 @@
 
 #include "GameplayTagContainer.h"
 #include "Engine/DataAsset.h"
+#include "UObject/SoftObjectPtr.h"
 
 #include "IMGInputConfig.generated.h"
 
 class UInputAction;
+class UInputMappingContext;
 class UObject;
 struct FFrame;
+
+USTRUCT()
+struct FInputMappingContextAndPriority
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category="Input", meta=(AssetBundles="Client,Server"))
+	TSoftObjectPtr<UInputMappingContext> InputMapping;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	int32 Priority = 0;
+
+	// Settings registration is independent of whether the context is active.
+	UPROPERTY(EditAnywhere, Category="Input")
+	bool bRegisterWithSettings = true;
+};
 
 /**
  * FIMGInputAction

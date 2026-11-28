@@ -340,9 +340,14 @@ TArray<int32> UIMGTeamSubsystem::GetTeamIDs() const
 
 bool UIMGTeamSubsystem::CanCauseDamage(const UObject* Instigator, const UObject* Target, bool bAllowDamageToSelf) const
 {
+	if (!IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
 	if (bAllowDamageToSelf)
 	{
-		if ((Instigator == Target) || (FindPlayerStateFromActor(Cast<AActor>(Instigator)) == FindPlayerStateFromActor(Cast<AActor>(Target))))
+		const APlayerState* InstigatorPlayerState = FindPlayerStateFromActor(Cast<AActor>(Instigator));
+		if ((Instigator == Target) || (InstigatorPlayerState && InstigatorPlayerState == FindPlayerStateFromActor(Cast<AActor>(Target))))
 		{
 			return true;
 		}

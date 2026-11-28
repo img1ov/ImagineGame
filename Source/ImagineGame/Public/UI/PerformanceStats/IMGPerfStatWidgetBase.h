@@ -62,7 +62,7 @@ public:
 		BackgroundColor = InColor;
 	}
 
-	inline void UpdateGraphData(const FSampledStatCache* StatData, const float InScaleFactor)
+	inline void UpdateGraphData(TSharedPtr<const FSampledStatCache> StatData, const float InScaleFactor)
 	{
 		GraphData = StatData;
 		ScaleFactor = InScaleFactor;
@@ -97,7 +97,8 @@ private:
 	/**
 	 * The cache of data that this graph widget needs to draw
 	 */
-	const FSampledStatCache* GraphData = nullptr;
+	TWeakPtr<const FSampledStatCache> GraphData;
+	mutable TArray<FVector2D> Points;
 };
 
 /**
@@ -119,7 +120,7 @@ public:
 	
 	void SetBackgroundColor(const FColor& InValue);
 
-	void UpdateGraphData(const FSampledStatCache* StatData, const float ScaleFactor);
+	void UpdateGraphData(TSharedPtr<const FSampledStatCache> StatData, const float ScaleFactor);
 	
 protected:
 	// Begin UWidget interface
@@ -130,6 +131,13 @@ protected:
 	// The actual slate widget which will draw the graph. Created in RebuildWidget and
 	// destroyed in ReleaseSlateResources.
 	TSharedPtr<SIMGLatencyGraph> SlateLatencyGraph;
+
+private:
+	TWeakPtr<const FSampledStatCache> CachedGraphData;
+	float CachedScaleFactor = 1.f;
+	float CachedMaxYValue = 33.f;
+	FColor CachedLineColor = FColor(255, 255, 255, 255);
+	FColor CachedBackgroundColor = FColor(0, 0, 0, 128);
 };
 
 /**
@@ -161,6 +169,7 @@ public:
 protected:
 
  	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
  	UIMGPerformanceStatSubsystem* GetStatSubsystem();
 
@@ -189,4 +198,7 @@ protected:
 	// The stat to display
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Display)
 	EIMGDisplayablePerformanceStat StatToDisplay;
+
+private:
+	float GraphScaleFactor = 1.f;
  };
